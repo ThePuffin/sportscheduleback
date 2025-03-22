@@ -17,6 +17,7 @@ const password = process?.env?.DATABASE_PASS || '';
     CronModule,
     MongooseModule.forRoot(databaseUri, {
       dbName,
+      useBigInt64: true,
       auth: { username, password },
     }),
     TeamModule,
