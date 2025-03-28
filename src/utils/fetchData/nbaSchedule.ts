@@ -1,7 +1,6 @@
 import { League } from '../../utils/enum';
-const venueTimezone = 'America/New_York';
-import { readableDate } from '../../utils/date';
 let gameDates = [];
+const venueTimezone = 'America/New_York';
 
 export const getNBASchedule = async () => {
   try {
@@ -49,8 +48,7 @@ export const filterGamesByTeam = (team, value, leagueLogos) => {
           game.awayTeam.teamTricode === teamTricode,
       );
       if (filterGame.length) {
-        const gameDateRead = readableDate(new Date(gameDate));
-        const { arenaName, homeTeam, awayTeam, gameDateTimeUTC } =
+        const { arenaName, gameDateEst, homeTeam, awayTeam, gameDateTimeUTC } =
           filterGame[0];
         const awayAbbrev =
           inverseTeamTricodeMap[awayTeam.teamTricode] || awayTeam.teamTricode;
@@ -58,8 +56,10 @@ export const filterGamesByTeam = (team, value, leagueLogos) => {
           inverseTeamTricodeMap[homeTeam.teamTricode] || homeTeam.teamTricode;
 
         const date = new Date(gameDateTimeUTC);
+        const gameDateRead = gameDateEst.split('T')[0];
         const hourStart = String(date.getHours()).padStart(2, '0');
         const minStart = String(date.getMinutes()).padStart(2, '0');
+        if (new Date(gameDateTimeUTC) < new Date()) return;
 
         return {
           uniqueId: `${value}-${gameDateRead}-1`,
