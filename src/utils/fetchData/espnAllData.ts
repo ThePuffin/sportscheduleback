@@ -30,6 +30,15 @@ const leaguesData = {
     fetchDetails:
       'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/',
   },
+  [League.WNBA]: {
+    leagueName: League.WNBA,
+    fetchTeam:
+      'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/teams',
+    fetchGames:
+      'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/${id}/schedule',
+    fetchDetails:
+      'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/teams/',
+  },
   [League.NFL]: {
     leagueName: League.NFL,
     fetchTeam:

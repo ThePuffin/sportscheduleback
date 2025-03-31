@@ -33,7 +33,7 @@ export class TeamService {
   async getTeams(): Promise<any> {
     const hockeyData = new HockeyData();
     const activeTeams = await hockeyData.getNhlTeams();
-    const leagues = [League.NFL, League.NBA, League.MLB];
+    const leagues = [League.NFL, League.NBA, League.MLB, League.WNBA];
     for (const league of leagues) {
       const teams = await getESPNTeams(league);
       if (teams.length) {
