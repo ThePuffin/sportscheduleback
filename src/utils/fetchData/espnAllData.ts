@@ -186,7 +186,7 @@ const getEachTeamSchedule = async ({
 
         if (new Date(date) < now) return;
         const { venue, competitors } = competitions[0];
-        const venueTimezone = 'America/New_York';
+        const venueTimezone = 'America/Los_Angeles';
         const gameDate = readableDate(new Date(date));
         const currentDate = new Date(
           new Date(date).toLocaleString('en-US', { timeZone: venueTimezone }),

@@ -1,6 +1,6 @@
 import { League } from '../../utils/enum';
 let gameDates = [];
-const venueTimezone = 'America/New_York';
+const venueTimezone = 'America/Los_Angeles';
 
 export const getNBASchedule = async () => {
   try {
