@@ -67,6 +67,7 @@ export class GameService {
       currentGames = await getTeamsSchedule(teams, league, leagueLogos);
     }
 
+    let updateNumber = 0;
     for (const team in currentGames) {
       const games = currentGames[team];
       for (const game of games) {
@@ -77,6 +78,8 @@ export class GameService {
           console.error({ error });
         }
       }
+      updateNumber++;
+      console.info('updated:', team, '(', updateNumber, '/', teams.length, ')');
     }
     return currentGames;
   }

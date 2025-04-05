@@ -40,10 +40,20 @@ export class TeamService {
         activeTeams.push(...teams);
       }
     }
-
+    let updateNumber = 0;
     for (const activeTeam of activeTeams) {
       activeTeam.updateDate = new Date().toISOString();
       await this.create(activeTeam);
+      updateNumber++;
+      console.info(
+        'updated:',
+        activeTeam?.label,
+        '(',
+        updateNumber,
+        '/',
+        activeTeams.length,
+        ')',
+      );
     }
 
     return activeTeams;
