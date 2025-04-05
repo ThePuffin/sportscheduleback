@@ -70,6 +70,7 @@ export class GameService {
     for (const team in currentGames) {
       const games = currentGames[team];
       for (const game of games) {
+        game.updateDate = new Date().toISOString();
         try {
           await this.create(game);
         } catch (error) {
@@ -215,7 +216,12 @@ export class GameService {
         return homeTeamId === teamSelectedId;
       });
     }
-
+    const firstGame = games[0];
+    const beforeYesterday = new Date();
+    beforeYesterday.setDate(beforeYesterday.getDate() - 2);
+    if (new Date(firstGame.updateDate) < beforeYesterday) {
+      this.getAllGames();
+    }
     // avoid dupplicate games
     return games.filter(({ homeTeamId, teamSelectedId }) => {
       return homeTeamId === teamSelectedId;

@@ -42,6 +42,7 @@ export class TeamService {
     }
 
     for (const activeTeam of activeTeams) {
+      activeTeam.updateDate = new Date().toISOString();
       await this.create(activeTeam);
     }
 
@@ -52,6 +53,12 @@ export class TeamService {
     const allTeams = await this.teamModel.find().sort({ label: 1 }).exec();
     if (!allTeams?.length) {
       return this.getTeams();
+    }
+    const firstTeam = allTeams[0];
+    const lastMonth = new Date();
+    lastMonth.setDate(lastMonth.getMonth() - 1);
+    if (new Date(firstTeam.updateDate) < lastMonth) {
+      this.getTeams();
     }
     return allTeams;
   }

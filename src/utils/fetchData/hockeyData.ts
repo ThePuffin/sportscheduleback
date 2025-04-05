@@ -48,7 +48,6 @@ export class HockeyData {
           conferenceName,
           divisionName,
           league: leagueName,
-          updateDate: new Date().toDateString(),
         };
       });
 
