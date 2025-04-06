@@ -192,6 +192,8 @@ export class GameService {
               __v: 0,
               awayTeamLogo: '',
               homeTeamLogo: '',
+              color: '',
+              backgroundColor: '',
             }),
           );
         } else {

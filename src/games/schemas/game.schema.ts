@@ -62,6 +62,12 @@ export class Game {
   @Prop()
   startTimeUTC: string;
 
+  @Prop()
+  Color: string;
+
+  @Prop()
+  backgroundColor: string;
+
   @Prop({ default: new Date() })
   updateDate: string;
 }

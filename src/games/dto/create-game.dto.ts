@@ -58,6 +58,12 @@ export class CreateGameDto {
   @ApiProperty()
   startTimeUTC: string;
 
+  @ApiProperty()
+  color: string;
+
+  @ApiProperty()
+  backgroundColor: string;
+
   @ApiProperty({ default: new Date() })
   updateDate: string;
 }

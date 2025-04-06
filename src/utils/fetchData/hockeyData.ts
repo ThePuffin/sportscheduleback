@@ -135,6 +135,8 @@ export class HockeyData {
           venueTimezone: venueTimezone,
           timeStart,
           startTimeUTC,
+          color: '',
+          backgroundColor: '',
         };
       });
 

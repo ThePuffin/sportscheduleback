@@ -80,6 +80,8 @@ export const filterGamesByTeam = (team, value, leagueLogos) => {
           venueTimezone,
           timeStart: `${hourStart}:${minStart}`,
           startTimeUTC: gameDateTimeUTC,
+          color: '',
+          backgroundColor: '',
         };
       }
     })

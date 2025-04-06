@@ -218,6 +218,8 @@ const getEachTeamSchedule = async ({
           venueTimezone,
           timeStart,
           startTimeUTC: date,
+          color: '',
+          backgroundColor: '',
         };
       });
     }
