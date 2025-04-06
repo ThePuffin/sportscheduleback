@@ -63,7 +63,7 @@ export class Game {
   startTimeUTC: string;
 
   @Prop()
-  Color: string;
+  color: string;
 
   @Prop()
   backgroundColor: string;
