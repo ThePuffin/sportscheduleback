@@ -27,6 +27,12 @@ export class Team {
   conferenceName: string;
 
   @Prop()
+  color: string;
+
+  @Prop()
+  backgroundColor: string;
+
+  @Prop()
   divisionName: string;
 
   @Prop()

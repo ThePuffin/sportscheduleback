@@ -17,6 +17,6 @@ export interface GameFormatted {
   updateDate?: Date;
   venueTimezone?: string;
   timeStart?: string;
-  color: string;
-  backgroundColor: string;
+  color?: string;
+  backgroundColor?: string;
 }

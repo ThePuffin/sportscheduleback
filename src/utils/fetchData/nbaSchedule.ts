@@ -20,7 +20,13 @@ export const clearNbaSchedule = () => {
   gameDates = [];
 };
 
-export const filterGamesByTeam = (team, value, leagueLogos) => {
+export const filterGamesByTeam = (
+  team,
+  value,
+  leagueLogos,
+  color,
+  backgroundColor,
+) => {
   const teamTricodeMap = {
     GS: 'GSW',
     NO: 'NOP',
@@ -80,8 +86,8 @@ export const filterGamesByTeam = (team, value, leagueLogos) => {
           venueTimezone,
           timeStart: `${hourStart}:${minStart}`,
           startTimeUTC: gameDateTimeUTC,
-          color: '',
-          backgroundColor: '',
+          color: color || undefined,
+          backgroundColor: backgroundColor || undefined,
         };
       }
     })

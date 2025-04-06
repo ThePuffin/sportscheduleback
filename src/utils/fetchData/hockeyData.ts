@@ -48,6 +48,8 @@ export class HockeyData {
           conferenceName,
           divisionName,
           league: leagueName,
+          color: undefined,
+          backgroundColor: undefined,
         };
       });
 
@@ -62,12 +64,14 @@ export class HockeyData {
     const allGames = {};
 
     await Promise.all(
-      activeTeams.map(async ({ id, value }) => {
+      activeTeams.map(async ({ id, value, color, backgroundColor }) => {
         const leagueID = `${leagueName}-${id}`;
         allGames[leagueID] = await this.getNhlTeamSchedule(
           id,
           value,
           leagueLogos,
+          color,
+          backgroundColor,
         );
       }),
     );
@@ -86,6 +90,8 @@ export class HockeyData {
     id: string,
     value: string,
     leagueLogos: { string },
+    color: string | undefined,
+    backgroundColor: string | undefined,
   ) => {
     try {
       let games: NHLGameAPI[];
@@ -135,8 +141,8 @@ export class HockeyData {
           venueTimezone: venueTimezone,
           timeStart,
           startTimeUTC,
-          color: '',
-          backgroundColor: '',
+          color: color || undefined,
+          backgroundColor: backgroundColor || undefined,
         };
       });
 

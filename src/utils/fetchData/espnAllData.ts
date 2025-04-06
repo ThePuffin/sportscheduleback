@@ -91,7 +91,15 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
       .filter(({ team }) => team.isActive)
       .sort((a, b) => (a.team.slug > b.team.slug ? 1 : -1))
       .map(({ team }) => {
-        const { abbreviation, displayName, logos, nickname, id } = team;
+        const {
+          abbreviation,
+          displayName,
+          logos,
+          nickname,
+          id,
+          color,
+          alternateColor,
+        } = team;
         const teamID = abbreviation;
         const uniqueId = `${leagueName}-${teamID}`;
         return {
@@ -105,6 +113,8 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
           conferenceName: '',
           divisionName: '',
           league: leagueName,
+          color: color || undefined,
+          backgroundColor: alternateColor || undefined,
         };
       });
 
@@ -134,16 +144,20 @@ export const getTeamsSchedule = async (
     await getNBASchedule();
   }
   await Promise.all(
-    activeTeams.map(async ({ id, abbrev, value, uniqueId }) => {
-      const leagueID = `${uniqueId}`;
-      allGames[leagueID] = await getEachTeamSchedule({
-        id,
-        abbrev,
-        value,
-        leagueName,
-        leagueLogos,
-      });
-    }),
+    activeTeams.map(
+      async ({ id, abbrev, value, uniqueId, color, backgroundColor }) => {
+        const leagueID = `${uniqueId}`;
+        allGames[leagueID] = await getEachTeamSchedule({
+          id,
+          abbrev,
+          value,
+          leagueName,
+          leagueLogos,
+          color,
+          backgroundColor,
+        });
+      },
+    ),
   );
   clearNbaSchedule();
   console.info(`updated ${leagueName}`);
@@ -156,6 +170,8 @@ const getEachTeamSchedule = async ({
   value,
   leagueName,
   leagueLogos,
+  color,
+  backgroundColor,
 }) => {
   try {
     let games;
@@ -176,7 +192,13 @@ const getEachTeamSchedule = async ({
     let gamesData = [];
     if (!games.length) {
       if (leagueName === League.NBA) {
-        gamesData = filterGamesByTeam(abbrev, value, leagueLogos);
+        gamesData = filterGamesByTeam(
+          abbrev,
+          value,
+          leagueLogos,
+          color,
+          backgroundColor,
+        );
       }
     } else {
       let number = 0;
@@ -218,8 +240,8 @@ const getEachTeamSchedule = async ({
           venueTimezone,
           timeStart,
           startTimeUTC: date,
-          color: '',
-          backgroundColor: '',
+          color: color || undefined,
+          backgroundColor: backgroundColor || undefined,
         };
       });
     }

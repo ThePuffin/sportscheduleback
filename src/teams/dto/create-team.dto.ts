@@ -23,6 +23,12 @@ export class CreateTeamDto {
   conferenceName: string;
 
   @ApiProperty()
+  color: string;
+
+  @ApiProperty()
+  backgroundColor: string;
+
+  @ApiProperty()
   divisionName: string;
 
   @ApiProperty()
