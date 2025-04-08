@@ -209,10 +209,11 @@ const getEachTeamSchedule = async ({
         if (new Date(date) < now) return;
         const { venue, competitors } = competitions[0];
         const venueTimezone = 'America/Los_Angeles';
-        const gameDate = readableDate(new Date(date));
         const currentDate = new Date(
           new Date(date).toLocaleString('en-US', { timeZone: venueTimezone }),
         );
+
+        const gameDate = readableDate(new Date(currentDate));
         const hourStart = currentDate.getUTCHours().toString().padStart(2, '0');
         const minStart = currentDate.getMinutes().toString().padStart(2, '0');
         const timeStart = `${hourStart}:${minStart}`;

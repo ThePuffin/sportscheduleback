@@ -31,7 +31,11 @@ export class GamesController {
     @Query('endDate') endDate: string,
     @Query('teamSelectedIds') teamSelectedIds: string,
   ): Promise<any> {
-    return this.GameService.filterGames({startDate, endDate, teamSelectedIds});
+    return this.GameService.filterGames({
+      startDate,
+      endDate,
+      teamSelectedIds,
+    });
   }
 
   @Get('/date/:gameDate')
@@ -65,6 +69,11 @@ export class GamesController {
     @Body() updateGameDto: UpdateGameDto,
   ) {
     return this.GameService.update(uniqueId, updateGameDto);
+  }
+
+  @Delete('/league/:league')
+  removeLeague(@Param('league') league: string) {
+    return this.GameService.removeLeague(league);
   }
 
   @Delete('all')

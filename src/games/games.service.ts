@@ -11,6 +11,7 @@ import { Game } from './schemas/game.schema';
 import { TeamType } from '../utils/interface/team';
 import { readableDate } from '../utils/date';
 import * as mongoose from 'mongoose';
+import { DeleteResult } from 'mongodb';
 
 @Injectable()
 export class GameService {
@@ -240,19 +241,19 @@ export class GameService {
 
   async remove(uniqueId: string) {
     const filter = { uniqueId: uniqueId };
-
     const deleted = await this.gameModel.findOneAndDelete(filter).exec();
     return deleted;
   }
 
   async removeAll() {
+    await this.gameModel.deleteMany({});
     const games = await this.gameModel.find().exec();
     for (const game of games) {
       await this.remove(game.uniqueId);
     }
   }
 
-    async removeDuplicates() {
+  async removeDuplicates() {
     const games = await this.gameModel.find().exec();
     const duplicates = [];
 
@@ -270,5 +271,11 @@ export class GameService {
     for (const duplicate of duplicates) {
       await this.remove(duplicate.uniqueId);
     }
+  }
+
+  async removeLeague(league: string): Promise<DeleteResult> {
+    const filter = { league };
+    const deleted = await this.gameModel.deleteMany(filter);
+    return deleted;
   }
 }
