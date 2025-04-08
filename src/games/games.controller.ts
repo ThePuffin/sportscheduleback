@@ -72,6 +72,11 @@ export class GamesController {
     return this.GameService.removeAll();
   }
 
+  @Delete('duplicate')
+  removeDuplicate() {
+    return this.GameService.removeDuplicates();
+  }
+
   @Delete(':uniqueId')
   remove(@Param('uniqueId') uniqueId: string) {
     return this.GameService.remove(uniqueId);

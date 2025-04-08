@@ -251,4 +251,24 @@ export class GameService {
       await this.remove(game.uniqueId);
     }
   }
+
+    async removeDuplicates() {
+    const games = await this.gameModel.find().exec();
+    const duplicates = [];
+
+    const gameMap = new Map();
+
+    for (const game of games) {
+      const key = `${game.teamSelectedId}-${game.startTimeUTC}`;
+      if (gameMap.has(key)) {
+        duplicates.push(game);
+      } else {
+        gameMap.set(key, game);
+      }
+    }
+
+    for (const duplicate of duplicates) {
+      await this.remove(duplicate.uniqueId);
+    }
+  }
 }
