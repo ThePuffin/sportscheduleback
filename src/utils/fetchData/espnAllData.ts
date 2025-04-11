@@ -204,7 +204,7 @@ const getEachTeamSchedule = async ({
       let number = 0;
       const now = new Date();
       gamesData = games.map((game) => {
-        const { date, competitions } = game;
+        const { date, competitions, id } = game;
 
         if (new Date(date) < now) return;
         const { venue, competitors } = competitions[0];
@@ -223,7 +223,9 @@ const getEachTeamSchedule = async ({
         number++;
 
         return {
-          uniqueId: `${value}-${gameDate}-${number}`,
+          uniqueId: id
+            ? `${leagueName}-${id}`
+            : `${value}-${gameDate}-${number}`,
           arenaName: venue?.fullName || '',
           awayTeamId: `${leagueName}-${awayTeam.team.abbreviation}`,
           awayTeam: awayTeam.team.displayName,

@@ -82,6 +82,7 @@ export class GameService {
       updateNumber++;
       console.info('updated:', team, '(', updateNumber, '/', teams.length, ')');
     }
+    this.removeDuplicates();
     return currentGames;
   }
 

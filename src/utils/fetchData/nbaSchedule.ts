@@ -54,8 +54,14 @@ export const filterGamesByTeam = (
           game.awayTeam.teamTricode === teamTricode,
       );
       if (filterGame.length) {
-        const { arenaName, gameDateEst, homeTeam, awayTeam, gameDateTimeUTC } =
-          filterGame[0];
+        const {
+          arenaName,
+          gameId,
+          gameDateEst,
+          homeTeam,
+          awayTeam,
+          gameDateTimeUTC,
+        } = filterGame[0];
         const awayAbbrev =
           inverseTeamTricodeMap[awayTeam.teamTricode] || awayTeam.teamTricode;
         const homeAbbrev =
@@ -68,7 +74,9 @@ export const filterGamesByTeam = (
         if (new Date(gameDateTimeUTC) < new Date()) return;
 
         return {
-          uniqueId: `${value}-${gameDateRead}-1`,
+          uniqueId: gameId
+            ? `${League.NBA}-${gameId}`
+            : `${value}-${gameDateRead}-1`,
           arenaName: arenaName || '',
           awayTeamId: `${League.NBA}-${awayAbbrev}`,
           awayTeam: `${awayTeam.teamCity} ${awayTeam.teamName}`,
