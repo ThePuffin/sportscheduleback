@@ -83,7 +83,7 @@ export class GamesController {
 
   @Delete('duplicate')
   removeDuplicate() {
-    return this.GameService.removeDuplicates();
+    return this.GameService.removeDuplicatesAndOlds();
   }
 
   @Delete(':uniqueId')

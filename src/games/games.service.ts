@@ -82,7 +82,7 @@ export class GameService {
       updateNumber++;
       console.info('updated:', team, '(', updateNumber, '/', teams.length, ')');
     }
-    this.removeDuplicates();
+    this.removeDuplicatesAndOlds();
     return currentGames;
   }
 
@@ -254,8 +254,17 @@ export class GameService {
     }
   }
 
-  async removeDuplicates() {
+  async removeDuplicatesAndOlds() {
     const games = await this.gameModel.find().exec();
+
+    const now = new Date();
+    const oldGames = games.filter((game) => {
+      const gameDate = new Date(game.startTimeUTC);
+      return gameDate < now;
+    });
+    for (const oldGame of oldGames) {
+      await this.remove(oldGame.uniqueId);
+    }
     const duplicates = [];
 
     const gameMap = new Map();
