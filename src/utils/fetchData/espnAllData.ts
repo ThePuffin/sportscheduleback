@@ -223,9 +223,7 @@ const getEachTeamSchedule = async ({
         number++;
 
         return {
-          uniqueId: id
-            ? `${leagueName}-${id}`
-            : `${value}-${gameDate}-${number}`,
+          uniqueId: id ? `${value}-${id}` : `${value}-${gameDate}-${number}`,
           arenaName: venue?.fullName || '',
           awayTeamId: `${leagueName}-${awayTeam.team.abbreviation}`,
           awayTeam: awayTeam.team.displayName,
