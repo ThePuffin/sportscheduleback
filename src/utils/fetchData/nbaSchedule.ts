@@ -75,7 +75,7 @@ export const filterGamesByTeam = (
 
         return {
           uniqueId: gameId
-            ? `${League.NBA}-${gameId}`
+            ? `${value}-${gameId}`
             : `${value}-${gameDateRead}-1`,
           arenaName: arenaName || '',
           awayTeamId: `${League.NBA}-${awayAbbrev}`,
