@@ -60,12 +60,13 @@ export const filterGamesByTeam = (
           gameDateEst,
           homeTeam,
           awayTeam,
+          arenaCity,
           gameDateTimeUTC,
         } = filterGame[0];
         const awayAbbrev =
-          inverseTeamTricodeMap[awayTeam.teamTricode] || awayTeam.teamTricode;
+          inverseTeamTricodeMap[awayTeam.teamTricode] ?? awayTeam.teamTricode;
         const homeAbbrev =
-          inverseTeamTricodeMap[homeTeam.teamTricode] || homeTeam.teamTricode;
+          inverseTeamTricodeMap[homeTeam.teamTricode] ?? homeTeam.teamTricode;
 
         const date = new Date(gameDateTimeUTC);
         const gameDateRead = gameDateEst.split('T')[0];
@@ -74,28 +75,29 @@ export const filterGamesByTeam = (
         if (new Date(gameDateTimeUTC) < new Date()) return;
 
         return {
+          arenaName: arenaName ?? '',
+          awayTeam: `${awayTeam.teamCity} ${awayTeam.teamName}`,
+          awayTeamId: `${League.NBA}-${awayAbbrev}`,
+          awayTeamLogo: leagueLogos[awayAbbrev],
+          awayTeamShort: awayAbbrev,
+          backgroundColor: backgroundColor ?? undefined,
+          color: color ?? undefined,
+          gameDate: gameDateRead,
+          homeTeam: `${homeTeam.teamCity} ${homeTeam.teamName}`,
+          homeTeamId: `${League.NBA}-${homeAbbrev}`,
+          homeTeamLogo: leagueLogos[homeAbbrev],
+          homeTeamShort: homeAbbrev,
+          league: League.NBA,
+          placeName: arenaCity,
+          selectedTeam: homeAbbrev === team,
+          show: homeAbbrev === team,
+          startTimeUTC: gameDateTimeUTC,
+          teamSelectedId: value,
+          timeStart: `${hourStart}:${minStart}`,
           uniqueId: gameId
             ? `${value}-${gameId}`
             : `${value}-${gameDateRead}-1`,
-          arenaName: arenaName || '',
-          awayTeamId: `${League.NBA}-${awayAbbrev}`,
-          awayTeam: `${awayTeam.teamCity} ${awayTeam.teamName}`,
-          awayTeamShort: awayAbbrev,
-          awayTeamLogo: leagueLogos[awayAbbrev],
-          homeTeam: `${homeTeam.teamCity} ${homeTeam.teamName}`,
-          homeTeamId: `${League.NBA}-${homeAbbrev}`,
-          homeTeamShort: homeAbbrev,
-          homeTeamLogo: leagueLogos[homeAbbrev],
-          gameDate: gameDateRead,
-          teamSelectedId: value,
-          show: homeAbbrev === team,
-          selectedTeam: homeAbbrev === team,
-          league: League.NBA,
           venueTimezone,
-          timeStart: `${hourStart}:${minStart}`,
-          startTimeUTC: gameDateTimeUTC,
-          color: color || undefined,
-          backgroundColor: backgroundColor || undefined,
         };
       }
     })

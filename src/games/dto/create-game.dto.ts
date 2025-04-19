@@ -59,6 +59,9 @@ export class CreateGameDto {
   startTimeUTC: string;
 
   @ApiProperty()
+  placeName: string;
+
+  @ApiProperty()
   color: string;
 
   @ApiProperty()

@@ -182,6 +182,7 @@ export class GameService {
               homeTeamShort: '',
               homeTeam: '',
               arenaName: '',
+              placeName: '',
               gameDate: currentDate,
               teamSelectedId: teamSelectedId,
               show: 'false',
