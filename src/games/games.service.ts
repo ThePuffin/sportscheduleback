@@ -229,7 +229,7 @@ export class GameService {
   }
 
   async findByDate(gameDate: string) {
-    const filter = { gameDate: gameDate };
+    const filter = { gameDate: gameDate, isActive: true };
     const games = await this.gameModel
       .find(filter)
       .sort({ startTimeUTC: 1 })
