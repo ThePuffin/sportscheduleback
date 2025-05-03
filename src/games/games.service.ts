@@ -61,31 +61,45 @@ export class GameService {
     let currentGames = {};
     const leagueLogos = await this.getTeamsLogo(teams);
 
-    if (league === League.NHL) {
-      const hockeyData = new HockeyData();
-      currentGames = await hockeyData.getNhlSchedule(teams, leagueLogos);
-      console.log('currentGames', currentGames);
-    } else {
-      currentGames = await getTeamsSchedule(teams, league, leagueLogos);
-    }
-
-    let updateNumber = 0;
-    for (const team in currentGames) {
-      await this.unactivateGames(team);
-      const games = currentGames[team];
-      for (const game of games) {
-        game.updateDate = new Date().toISOString();
-        try {
-          await this.create(game);
-        } catch (error) {
-          console.error({ error });
-        }
+    try {
+      if (league === League.NHL) {
+        const hockeyData = new HockeyData();
+        currentGames = await hockeyData.getNhlSchedule(teams, leagueLogos);
+      } else {
+        currentGames = await getTeamsSchedule(teams, league, leagueLogos);
       }
-      updateNumber++;
-      console.info('updated:', team, '(', updateNumber, '/', teams.length, ')');
+
+      let updateNumber = 0;
+      for (const team in currentGames) {
+        await this.unactivateGames(team);
+        const games = currentGames[team];
+        for (const game of games) {
+          game.updateDate = new Date().toISOString();
+          try {
+            await this.create(game);
+          } catch (error) {
+            console.error({ error });
+          }
+        }
+        updateNumber++;
+        console.info(
+          'updated:',
+          team,
+          '(',
+          updateNumber,
+          '/',
+          teams.length,
+          ')',
+        );
+      }
+      this.removeDuplicatesAndOlds();
+      return currentGames;
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('An unknown error occurred');
     }
-    this.removeDuplicatesAndOlds();
-    return currentGames;
   }
 
   async getAllGames(): Promise<Game[]> {
@@ -293,7 +307,7 @@ export class GameService {
     return deleted;
   }
 
-  async unactivateGames(teamId: string): Promise<null> {
+  async unactivateGames(teamId: string): Promise<void> {
     const games = await this.findByTeam(teamId);
 
     for (const date in games) {
@@ -302,7 +316,5 @@ export class GameService {
         await this.create(games[date][0]);
       }
     }
-
-    return;
   }
 }

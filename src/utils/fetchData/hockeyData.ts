@@ -95,7 +95,7 @@ export class HockeyData {
       return await fetchGames.games;
     } catch (error) {
       console.error('Error fetching games:', id, error);
-      return [];
+      throw new Error('Failed to fetch NHL teams');
     }
   };
 
@@ -156,7 +156,7 @@ export class HockeyData {
       return gamesData;
     } catch (error) {
       console.error('Error fetching data', error);
-      return {};
+      throw error;
     }
   };
 }
