@@ -216,7 +216,7 @@ const getEachTeamSchedule = async ({
         const gameDate = readableDate(new Date(currentDate));
         const hourStart = currentDate.getUTCHours().toString().padStart(2, '0');
         const minStart = currentDate.getMinutes().toString().padStart(2, '0');
-        const timeStart = `${hourStart}:${minStart}`;
+        const isActive = true;
 
         const awayTeam = competitors.find((team) => team.homeAway === 'away');
         const homeTeam = competitors.find((team) => team.homeAway === 'home');
@@ -241,7 +241,7 @@ const getEachTeamSchedule = async ({
           show: homeTeam.team.abbreviation === abbrev,
           startTimeUTC: date,
           teamSelectedId: value,
-          timeStart,
+          isActive,
           uniqueId: id ? `${value}-${id}` : `${value}-${gameDate}-${number}`,
           venueTimezone,
         };

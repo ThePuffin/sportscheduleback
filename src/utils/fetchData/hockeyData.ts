@@ -1,7 +1,6 @@
 import type { GameFormatted } from '../../utils/interface/game';
 import type { NHLGameAPI } from '../../utils/interface/gameNHL';
 import type { TeamNHL, TeamType } from '../../utils/interface/team';
-import { getHourGame } from '../../utils/date';
 import { League } from '../../utils/enum';
 const leagueName = League.NHL;
 const { NODE_ENV } = process.env;
@@ -86,6 +85,20 @@ export class HockeyData {
     return allGames;
   };
 
+  fetchGamesData = async (id: string) => {
+    try {
+      const fetchedGames = await fetch(
+        `https://api-web.nhle.com/v1/club-schedule-season/${id}/now`,
+      );
+      const fetchGames = await fetchedGames.json();
+      console.info('yes', id);
+      return await fetchGames.games;
+    } catch (error) {
+      console.error('Error fetching games:', id, error);
+      return [];
+    }
+  };
+
   getNhlTeamSchedule = async (
     id: string,
     value: string,
@@ -95,18 +108,8 @@ export class HockeyData {
   ) => {
     try {
       let games: NHLGameAPI[];
-      try {
-        const fetchedGames = await fetch(
-          `https://api-web.nhle.com/v1/club-schedule-season/${id}/now`,
-        );
-        const fetchGames = await fetchedGames.json();
-        games = await fetchGames.games;
-        console.info('yes', value);
-      } catch (error) {
-        console.info('no', value);
+      games = await this.fetchGamesData(id);
 
-        games = [];
-      }
       let gamesData: GameFormatted[] = games.map((game: NHLGameAPI) => {
         const {
           awayTeam,
@@ -115,11 +118,10 @@ export class HockeyData {
           gameDate,
           venueTimezone,
           startTimeUTC,
-          venueUTCOffset,
         } = game;
 
         const now = new Date();
-        const timeStart = getHourGame(startTimeUTC, venueUTCOffset);
+        const isActive = true;
         if (new Date(startTimeUTC) < now) return;
 
         return {
@@ -141,7 +143,7 @@ export class HockeyData {
           show: homeTeam.abbrev === id,
           startTimeUTC,
           teamSelectedId: value,
-          timeStart,
+          isActive,
           uniqueId: `${value}-${gameDate}-1`,
           venueTimezone: venueTimezone,
         };

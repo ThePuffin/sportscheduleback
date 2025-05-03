@@ -53,7 +53,7 @@ export class UpdateGameDto {
   venueTimezone: string;
 
   @ApiProperty()
-  timeStart: string;
+  isActive: boolean;
 
   @ApiProperty()
   startTimeUTC: string;

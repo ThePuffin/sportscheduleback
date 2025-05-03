@@ -57,7 +57,7 @@ export class Game {
   venueTimezone: string;
 
   @Prop()
-  timeStart: string;
+  isActive: boolean;
 
   @Prop()
   startTimeUTC: string;

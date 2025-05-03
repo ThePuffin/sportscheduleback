@@ -17,7 +17,7 @@ export interface GameFormatted {
   league: string;
   updateDate?: Date;
   venueTimezone?: string;
-  timeStart?: string;
+  isActive?: boolean;
   color?: string;
   backgroundColor?: string;
 }

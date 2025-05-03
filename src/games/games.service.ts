@@ -64,12 +64,14 @@ export class GameService {
     if (league === League.NHL) {
       const hockeyData = new HockeyData();
       currentGames = await hockeyData.getNhlSchedule(teams, leagueLogos);
+      console.log('currentGames', currentGames);
     } else {
       currentGames = await getTeamsSchedule(teams, league, leagueLogos);
     }
 
     let updateNumber = 0;
     for (const team in currentGames) {
+      await this.unactivateGames(team);
       const games = currentGames[team];
       for (const game of games) {
         game.updateDate = new Date().toISOString();
@@ -168,7 +170,8 @@ export class GameService {
         const gameOfDay = games.filter(
           (game) =>
             game.gameDate === currentDate &&
-            game.teamSelectedId === teamSelectedId,
+            game.teamSelectedId === teamSelectedId &&
+            game.isActive === true,
         );
         if (!gameOfDay.length) {
           gamesOfDay.push(
@@ -189,7 +192,7 @@ export class GameService {
               selectedTeam: 'false',
               league: '',
               venueTimezone: '',
-              timeStart: '',
+              isActive: true,
               startTimeUTC: '',
               updateDate: '',
               __v: 0,
@@ -288,5 +291,18 @@ export class GameService {
     const filter = { league };
     const deleted = await this.gameModel.deleteMany(filter);
     return deleted;
+  }
+
+  async unactivateGames(teamId: string): Promise<null> {
+    const games = await this.findByTeam(teamId);
+
+    for (const date in games) {
+      if (Array.isArray(games[date]) && games[date][0]?.awayTeamShort) {
+        games[date][0].isActive = false;
+        await this.create(games[date][0]);
+      }
+    }
+
+    return;
   }
 }

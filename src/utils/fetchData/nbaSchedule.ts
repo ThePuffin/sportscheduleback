@@ -93,7 +93,7 @@ export const filterGamesByTeam = (
           show: homeAbbrev === team,
           startTimeUTC: gameDateTimeUTC,
           teamSelectedId: value,
-          timeStart: `${hourStart}:${minStart}`,
+          isActive: true,
           uniqueId: gameId
             ? `${value}-${gameId}`
             : `${value}-${gameDateRead}-1`,
