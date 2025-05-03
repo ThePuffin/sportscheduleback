@@ -118,7 +118,7 @@ export class GameService {
 
   async findAll(): Promise<Game[]> {
     const allGames = await this.gameModel
-      .find()
+      .find({ isActive: true })
       .sort({ startTimeUTC: 1 })
       .exec();
     if (Object.keys(allGames).length === 0 || allGames?.length === 0) {
