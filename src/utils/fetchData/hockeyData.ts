@@ -95,7 +95,7 @@ export class HockeyData {
       return await fetchGames.games;
     } catch (error) {
       console.error('Error fetching games:', id, error);
-      throw new Error('Failed to fetch NHL teams');
+      return [];
     }
   };
 
