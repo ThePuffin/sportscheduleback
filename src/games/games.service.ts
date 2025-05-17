@@ -245,9 +245,9 @@ export class GameService {
       });
     }
     const firstGame = games[0];
-    const beforeYesterday = new Date();
-    beforeYesterday.setDate(beforeYesterday.getDate() - 2);
-    if (new Date(firstGame.updateDate) < beforeYesterday) {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (new Date(firstGame.updateDate) < yesterday) {
       this.getAllGames();
     }
     // avoid dupplicate games
