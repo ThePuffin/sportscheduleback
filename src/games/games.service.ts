@@ -1,17 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { DeleteResult } from 'mongodb';
+import * as mongoose from 'mongoose';
 import { Model } from 'mongoose';
 import { TeamService } from '../teams/teams.service';
+import { readableDate } from '../utils/date';
 import { League } from '../utils/enum';
 import { getTeamsSchedule } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
+import { TeamType } from '../utils/interface/team';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { Game } from './schemas/game.schema';
-import { TeamType } from '../utils/interface/team';
-import { readableDate } from '../utils/date';
-import * as mongoose from 'mongoose';
-import { DeleteResult } from 'mongodb';
 
 @Injectable()
 export class GameService {
@@ -68,10 +68,13 @@ export class GameService {
       } else {
         currentGames = await getTeamsSchedule(teams, league, leagueLogos);
       }
-
+      if (Object.keys(currentGames).length) {
+        for (const team of teams) {
+          await this.unactivateGames(team.uniqueId);
+        }
+      }
       let updateNumber = 0;
       for (const team in currentGames) {
-        await this.unactivateGames(team);
         const games = currentGames[team];
         for (const game of games) {
           game.updateDate = new Date().toISOString();
