@@ -1,54 +1,34 @@
+import { readableDate } from '../../utils/date';
+import { League } from '../../utils/enum';
 import type { MLBGameAPI } from '../../utils/interface/gameMLB';
 import type { NBAGameAPI } from '../../utils/interface/gameNBA';
 import type { NFLGameAPI } from '../../utils/interface/gameNFL';
 import type { ESPNTeam, TeamESPN, TeamType } from '../interface/team';
-import { readableDate } from '../../utils/date';
-import { League } from '../../utils/enum';
-import {
-  clearNbaSchedule,
-  filterGamesByTeam,
-  getNBASchedule,
-} from './nbaSchedule';
 const { NODE_ENV } = process.env;
 
-const leaguesData = {
-  [League.MLB]: {
-    leagueName: League.MLB,
-    fetchTeam:
-      'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams',
-    fetchGames:
-      'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/${id}/schedule',
-    fetchDetails:
-      'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/',
-  },
-  [League.NBA]: {
-    leagueName: League.NBA,
-    fetchTeam:
-      'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams',
-    fetchGames:
-      'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/${id}/schedule',
-    fetchDetails:
-      'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/',
-  },
-  [League.WNBA]: {
-    leagueName: League.WNBA,
-    fetchTeam:
-      'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/teams',
-    fetchGames:
-      'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/${id}/schedule',
-    fetchDetails:
-      'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/teams/',
-  },
-  [League.NFL]: {
-    leagueName: League.NFL,
-    fetchTeam:
-      'https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams',
-    fetchGames:
-      'https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${id}/schedule',
-    fetchDetails:
-      'https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/',
-  },
+const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
+
+const leagueConfigs = {
+  [League.MLB]: { sport: 'baseball', league: 'mlb' },
+  [League.NBA]: { sport: 'basketball', league: 'nba' },
+  [League.WNBA]: { sport: 'basketball', league: 'wnba' },
+  [League.NFL]: { sport: 'football', league: 'nfl' },
 };
+
+const leaguesData = Object.fromEntries(
+  Object.entries(leagueConfigs).map(([key, { sport, league }]) => {
+    const base = `${espnAPI}${sport}/${league}/teams`;
+    return [
+      key,
+      {
+        leagueName: key,
+        fetchTeam: base,
+        fetchGames: `${base}/\${id}/schedule`,
+        fetchDetails: `${base}/`,
+      },
+    ];
+  }),
+);
 
 const getDivision = async (
   leagueName: string,
@@ -140,9 +120,7 @@ export const getTeamsSchedule = async (
   leagueLogos,
 ) => {
   const allGames = {};
-  if (leagueName === League.NBA) {
-    await getNBASchedule();
-  }
+
   await Promise.all(
     activeTeams.map(
       async ({ id, abbrev, value, uniqueId, color, backgroundColor }) => {
@@ -159,7 +137,7 @@ export const getTeamsSchedule = async (
       },
     ),
   );
-  clearNbaSchedule();
+
   console.info(`updated ${leagueName}`);
   return allGames;
 };
@@ -191,15 +169,7 @@ const getEachTeamSchedule = async ({
     }
     let gamesData = [];
     if (!games.length) {
-      if (leagueName === League.NBA) {
-        gamesData = filterGamesByTeam(
-          abbrev,
-          value,
-          leagueLogos,
-          color,
-          backgroundColor,
-        );
-      }
+      return gamesData;
     } else {
       let number = 0;
       const now = new Date();
@@ -214,8 +184,6 @@ const getEachTeamSchedule = async ({
         );
 
         const gameDate = readableDate(new Date(currentDate));
-        const hourStart = currentDate.getUTCHours().toString().padStart(2, '0');
-        const minStart = currentDate.getMinutes().toString().padStart(2, '0');
         const isActive = true;
 
         const awayTeam = competitors.find((team) => team.homeAway === 'away');

@@ -248,7 +248,9 @@ export class GameService {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     if (new Date(firstGame.updateDate) < yesterday) {
-      this.getAllGames();
+      for (const league of Object.values(League)) {
+        await this.getLeagueGames(league);
+      }
     }
     // avoid dupplicate games
     return games.filter(({ homeTeamId, teamSelectedId }) => {
