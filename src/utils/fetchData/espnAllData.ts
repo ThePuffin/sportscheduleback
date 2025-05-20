@@ -88,7 +88,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
           id: id,
           abbrev: teamID,
           label: displayName,
-          teamLogo: logos[2].href ?? logos[0].href,
+          teamLogo: logos?.[2]?.href ?? logos?.[0]?.href,
           teamCommonName: nickname,
           conferenceName: '',
           divisionName: '',
