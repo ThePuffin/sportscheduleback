@@ -45,10 +45,10 @@ export class Game {
   teamSelectedId: string;
 
   @Prop()
-  show: string;
+  show: boolean;
 
   @Prop()
-  selectedTeam: string;
+  selectedTeam: boolean;
 
   @Prop()
   league: string;

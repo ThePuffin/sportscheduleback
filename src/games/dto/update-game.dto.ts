@@ -41,10 +41,10 @@ export class UpdateGameDto {
   teamSelectedId: string;
 
   @ApiProperty()
-  show: string;
+  show: boolean;
 
   @ApiProperty()
-  selectedTeam: string;
+  selectedTeam: boolean;
 
   @ApiProperty()
   league: string;
