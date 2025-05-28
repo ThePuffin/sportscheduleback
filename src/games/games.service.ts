@@ -15,8 +15,7 @@ import { Game } from './schemas/game.schema';
 
 @Injectable()
 export class GameService {
-  private isFetchingGames: boolean = false; // Flag to track if the method is running
-
+  private isFetchingGames: boolean = false;
   constructor(
     @InjectModel(Game.name) public gameModel: Model<Game>,
     private readonly teamService: TeamService,
@@ -60,8 +59,8 @@ export class GameService {
 
   async getLeagueGames(league): Promise<any> {
     if (this.isFetchingGames) {
-      console.info(`getLeagueGames for ${league} is already running.`);
-      return; // Exit if the method is already running
+      console.info(`getLeagueGames is already running.`);
+      return;
     }
 
     this.isFetchingGames = true; // Set the flag to true

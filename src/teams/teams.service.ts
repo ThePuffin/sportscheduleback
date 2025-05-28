@@ -1,16 +1,17 @@
-import { Model } from 'mongoose';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Team } from './schemas/team.schema';
+import { Model } from 'mongoose';
 import { League } from '../utils/enum';
+import { getESPNTeams } from '../utils/fetchData/espnAllData';
+import { HockeyData } from '../utils/fetchData/hockeyData';
+import { TeamType } from '../utils/interface/team';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
-import { HockeyData } from '../utils/fetchData/hockeyData';
-import { getESPNTeams } from '../utils/fetchData/espnAllData';
-import { TeamType } from '../utils/interface/team';
+import { Team } from './schemas/team.schema';
 
 @Injectable()
 export class TeamService {
+  private isFetchingTeams: boolean = false;
   constructor(@InjectModel(Team.name) public teamModel: Model<Team>) {}
 
   async create(
@@ -31,32 +32,45 @@ export class TeamService {
   }
 
   async getTeams(): Promise<any> {
-    const hockeyData = new HockeyData();
-    const activeTeams = await hockeyData.getNhlTeams();
-    const leagues = [League.NFL, League.NBA, League.MLB, League.WNBA];
-    for (const league of leagues) {
-      const teams = await getESPNTeams(league);
-      if (teams.length) {
-        activeTeams.push(...teams);
-      }
+    if (this.isFetchingTeams) {
+      console.info(`getTeams is already running.`);
+      return;
     }
-    let updateNumber = 0;
-    for (const activeTeam of activeTeams) {
-      activeTeam.updateDate = new Date().toISOString();
-      await this.create(activeTeam);
-      updateNumber++;
-      console.info(
-        'updated:',
-        activeTeam?.label,
-        '(',
-        updateNumber,
-        '/',
-        activeTeams.length,
-        ')',
-      );
-    }
+    try {
+      this.isFetchingTeams = true;
 
-    return activeTeams;
+      const hockeyData = new HockeyData();
+      const activeTeams = await hockeyData.getNhlTeams();
+      const leagues = [League.NFL, League.NBA, League.MLB, League.WNBA];
+      for (const league of leagues) {
+        const teams = await getESPNTeams(league);
+        if (teams.length) {
+          activeTeams.push(...teams);
+        }
+      }
+      let updateNumber = 0;
+      for (const activeTeam of activeTeams) {
+        activeTeam.updateDate = new Date().toISOString();
+        await this.create(activeTeam);
+        updateNumber++;
+        console.info(
+          'updated:',
+          activeTeam?.label,
+          '(',
+          updateNumber,
+          '/',
+          activeTeams.length,
+          ')',
+        );
+      }
+
+      return activeTeams;
+    } catch (error) {
+      console.error(error);
+      throw new Error('Error fetching teams: ' + error.message);
+    } finally {
+      this.isFetchingTeams = false;
+    }
   }
 
   async findAll(): Promise<Team[]> {
