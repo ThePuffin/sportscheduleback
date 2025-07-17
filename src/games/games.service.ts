@@ -249,22 +249,25 @@ export class GameService {
 
     if (!games.length) {
       const allGames = await this.findAll();
-      return allGames.filter(({ homeTeamId, teamSelectedId }) => {
+      if (!allGames.length) {
+        this.getAllGames();
+      }
+      return [];
+    } else {
+      const firstGame = games[0];
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      if (new Date(firstGame.updateDate) < yesterday) {
+        for (const league of Object.values(League)) {
+          await this.getLeagueGames(league);
+        }
+      }
+
+      // avoid dupplicate games
+      return games.filter(({ homeTeamId, teamSelectedId }) => {
         return homeTeamId === teamSelectedId;
       });
     }
-    const firstGame = games[0];
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (new Date(firstGame.updateDate) < yesterday) {
-      for (const league of Object.values(League)) {
-        await this.getLeagueGames(league);
-      }
-    }
-    // avoid dupplicate games
-    return games.filter(({ homeTeamId, teamSelectedId }) => {
-      return homeTeamId === teamSelectedId;
-    });
   }
 
   update(uniqueId: string, updateGameDto: UpdateGameDto) {
