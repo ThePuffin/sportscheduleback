@@ -9,6 +9,7 @@ import { League } from '../utils/enum';
 import { getTeamsSchedule } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
+import { randomNumber } from '../utils/utils';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { Game } from './schemas/game.schema';
@@ -254,10 +255,16 @@ export class GameService {
       }
       return [];
     } else {
-      const firstGame = games[0];
+      const filtredGames = games.filter(({ isActive, awayTeamId }) => {
+        return (
+          isActive === true && awayTeamId !== undefined && awayTeamId !== ''
+        );
+      });
+      const gamesIndex = randomNumber(filtredGames.length - 1);
+      const randomGames = filtredGames[gamesIndex];
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
-      if (new Date(firstGame.updateDate) < yesterday) {
+      if (new Date(randomGames?.updateDate) < yesterday) {
         for (const league of Object.values(League)) {
           await this.getLeagueGames(league);
         }

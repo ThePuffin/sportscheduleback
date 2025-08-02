@@ -83,7 +83,7 @@ export class TeamService {
     const randomTeam = allTeams[teamIndex];
     const lastMonth = new Date();
     lastMonth.setDate(lastMonth.getMonth() - 1);
-    if (new Date(randomTeam.updateDate) < lastMonth) {
+    if (new Date(randomTeam?.updateDate) < lastMonth) {
       this.getTeams();
     }
     return allTeams;
