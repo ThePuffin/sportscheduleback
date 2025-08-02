@@ -5,6 +5,7 @@ import { League } from '../utils/enum';
 import { getESPNTeams } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
+import { randomNumber } from '../utils/utils';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
 import { Team } from './schemas/team.schema';
@@ -78,10 +79,11 @@ export class TeamService {
     if (!allTeams?.length) {
       return this.getTeams();
     }
-    const firstTeam = allTeams[0];
+    const teamIndex = randomNumber(allTeams.length - 1);
+    const randomTeam = allTeams[teamIndex];
     const lastMonth = new Date();
     lastMonth.setDate(lastMonth.getMonth() - 1);
-    if (new Date(firstTeam.updateDate) < lastMonth) {
+    if (new Date(randomTeam.updateDate) < lastMonth) {
       this.getTeams();
     }
     return allTeams;
