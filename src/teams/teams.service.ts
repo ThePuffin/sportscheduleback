@@ -89,6 +89,13 @@ export class TeamService {
     return allTeams;
   }
 
+  async findAllLeagues(): Promise<string[]> {
+    const allTeams = await this.teamModel.find().exec();
+    const leagues = allTeams.map((team) => team.league);
+    const uniqueLeagues = Array.from(new Set(leagues));
+    return uniqueLeagues.sort();
+  }
+
   async findOne(uniqueId: string) {
     const filter = { uniqueId: uniqueId };
     const team = await this.teamModel.findOne(filter).exec();

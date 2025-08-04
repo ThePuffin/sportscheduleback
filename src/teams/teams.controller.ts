@@ -1,15 +1,15 @@
 import {
+  Body,
   Controller,
+  Delete,
   Get,
+  Param,
   Patch,
   Post,
-  Delete,
-  Body,
-  Param,
 } from '@nestjs/common';
-import { TeamService } from './teams.service';
 import { TeamType } from '../utils/interface/team';
 import { UpdateTeamDto } from './dto/update-team.dto';
+import { TeamService } from './teams.service';
 
 @Controller('teams')
 export class TeamsController {
@@ -18,6 +18,11 @@ export class TeamsController {
   @Get()
   async findAll(): Promise<TeamType[]> {
     return this.TeamService.findAll();
+  }
+
+  @Get('/leagues')
+  async findLeagues(): Promise<string[]> {
+    return this.TeamService.findAllLeagues();
   }
 
   @Get('/league/:league')
