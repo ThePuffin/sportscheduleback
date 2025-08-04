@@ -117,7 +117,10 @@ export class GameService {
 
   async getAllGames(): Promise<Game[]> {
     let currentGames = {};
-    const teams = await this.teamService.getTeams();
+    let teams = await this.teamService.findAll();
+    if (!teams.length) {
+      teams = await this.teamService.getTeams();
+    }
     const leagues = Array.from(new Set(teams.map((team) => team.league)));
 
     for (const league of leagues) {
