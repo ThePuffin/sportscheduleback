@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { DeleteResult } from 'mongodb';
 import * as mongoose from 'mongoose';
@@ -17,6 +17,7 @@ import { Game } from './schemas/game.schema';
 @Injectable()
 export class GameService {
   private isFetchingGames: boolean = false;
+  private leagueRefreshTimestamps: { [league: string]: Date[] } = {};
   constructor(
     @InjectModel(Game.name) public gameModel: Model<Game>,
     private readonly teamService: TeamService,
@@ -58,11 +59,30 @@ export class GameService {
     return await newGame.save();
   }
 
-  async getLeagueGames(league): Promise<any> {
+  async getLeagueGames(league: string): Promise<any> {
     if (this.isFetchingGames) {
       console.info(`getLeagueGames is already running.`);
       return;
     }
+
+    const now = new Date();
+    const timestamps = this.leagueRefreshTimestamps[league] || [];
+
+    // Filter out timestamps not from today
+    const today = now.toISOString().split('T')[0];
+    const todayTimestamps = timestamps.filter(
+      (ts) => ts.toISOString().split('T')[0] === today,
+    );
+
+    if (todayTimestamps.length >= 2) {
+      throw new HttpException(
+        `Refresh for league ${league} is limited to 2 times per day.`,
+        249,
+      );
+    }
+
+    // Add current timestamp
+    this.leagueRefreshTimestamps[league] = [...todayTimestamps, now];
 
     this.isFetchingGames = true; // Set the flag to true
     const teams = await this.teamService.findByLeague(league);
