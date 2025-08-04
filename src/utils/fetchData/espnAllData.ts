@@ -9,6 +9,7 @@ const { NODE_ENV } = process.env;
 const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
 
 const leagueConfigs = {
+  [League.NHL]: { sport: 'hockey', league: 'nhl' },
   [League.MLB]: { sport: 'baseball', league: 'mlb' },
   [League.NBA]: { sport: 'basketball', league: 'nba' },
   [League.WNBA]: { sport: 'basketball', league: 'wnba' },
