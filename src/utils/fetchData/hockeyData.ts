@@ -2,6 +2,7 @@ import type { GameFormatted } from '../../utils/interface/game';
 import type { NHLGameAPI } from '../../utils/interface/gameNHL';
 import type { TeamNHL, TeamType } from '../../utils/interface/team';
 import { League } from '../../utils/enum';
+import { capitalize } from '../utils';
 const leagueName = League.NHL;
 const { NODE_ENV } = process.env;
 
@@ -123,22 +124,24 @@ export class HockeyData {
         const now = new Date();
         const isActive = true;
         if (new Date(startTimeUTC) < now) return;
+        const awayTeamName = `${awayTeam.placeName.default} ${awayTeam.commonName.default}`
+        const homeTeamName = `${homeTeam.placeName.default} ${homeTeam.commonName.default}`;
 
         return {
-          arenaName: venue?.default || '',
-          awayTeam: `${awayTeam.placeName.default} ${awayTeam.commonName.default}`,
+          arenaName: capitalize(venue?.default) || '',
+          awayTeam: capitalize(awayTeamName),
           awayTeamId: `${leagueName}-${awayTeam.abbrev}`,
           awayTeamLogo: leagueLogos[awayTeam.abbrev],
           awayTeamShort: awayTeam.abbrev,
           backgroundColor: backgroundColor || undefined,
           color: color || undefined,
           gameDate: gameDate,
-          homeTeam: `${homeTeam.placeName.default} ${homeTeam.commonName.default}`,
+          homeTeam: capitalize(homeTeamName),
           homeTeamId: `${leagueName}-${homeTeam.abbrev}`,
           homeTeamLogo: leagueLogos[homeTeam.abbrev],
           homeTeamShort: homeTeam.abbrev,
           league: leagueName,
-          placeName: homeTeam.placeName.default,
+          placeName: capitalize(homeTeam.placeName.default),
           selectedTeam: homeTeam.abbrev === id,
           show: homeTeam.abbrev === id,
           startTimeUTC,

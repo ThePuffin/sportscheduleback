@@ -4,6 +4,7 @@ import type { MLBGameAPI } from '../../utils/interface/gameMLB';
 import type { NBAGameAPI } from '../../utils/interface/gameNBA';
 import type { NFLGameAPI } from '../../utils/interface/gameNFL';
 import type { ESPNTeam, TeamESPN, TeamType } from '../interface/team';
+import { capitalize } from '../utils';
 const { NODE_ENV } = process.env;
 
 const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
@@ -192,20 +193,20 @@ const getEachTeamSchedule = async ({
         number++;
 
         return {
-          arenaName: venue?.fullName ?? '',
-          awayTeam: awayTeam.team.displayName,
+          arenaName: capitalize(venue?.fullName) ?? '',
+          awayTeam: capitalize(awayTeam.team.displayName),
           awayTeamId: `${leagueName}-${awayTeam.team.abbreviation}`,
           awayTeamLogo: leagueLogos[awayTeam.team.abbreviation],
           awayTeamShort: awayTeam.team.abbreviation,
           backgroundColor: backgroundColor ?? undefined,
           color: color ?? undefined,
           gameDate: gameDate,
-          homeTeam: homeTeam.team.displayName,
+          homeTeam: capitalize(homeTeam.team.displayName),
           homeTeamId: `${leagueName}-${homeTeam.team.abbreviation}`,
           homeTeamLogo: leagueLogos[homeTeam.team.abbreviation],
           homeTeamShort: homeTeam.team.abbreviation,
-          league: leagueName,
-          placeName: venue?.address?.city ?? '',
+          league: leagueName.toUpperCase(),
+          placeName: capitalize(venue?.address?.city) ?? '',
           selectedTeam: homeTeam.team.abbreviation === abbrev,
           show: homeTeam.team.abbreviation === abbrev,
           startTimeUTC: date,
