@@ -103,13 +103,15 @@ export class GameService {
       }
       let updateNumber = 0;
       for (const team in currentGames) {
-        const games = currentGames[team];
-        for (const game of games) {
-          game.updateDate = new Date().toISOString();
-          try {
-            await this.create(game);
-          } catch (error) {
-            console.error({ error });
+        const games = currentGames[team] || [];
+        if (games.length === 0) {
+          for (const game of games) {
+            game.updateDate = new Date().toISOString();
+            try {
+              await this.create(game);
+            } catch (error) {
+              console.error({ error });
+            }
           }
         }
         updateNumber++;
