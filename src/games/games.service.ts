@@ -103,8 +103,8 @@ export class GameService {
       }
       let updateNumber = 0;
       for (const team in currentGames) {
-        const games = currentGames[team] || [];
-        if (games.length === 0) {
+        const games = currentGames[team];
+        if (games?.length) {
           for (const game of games) {
             game.updateDate = new Date().toISOString();
             try {
