@@ -9,7 +9,7 @@ import { League } from '../utils/enum';
 import { getTeamsSchedule } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
-import { randomNumber } from '../utils/utils';
+import { needRefresh, randomNumber } from '../utils/utils';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { Game } from './schemas/game.schema';
@@ -80,22 +80,27 @@ export class GameService {
         249,
       );
     }
-
-    // Add current timestamp
-    this.leagueRefreshTimestamps[league] = [...todayTimestamps, now];
-
-    this.isFetchingGames = true; // Set the flag to true
-    const teams = await this.teamService.findByLeague(league);
-    let currentGames = {};
-    const leagueLogos = await this.getTeamsLogo(teams);
-
     try {
+      // Add current timestamp
+      this.leagueRefreshTimestamps[league] = [...todayTimestamps, now];
+
+      this.isFetchingGames = true; // Set the flag to true
+      const teams = await this.teamService.findByLeague(league);
+      let currentGames = {};
+      const leagueLogos = await this.getTeamsLogo(teams);
+
       if (league === League.NHL) {
         const hockeyData = new HockeyData();
         currentGames = await hockeyData.getNhlSchedule(teams, leagueLogos);
       } else {
         currentGames = await getTeamsSchedule(teams, league, leagueLogos);
       }
+
+      if (!needRefresh(league, currentGames)) {
+        console.info(`No need to refresh games for league ${league}.`);
+        return currentGames;
+      }
+
       if (Object.keys(currentGames).length) {
         for (const team of teams) {
           await this.unactivateGames(team.uniqueId);
@@ -103,8 +108,8 @@ export class GameService {
       }
       let updateNumber = 0;
       for (const team in currentGames) {
-        const games = currentGames[team];
-        if (games?.length) {
+        const games = currentGames[team] || [];
+        if (games.length) {
           for (const game of games) {
             game.updateDate = new Date().toISOString();
             try {
