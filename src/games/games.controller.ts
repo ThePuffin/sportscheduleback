@@ -60,7 +60,7 @@ export class GamesController {
 
   @Post('/refresh/:league')
   async refreshByLeague(@Param('league') league: string) {
-    return this.GameService.getLeagueGames(league);
+    return this.GameService.getLeagueGames(league, true);
   }
 
   @Patch(':uniqueId')

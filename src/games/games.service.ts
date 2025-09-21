@@ -59,7 +59,7 @@ export class GameService {
     return await newGame.save();
   }
 
-  async getLeagueGames(league: string): Promise<any> {
+  async getLeagueGames(league: string, forceUpdate = false): Promise<any> {
     if (this.isFetchingGames) {
       console.info(`getLeagueGames is already running.`);
       return;
@@ -95,10 +95,11 @@ export class GameService {
       } else {
         currentGames = await getTeamsSchedule(teams, league, leagueLogos);
       }
-
-      if (!needRefresh(league, currentGames)) {
-        console.info(`No need to refresh games for league ${league}.`);
-        return currentGames;
+      if (!forceUpdate) {
+        if (!needRefresh(league, currentGames)) {
+          console.info(`No need to refresh games for league ${league}.`);
+          return currentGames;
+        }
       }
 
       if (Object.keys(currentGames).length) {
@@ -153,7 +154,7 @@ export class GameService {
     for (const league of leagues) {
       currentGames = {
         ...currentGames,
-        ...(await this.getLeagueGames(league)),
+        ...(await this.getLeagueGames(league, false)),
       };
     }
     return this.gameModel.find().exec();
