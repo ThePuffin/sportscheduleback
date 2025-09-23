@@ -98,7 +98,7 @@ export const needRefresh = (leagueName: string, games) => {
 
     const firstkey = keys[0];
     const lastGame = games[firstkey][0];
-    const lastRefresh = new Date(lastGame.updatedAt);
+    const lastRefresh = new Date(lastGame?.updatedAt || '2025-01-01');
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - lastRefresh.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));

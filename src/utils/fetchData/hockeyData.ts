@@ -1,7 +1,7 @@
+import { League } from '../../utils/enum';
 import type { GameFormatted } from '../../utils/interface/game';
 import type { NHLGameAPI } from '../../utils/interface/gameNHL';
 import type { TeamNHL, TeamType } from '../../utils/interface/team';
-import { League } from '../../utils/enum';
 import { capitalize } from '../utils';
 const leagueName = League.NHL;
 const { NODE_ENV } = process.env;
@@ -124,7 +124,7 @@ export class HockeyData {
         const now = new Date();
         const isActive = true;
         if (new Date(startTimeUTC) < now) return;
-        const awayTeamName = `${awayTeam.placeName.default} ${awayTeam.commonName.default}`
+        const awayTeamName = `${awayTeam.placeName.default} ${awayTeam.commonName.default}`;
         const homeTeamName = `${homeTeam.placeName.default} ${homeTeam.commonName.default}`;
 
         return {

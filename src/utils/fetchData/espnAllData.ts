@@ -122,7 +122,6 @@ export const getTeamsSchedule = async (
   leagueLogos,
 ) => {
   const allGames = {};
-
   await Promise.all(
     activeTeams.map(
       async ({ id, abbrev, value, uniqueId, color, backgroundColor }) => {

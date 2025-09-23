@@ -74,21 +74,22 @@ export class GameService {
       (ts) => ts.toISOString().split('T')[0] === today,
     );
 
-    if (todayTimestamps.length >= 2) {
+    if (forceUpdate && todayTimestamps.length >= 2) {
       throw new HttpException(
         `Refresh for league ${league} is limited to 2 times per day.`,
         249,
       );
     }
+
+    // Add current timestamp
+    this.leagueRefreshTimestamps[league] = [...todayTimestamps, now];
+
+    this.isFetchingGames = true; // Set the flag to true
+    const teams = await this.teamService.findByLeague(league);
+    let currentGames = {};
+    const leagueLogos = await this.getTeamsLogo(teams);
+
     try {
-      // Add current timestamp
-      this.leagueRefreshTimestamps[league] = [...todayTimestamps, now];
-
-      this.isFetchingGames = true; // Set the flag to true
-      const teams = await this.teamService.findByLeague(league);
-      let currentGames = {};
-      const leagueLogos = await this.getTeamsLogo(teams);
-
       if (league === League.NHL) {
         const hockeyData = new HockeyData();
         currentGames = await hockeyData.getNhlSchedule(teams, leagueLogos);
