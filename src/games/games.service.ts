@@ -9,7 +9,7 @@ import { League } from '../utils/enum';
 import { getTeamsSchedule } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
-import { needRefresh, randomNumber } from '../utils/utils';
+import { needRefresh } from '../utils/utils';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { Game } from './schemas/game.schema';
@@ -68,7 +68,7 @@ export class GameService {
       const game = await this.findByLeague(league, 1);
       if (!needRefresh(league, game)) {
         console.info(`No need to refresh games for league ${league}.`);
-        return 
+        return;
       }
     }
 
@@ -311,13 +311,8 @@ export class GameService {
             );
           },
         );
-        const gamesIndex = randomNumber(filtredGames.length - 1);
-        const randomGames = filtredGames[gamesIndex];
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        if (new Date(randomGames?.updateDate) < yesterday) {
-          await this.getLeagueGames(currentLeague, false);
-        }
+
+        await this.getLeagueGames(currentLeague, false);
       }
 
       // avoid dupplicate games
