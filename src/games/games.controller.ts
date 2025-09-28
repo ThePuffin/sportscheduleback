@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -41,6 +42,15 @@ export class GamesController {
   @Get('/date/:gameDate')
   findByDate(@Param('gameDate') gameDate: string) {
     return this.GameService.findByDate(gameDate);
+  }
+
+  @Get('/league/:league')
+  findByLeague(
+    @Param('league') league: string,
+    @Query('maxResults', new ParseIntPipe({ optional: true }))
+    maxResults?: number,
+  ) {
+    return this.GameService.findByLeague(league, maxResults);
   }
 
   @Get(':uniqueId')

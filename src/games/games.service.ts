@@ -64,6 +64,13 @@ export class GameService {
       console.info(`getLeagueGames is already running.`);
       return;
     }
+    if (!forceUpdate) {
+      const game = await this.findByLeague(league, 1);
+      if (!needRefresh(league, game)) {
+        console.info(`No need to refresh games for league ${league}.`);
+        return 
+      }
+    }
 
     const now = new Date();
     const timestamps = this.leagueRefreshTimestamps[league] || [];
@@ -95,12 +102,6 @@ export class GameService {
         currentGames = await hockeyData.getNhlSchedule(teams, leagueLogos);
       } else {
         currentGames = await getTeamsSchedule(teams, league, leagueLogos);
-      }
-      if (!forceUpdate) {
-        if (!needRefresh(league, currentGames)) {
-          console.info(`No need to refresh games for league ${league}.`);
-          return currentGames;
-        }
       }
 
       if (Object.keys(currentGames).length) {
@@ -182,10 +183,16 @@ export class GameService {
     return this.filterGames({ teamSelectedIds: teamSelectedId });
   }
 
+  async findByLeague(league: string, maxResults?: number) {
+    return this.filterGames({ league: league, maxResults });
+  }
+
   async filterGames({
     startDate = undefined,
     endDate = undefined,
-    teamSelectedIds,
+    teamSelectedIds = undefined,
+    league = undefined,
+    maxResults = undefined,
   }) {
     const filter: any = {};
 
@@ -201,6 +208,10 @@ export class GameService {
       endDate = readableDate(new Date());
     }
 
+    if (league) {
+      filter.league = league;
+    }
+
     if (teamSelectedIds && teamSelectedIds.length > 0) {
       const teamSelected = teamSelectedIds
         .split(',')
@@ -211,6 +222,7 @@ export class GameService {
     const filtredGames = await this.gameModel
       .find(filter)
       .sort({ startTimeUTC: 1 })
+      .limit(maxResults ? parseInt(maxResults, 10) : 0)
       .exec();
 
     const games = Array.isArray(filtredGames) ? filtredGames : [];
@@ -232,7 +244,7 @@ export class GameService {
             game.teamSelectedId === teamSelectedId &&
             game.isActive === true,
         );
-        if (!gameOfDay.length) {
+        if (!gameOfDay.length && !league) {
           gamesOfDay.push(
             new this.gameModel({
               _id: new mongoose.Types.ObjectId().toString(),
@@ -265,8 +277,9 @@ export class GameService {
           gamesOfDay.push(...gameOfDay);
         }
       });
-
-      gamesByDay[currentDate] = gamesOfDay;
+      if ((league && gamesOfDay.length) || !league) {
+        gamesByDay[currentDate] = gamesOfDay;
+      }
       date = new Date(date.setDate(date.getDate() + 1));
     }
 
@@ -287,18 +300,23 @@ export class GameService {
       }
       return [];
     } else {
-      const filtredGames = games.filter(({ isActive, awayTeamId }) => {
-        return (
-          isActive === true && awayTeamId !== undefined && awayTeamId !== ''
+      for (const currentLeague of Object.values(League)) {
+        const filtredGames = games.filter(
+          ({ isActive, awayTeamId, league }) => {
+            return (
+              isActive === true &&
+              awayTeamId !== undefined &&
+              awayTeamId !== '' &&
+              league.toUpperCase() === currentLeague.toUpperCase()
+            );
+          },
         );
-      });
-      const gamesIndex = randomNumber(filtredGames.length - 1);
-      const randomGames = filtredGames[gamesIndex];
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      if (new Date(randomGames?.updateDate) < yesterday) {
-        for (const league of Object.values(League)) {
-          await this.getLeagueGames(league);
+        const gamesIndex = randomNumber(filtredGames.length - 1);
+        const randomGames = filtredGames[gamesIndex];
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (new Date(randomGames?.updateDate) < yesterday) {
+          await this.getLeagueGames(currentLeague, false);
         }
       }
 

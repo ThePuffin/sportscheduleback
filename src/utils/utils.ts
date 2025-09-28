@@ -93,16 +93,14 @@ export const needRefresh = (leagueName: string, games) => {
   const keys = Object.keys(games);
   if (keys.length === 0) return true;
   let teamRefreshNeeded = [];
-  for (const key of keys) {
-    if (games[key].length === 0) teamRefreshNeeded.push(true);
 
-    const firstkey = keys[0];
-    const lastGame = games[firstkey][0];
-    const lastRefresh = new Date(lastGame?.updatedAt || '2025-01-01');
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - lastRefresh.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    teamRefreshNeeded.push(diffDays >= daysToRefresh);
-  }
+  const firstkey = keys[0];
+  const firstGame = games[firstkey][0];
+  const lastRefresh = new Date(firstGame.updateDate || '2025-01-01');
+  const now = new Date();
+  const diffDays = Math.ceil(
+    (now.getTime() - lastRefresh.getTime()) / (1000 * 60 * 60 * 24),
+  );
+  teamRefreshNeeded.push(diffDays >= daysToRefresh);
   return !teamRefreshNeeded.some((need) => need === false);
 };
