@@ -23,6 +23,12 @@ export class GameService {
     private readonly teamService: TeamService,
   ) {}
 
+  addHours = (date, nbHours) => {
+    const day = new Date(date);
+    day.setTime(day.getTime() + nbHours);
+    return day.toString();
+  };
+
   getTeams = (teamSelectedIds, games) => {
     if (teamSelectedIds) {
       return teamSelectedIds.split(',');
@@ -344,10 +350,10 @@ export class GameService {
   async removeDuplicatesAndOlds() {
     const games = await this.gameModel.find().exec();
 
-    const now = new Date();
+    const nowPlus4hours = this.addHours(new Date(), 4);
     const oldGames = games.filter((game) => {
-      const gameDate = new Date(game.startTimeUTC);
-      return gameDate < now;
+      const gameDate = game.startTimeUTC;
+      return gameDate < nowPlus4hours;
     });
     for (const oldGame of oldGames) {
       await this.remove(oldGame.uniqueId);
