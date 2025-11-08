@@ -9,7 +9,7 @@ import { League } from '../utils/enum';
 import { getTeamsSchedule } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
-import { needRefresh } from '../utils/utils';
+import { needRefresh, randomNumber } from '../utils/utils';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { Game } from './schemas/game.schema';
@@ -338,7 +338,13 @@ export class GameService {
           },
         );
 
-        await this.getLeagueGames(currentLeague, false);
+         const gamesIndex = randomNumber(filtredGames.length - 1);
+         const randomGames = filtredGames[gamesIndex];         
+         const yesterday = new Date();
+         yesterday.setDate(yesterday.getDate() - 1);
+         if (new Date(randomGames?.updateDate) < yesterday) {
+           await this.getLeagueGames(currentLeague, false);
+         }
       }
 
       // avoid dupplicate games
@@ -394,6 +400,8 @@ export class GameService {
     for (const duplicate of duplicates) {
       await this.remove(duplicate.uniqueId);
     }
+    console.info('End of removing duplicates and old games...');
+
   }
 
   async removeLeague(league: string): Promise<DeleteResult> {
