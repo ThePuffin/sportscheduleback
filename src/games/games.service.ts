@@ -25,8 +25,8 @@ export class GameService {
 
   addHours = (date, nbHours) => {
     const day = new Date(date);
-    day.setTime(day.getTime() + nbHours);
-    return day.toString();
+    day.setTime(day.getTime() + nbHours * 60 * 60 * 1000);
+    return day;
   };
 
   getTeams = (teamSelectedIds, games) => {
@@ -101,13 +101,33 @@ export class GameService {
     const teams = await this.teamService.findByLeague(league);
     let currentGames = {};
     const leagueLogos = await this.getTeamsLogo(teams);
+    let teamErrorFetch = [];
 
     try {
       if (league === League.NHL) {
-        const hockeyData = new HockeyData();
-        currentGames = await hockeyData.getNhlSchedule(teams, leagueLogos);
+        try {
+          const hockeyData = new HockeyData();
+          currentGames = await hockeyData.getNhlSchedule(teams, leagueLogos);
+        } catch (error) {
+          console.error('Error fetching NHL data:', error);
+          teamErrorFetch.push(error);
+        }
       } else {
         currentGames = await getTeamsSchedule(teams, league, leagueLogos);
+      }
+
+      if (teamErrorFetch.length) {
+        teamErrorFetch = teamErrorFetch.map(
+          (team) =>
+            (team.id =
+              league === League.NHL ? `${league}-${team.id}` : team.id),
+        );
+        const otherFetchcurrentGames = await getTeamsSchedule(
+          teams,
+          league,
+          leagueLogos,
+        );
+        currentGames = { ...currentGames, ...otherFetchcurrentGames };
       }
 
       if (Object.keys(currentGames).length) {
@@ -348,12 +368,12 @@ export class GameService {
   }
 
   async removeDuplicatesAndOlds() {
+    console.info('Removing duplicates and old games...');
     const games = await this.gameModel.find().exec();
-
-    const nowPlus4hours = this.addHours(new Date(), 4);
+    const nowPlus4hours = this.addHours(new Date(), -6);
     const oldGames = games.filter((game) => {
       const gameDate = game.startTimeUTC;
-      return gameDate < nowPlus4hours;
+      return new Date(gameDate) < new Date(nowPlus4hours);
     });
     for (const oldGame of oldGames) {
       await this.remove(oldGame.uniqueId);

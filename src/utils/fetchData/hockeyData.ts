@@ -64,15 +64,21 @@ export class HockeyData {
     const allGames = {};
 
     await Promise.all(
-      activeTeams.map(async ({ id, value, color, backgroundColor }) => {
-        const leagueID = `${leagueName}-${id}`;
-        allGames[leagueID] = await this.getNhlTeamSchedule(
-          id,
-          value,
-          leagueLogos,
-          color,
-          backgroundColor,
-        );
+      activeTeams.map(async (team) => {
+        try {
+          const { id, value, color, backgroundColor } = team;
+          const leagueID = `${leagueName}-${id}`;
+          allGames[leagueID] = await this.getNhlTeamSchedule(
+            id,
+            value,
+            leagueLogos,
+            color,
+            backgroundColor,
+          );
+        } catch (error) {
+          console.error(`Error fetching schedule for team ${error.id}:`, error);
+          throw team;
+        }
       }),
     );
 
@@ -96,7 +102,7 @@ export class HockeyData {
       return await fetchGames.games;
     } catch (error) {
       console.error('Error fetching games:', id, error);
-      return [];
+      throw id;
     }
   };
 
@@ -107,59 +113,52 @@ export class HockeyData {
     color: string | undefined,
     backgroundColor: string | undefined,
   ) => {
-    try {
-      let games: NHLGameAPI[];
-      games = await this.fetchGamesData(id);
+    let games: NHLGameAPI[];
+    games = await this.fetchGamesData(id);
 
-      let gamesData: GameFormatted[] = games.map((game: NHLGameAPI) => {
-        const {
-          awayTeam,
-          homeTeam,
-          venue,
-          gameDate,
-          venueTimezone,
-          startTimeUTC,
-        } = game;
+    let gamesData: GameFormatted[] = games.map((game: NHLGameAPI) => {
+      const {
+        awayTeam,
+        homeTeam,
+        venue,
+        gameDate,
+        venueTimezone,
+        startTimeUTC,
+      } = game;
 
-        const now = new Date();
-        const isActive = true;
-        if (new Date(startTimeUTC) < now) return;
-        const awayTeamName = `${awayTeam.placeName.default} ${awayTeam.commonName.default}`;
-        const homeTeamName = `${homeTeam.placeName.default} ${homeTeam.commonName.default}`;
+      const now = new Date();
+      const isActive = true;
+      if (new Date(startTimeUTC) < now) return;
+      const awayTeamName = `${awayTeam.placeName.default} ${awayTeam.commonName.default}`;
+      const homeTeamName = `${homeTeam.placeName.default} ${homeTeam.commonName.default}`;
 
-        return {
-          arenaName: capitalize(venue?.default) || '',
-          awayTeam: capitalize(awayTeamName),
-          awayTeamId: `${leagueName}-${awayTeam.abbrev}`,
-          awayTeamLogo: leagueLogos[awayTeam.abbrev],
-          awayTeamShort: awayTeam.abbrev,
-          backgroundColor: backgroundColor || undefined,
-          color: color || undefined,
-          gameDate: gameDate,
-          homeTeam: capitalize(homeTeamName),
-          homeTeamId: `${leagueName}-${homeTeam.abbrev}`,
-          homeTeamLogo: leagueLogos[homeTeam.abbrev],
-          homeTeamShort: homeTeam.abbrev,
-          league: leagueName,
-          placeName: capitalize(homeTeam.placeName.default),
-          selectedTeam: homeTeam.abbrev === id,
-          show: homeTeam.abbrev === id,
-          startTimeUTC,
-          teamSelectedId: value,
-          isActive,
-          uniqueId: `${value}-${gameDate}-1`,
-          venueTimezone: venueTimezone,
-        };
-      });
+      return {
+        arenaName: capitalize(venue?.default) || '',
+        awayTeam: capitalize(awayTeamName),
+        awayTeamId: `${leagueName}-${awayTeam.abbrev}`,
+        awayTeamLogo: leagueLogos[awayTeam.abbrev],
+        awayTeamShort: awayTeam.abbrev,
+        backgroundColor: backgroundColor || undefined,
+        color: color || undefined,
+        gameDate: gameDate,
+        homeTeam: capitalize(homeTeamName),
+        homeTeamId: `${leagueName}-${homeTeam.abbrev}`,
+        homeTeamLogo: leagueLogos[homeTeam.abbrev],
+        homeTeamShort: homeTeam.abbrev,
+        league: leagueName,
+        placeName: capitalize(homeTeam.placeName.default),
+        selectedTeam: homeTeam.abbrev === id,
+        show: homeTeam.abbrev === id,
+        startTimeUTC,
+        teamSelectedId: value,
+        isActive,
+        uniqueId: `${value}-${gameDate}-1`,
+        venueTimezone: venueTimezone,
+      };
+    });
 
-      gamesData = gamesData.filter(
-        (game) => game !== undefined && game !== null,
-      );
+    gamesData = gamesData.filter((game) => game !== undefined && game !== null);
 
-      return gamesData;
-    } catch (error) {
-      console.error('Error fetching data', error);
-      throw error;
-    }
+    return gamesData;
   };
 }
