@@ -376,9 +376,9 @@ export class GameService {
   async removeDuplicatesAndOlds() {
     console.info('Removing duplicates and old games...');
     const games = await this.gameModel.find().exec();
-    const nowPlus12hours = this.addHours(new Date(), 12);
+    const nowMinus12Hour = this.addHours(new Date(), -12);
     const oldGames = games.filter(({ startTimeUTC }) => {
-      return new Date(startTimeUTC) < new Date(nowPlus12hours);
+      return new Date(startTimeUTC) < new Date(nowMinus12Hour);
     });
     for (const oldGame of oldGames) {
       await this.remove(oldGame.uniqueId);
