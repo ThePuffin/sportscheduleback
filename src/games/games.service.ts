@@ -338,13 +338,13 @@ export class GameService {
           },
         );
 
-         const gamesIndex = randomNumber(filtredGames.length - 1);
-         const randomGames = filtredGames[gamesIndex];         
-         const yesterday = new Date();
-         yesterday.setDate(yesterday.getDate() - 1);
-         if (new Date(randomGames?.updateDate) < yesterday) {
-           await this.getLeagueGames(currentLeague, false);
-         }
+        const gamesIndex = randomNumber(filtredGames.length - 1);
+        const randomGames = filtredGames[gamesIndex];
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (new Date(randomGames?.updateDate) < yesterday) {
+          await this.getLeagueGames(currentLeague, false);
+        }
       }
 
       // avoid dupplicate games
@@ -376,10 +376,9 @@ export class GameService {
   async removeDuplicatesAndOlds() {
     console.info('Removing duplicates and old games...');
     const games = await this.gameModel.find().exec();
-    const nowPlus4hours = this.addHours(new Date(), -6);
-    const oldGames = games.filter((game) => {
-      const gameDate = game.startTimeUTC;
-      return new Date(gameDate) < new Date(nowPlus4hours);
+    const nowPlus12hours = this.addHours(new Date(), 12);
+    const oldGames = games.filter(({ startTimeUTC }) => {
+      return new Date(startTimeUTC) > new Date(nowPlus12hours);
     });
     for (const oldGame of oldGames) {
       await this.remove(oldGame.uniqueId);
@@ -401,7 +400,6 @@ export class GameService {
       await this.remove(duplicate.uniqueId);
     }
     console.info('End of removing duplicates and old games...');
-
   }
 
   async removeLeague(league: string): Promise<DeleteResult> {
