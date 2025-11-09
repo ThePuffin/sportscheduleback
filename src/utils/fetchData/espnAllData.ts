@@ -9,6 +9,12 @@ const { NODE_ENV } = process.env;
 
 const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
 
+const ESPNAbbrevs = {
+  NJ: 'NJD',
+  TB: 'TBL',
+  LA: 'LAK',
+};
+
 const leagueConfigs = {
   [League.NHL]: { sport: 'hockey', league: 'nhl' },
   [League.MLB]: { sport: 'baseball', league: 'mlb' },
@@ -190,24 +196,30 @@ const getEachTeamSchedule = async ({
         const awayTeam = competitors.find((team) => team.homeAway === 'away');
         const homeTeam = competitors.find((team) => team.homeAway === 'home');
         number++;
+        const awayAbbrev =
+          ESPNAbbrevs[awayTeam.team.abbreviation] ||
+          `${awayTeam.team.abbreviation}`;
+        const homeAbbrev =
+          ESPNAbbrevs[homeTeam.team.abbreviation] ||
+          `${homeTeam.team.abbreviation}`;
 
         return {
           arenaName: capitalize(venue?.fullName) ?? '',
           awayTeam: capitalize(awayTeam.team.displayName),
-          awayTeamId: `${leagueName}-${awayTeam.team.abbreviation}`,
-          awayTeamLogo: leagueLogos[awayTeam.team.abbreviation],
-          awayTeamShort: awayTeam.team.abbreviation,
+          awayTeamId: `${leagueName}-${awayAbbrev}`,
+          awayTeamLogo: leagueLogos[awayAbbrev],
+          awayTeamShort: awayAbbrev,
           backgroundColor: backgroundColor ?? undefined,
           color: color ?? undefined,
           gameDate: gameDate,
           homeTeam: capitalize(homeTeam.team.displayName),
-          homeTeamId: `${leagueName}-${homeTeam.team.abbreviation}`,
-          homeTeamLogo: leagueLogos[homeTeam.team.abbreviation],
-          homeTeamShort: homeTeam.team.abbreviation,
+          homeTeamId: `${leagueName}-${homeAbbrev}`,
+          homeTeamLogo: leagueLogos[homeAbbrev],
+          homeTeamShort: homeAbbrev,
           league: leagueName.toUpperCase(),
           placeName: capitalize(venue?.address?.city) ?? '',
-          selectedTeam: homeTeam.team.abbreviation === abbrev,
-          show: homeTeam.team.abbreviation === abbrev,
+          selectedTeam: homeAbbrev === abbrev,
+          show: homeAbbrev === abbrev,
           startTimeUTC: date,
           teamSelectedId: value,
           isActive,
