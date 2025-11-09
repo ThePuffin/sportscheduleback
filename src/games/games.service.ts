@@ -378,7 +378,7 @@ export class GameService {
     const games = await this.gameModel.find().exec();
     const nowPlus12hours = this.addHours(new Date(), 12);
     const oldGames = games.filter(({ startTimeUTC }) => {
-      return new Date(startTimeUTC) > new Date(nowPlus12hours);
+      return new Date(startTimeUTC) < new Date(nowPlus12hours);
     });
     for (const oldGame of oldGames) {
       await this.remove(oldGame.uniqueId);
