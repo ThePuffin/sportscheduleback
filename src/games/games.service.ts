@@ -43,9 +43,9 @@ export class GameService {
 
   async getTeamsLogo(teams: TeamType[]): Promise<{ [key: string]: string }> {
     const logos = {};
-    teams.forEach(({ abbrev, teamLogo }) => {
+    for (const { abbrev, teamLogo } of teams) {
       logos[abbrev] = teamLogo;
-    });
+    }
 
     return logos;
   }
