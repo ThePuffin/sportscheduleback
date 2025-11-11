@@ -220,7 +220,7 @@ export class GameService {
     league = undefined,
     maxResults = undefined,
   }) {
-    const filter: any = {};
+    const filter: any = { selectedTeam: true, isActive: true };
 
     if (startDate) {
       filter.gameDate = { $gte: startDate };
