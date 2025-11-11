@@ -13,6 +13,7 @@ const ESPNAbbrevs = {
   NJ: 'NJD',
   TB: 'TBL',
   LA: 'LAK',
+  SJ: 'SJS',
 };
 
 const leagueConfigs = {
