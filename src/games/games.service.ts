@@ -210,7 +210,7 @@ export class GameService {
   }
 
   async findByLeague(league: string, maxResults?: number) {
-    return this.filterGames({ league: league, maxResults });
+    return this.filterGames({ league: league, maxResults, selectedTeam: true });
   }
 
   async filterGames({
@@ -219,8 +219,13 @@ export class GameService {
     teamSelectedIds = undefined,
     league = undefined,
     maxResults = undefined,
+    selectedTeam = undefined,
   }) {
-    const filter: any = { selectedTeam: true, isActive: true };
+    const filter: any = { isActive: true };
+
+    if (selectedTeam !== undefined) {
+      filter.selectedTeam = selectedTeam;
+    }
 
     if (startDate) {
       filter.gameDate = { $gte: startDate };
