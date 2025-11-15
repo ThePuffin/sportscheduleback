@@ -40,11 +40,19 @@ export class TeamService {
     try {
       this.isFetchingTeams = true;
 
-      const hockeyData = new HockeyData();
-      const activeTeams = await hockeyData.getNhlTeams();
-      const leagues = [League.NFL, League.NBA, League.MLB, League.WNBA];
+      let activeTeams: TeamType[] = [];
+      const leagues = Object.values(League);
       for (const league of leagues) {
-        const teams = await getESPNTeams(league);
+        let teams: TeamType[] = [];
+        try {
+          teams = await getESPNTeams(league);
+        } catch (error) {
+          console.error(`Error fetching teams for league ${league}:`, error);
+          if (league === League.NHL) {
+            const hockeyData = new HockeyData();
+            teams = await hockeyData.getNhlTeams();
+          }
+        }
         if (teams.length) {
           activeTeams.push(...teams);
         }

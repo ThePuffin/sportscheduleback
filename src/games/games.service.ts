@@ -101,35 +101,21 @@ export class GameService {
     const teams = await this.teamService.findByLeague(league);
     let currentGames = {};
     const leagueLogos = await this.getTeamsLogo(teams);
-    let teamErrorFetch = [];
 
     try {
+      currentGames = await getTeamsSchedule(teams, league, leagueLogos);
+    } catch (error) {
+      console.error(`Error fetching games for league ${league}:`, error);
       if (league === League.NHL) {
         try {
           const hockeyData = new HockeyData();
           currentGames = await hockeyData.getNhlSchedule(teams, leagueLogos);
         } catch (error) {
           console.error('Error fetching NHL data:', error);
-          teamErrorFetch.push(error);
         }
-      } else {
-        currentGames = await getTeamsSchedule(teams, league, leagueLogos);
       }
-
-      if (teamErrorFetch.length) {
-        teamErrorFetch = teamErrorFetch.map(
-          (team) =>
-            (team.id =
-              league === League.NHL ? `${league}-${team.id}` : team.id),
-        );
-        const otherFetchcurrentGames = await getTeamsSchedule(
-          teams,
-          league,
-          leagueLogos,
-        );
-        currentGames = { ...currentGames, ...otherFetchcurrentGames };
-      }
-
+    }
+    try {
       if (Object.keys(currentGames).length) {
         for (const team of teams) {
           await this.unactivateGames(team.uniqueId);
@@ -205,8 +191,22 @@ export class GameService {
     return game;
   }
 
-  async findByTeam(teamSelectedId: string) {
-    return this.filterGames({ teamSelectedIds: teamSelectedId });
+  async findByTeam(teamSelectedId: string, needRefreshData = true) {
+    const games = await this.filterGames({ teamSelectedIds: teamSelectedId });
+    const keys = Object.keys(games);
+    if (
+      needRefreshData &&
+      keys.length === 1 &&
+      !games[keys[0]]?.[0]?.awayTeamShort
+    ) {
+      const league = teamSelectedId.split('-')[0];
+      if (league) {
+        await this.getLeagueGames(league, true);
+      }
+      return this.filterGames({ teamSelectedIds: teamSelectedId });
+    }
+
+    return games;
   }
 
   async findByLeague(league: string, maxResults?: number) {
@@ -414,7 +414,7 @@ export class GameService {
   }
 
   async unactivateGames(teamId: string): Promise<void> {
-    const games = await this.findByTeam(teamId);
+    const games = await this.findByTeam(teamId, false);
 
     for (const date in games) {
       if (Array.isArray(games[date]) && games[date][0]?.awayTeamShort) {
