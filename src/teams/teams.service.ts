@@ -39,10 +39,10 @@ export class TeamService {
     }
     try {
       this.isFetchingTeams = true;
-
-      let activeTeams: TeamType[] = [];
+      const allActivesTeams: TeamType[] = [];
       const leagues = Object.values(League);
       for (const league of leagues) {
+        let activeTeams: TeamType[] = [];
         let teams: TeamType[] = [];
         try {
           teams = await getESPNTeams(league);
@@ -56,24 +56,26 @@ export class TeamService {
         if (teams.length) {
           activeTeams.push(...teams);
         }
-      }
-      let updateNumber = 0;
-      for (const activeTeam of activeTeams) {
-        activeTeam.updateDate = new Date().toISOString();
-        await this.create(activeTeam);
-        updateNumber++;
-        console.info(
-          'updated:',
-          activeTeam?.label,
-          '(',
-          updateNumber,
-          '/',
-          activeTeams.length,
-          ')',
-        );
+
+        let updateNumber = 0;
+        for (const activeTeam of activeTeams) {
+          activeTeam.updateDate = new Date().toISOString();
+          await this.create(activeTeam);
+          updateNumber++;
+          console.info(
+            'updated:',
+            activeTeam?.label,
+            '(',
+            updateNumber,
+            '/',
+            activeTeams.length,
+            ')',
+          );
+        }
+        allActivesTeams.push(...activeTeams);
       }
 
-      return activeTeams;
+      return allActivesTeams;
     } catch (error) {
       console.error(error);
       throw new Error('Error fetching teams: ' + error.message);

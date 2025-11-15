@@ -28,8 +28,8 @@ const leagueConfigs = {
   [League.NCAAF]: { sport: 'football', league: 'college-football' },
   [League.NCAAB]: { sport: 'basketball', league: 'mens-college-basketball' },
   [League.WNCAAB]: { sport: 'basketball', league: 'womens-college-basketball' },
-  [League.SOCCER]: { sport: 'soccer', league: 'usa.1' },
-  [League.NCCABaseball]: { sport: 'baseball', league: 'college-baseball' },
+  [League.MLS]: { sport: 'soccer', league: 'usa.1' },
+  [League.NCCABB]: { sport: 'baseball', league: 'college-baseball' },
 };
 
 const leaguesData = Object.fromEntries(
