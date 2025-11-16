@@ -47,7 +47,6 @@ export class TeamService {
         (league) =>
           !collegeLeagueValues.includes(league as unknown as CollegeLeague),
       );
-      console.log('Fetching teams for leagues:', leagues);
       for (const league of leagues) {
         let activeTeams: TeamType[] = [];
         let teams: TeamType[] = [];

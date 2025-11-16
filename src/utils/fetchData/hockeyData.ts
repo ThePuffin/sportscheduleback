@@ -106,7 +106,6 @@ export class HockeyData {
 
   getHockeySchedule = async (activeTeams, leagueLogos, league) => {
     const allGames = {};
-    console.log({ activeTeams });
     await Promise.all(
       activeTeams.map(async (team) => {
         try {
@@ -124,7 +123,6 @@ export class HockeyData {
           if (league === League.PWHL) {
             const { id, value, color, backgroundColor } = team;
             const leagueID = `${leagueName}-${id}`;
-            console.log('fetching PWHL schedule for team:', id);
             allGames[leagueID] = await this.getPWHLTeamschedule(
               id,
               value,
@@ -194,7 +192,6 @@ export class HockeyData {
     const leagueName = League.PWHL;
     let games: PWHLGameAPI[];
     games = await this.fetchGamesData(id, League.PWHL);
-    console.log({ games });
     if (!games || games.length === 0) {
       return [];
     }
@@ -211,6 +208,7 @@ export class HockeyData {
           date_played,
           GameDateISO8601,
           timezone,
+          venue_location,
         } = game;
 
         const now = new Date();
@@ -219,9 +217,10 @@ export class HockeyData {
 
         const awayTeamName = `${visiting_team_city} ${visiting_team_name}`;
         const homeTeamName = `${home_team_city} ${home_team_name}`;
+        const arena = venue_name.split('|')[0];
 
         return {
-          arenaName: capitalize(venue_name) || '',
+          arenaName: capitalize(arena) || '',
           awayTeam: capitalize(awayTeamName),
           awayTeamId: `${leagueName}-${visiting_team_code}`,
           awayTeamLogo: leagueLogos[visiting_team_code],
@@ -234,9 +233,9 @@ export class HockeyData {
           homeTeamLogo: leagueLogos[home_team_code],
           homeTeamShort: home_team_code,
           league: leagueName,
-          placeName: capitalize(home_team_city),
-          selectedTeam: home_team_code === id || visiting_team_code === id,
-          show: home_team_code === id || visiting_team_code === id,
+          placeName: capitalize(venue_location),
+          selectedTeam: home_team_code === id,
+          show: home_team_code === id,
           startTimeUTC: GameDateISO8601,
           teamSelectedId: value,
           isActive,
@@ -245,7 +244,6 @@ export class HockeyData {
         };
       })
       .filter((game) => game !== undefined && game !== null);
-    console.log({ gamesData });
     return gamesData;
   };
 
