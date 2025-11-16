@@ -6,9 +6,6 @@ export enum League {
   MLS = 'MLS',
   PWHL = 'PWHL',
   WNBA = 'WNBA',
-}
-
-export enum CollegeLeague {
   NCAAF = 'NCAAF',
   NCAAB = 'NCAAB',
   NCCABB = 'NCCABB',
