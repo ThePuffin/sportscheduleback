@@ -25,11 +25,14 @@ const leagueConfigs = {
   [League.NBA]: { sport: 'basketball', league: 'nba' },
   [League.WNBA]: { sport: 'basketball', league: 'wnba' },
   [League.NFL]: { sport: 'football', league: 'nfl' },
-  [League.NCAAF]: { sport: 'football', league: 'college-football' },
-  [League.NCAAB]: { sport: 'basketball', league: 'mens-college-basketball' },
-  [League.WNCAAB]: { sport: 'basketball', league: 'womens-college-basketball' },
   [League.MLS]: { sport: 'soccer', league: 'usa.1' },
-  [League.NCCABB]: { sport: 'baseball', league: 'college-baseball' },
+};
+
+const collegeLeagueConfigs = {
+  // [League.NCAAF]: { sport: 'football', league: 'college-football' },
+  // [League.NCAAB]: { sport: 'basketball', league: 'mens-college-basketball' },
+  // [League.WNCAAB]: { sport: 'basketball', league: 'womens-college-basketball' },
+  // [League.NCCABB]: { sport: 'baseball', league: 'college-baseball' },
 };
 
 const leaguesData = Object.fromEntries(

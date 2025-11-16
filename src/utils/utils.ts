@@ -48,6 +48,13 @@ const leagueConfigs = {
     endSeason: '01',
     endPlayoffs: '02',
   },
+  [League.MLS]: {
+    sport: 'soccer',
+    league: 'usa.1',
+    startSeason: '05',
+    endSeason: '10',
+    endPlayoffs: '11',
+  },
 };
 
 const isInThePeriod = (start: string, end: string) => {
@@ -74,11 +81,13 @@ const isInThePeriod = (start: string, end: string) => {
 
 const isCurrentSeason = (leagueName: string) => {
   const { startSeason, endSeason } = leagueConfigs[leagueName];
+  if (!startSeason || !endSeason) return false;
   return isInThePeriod(startSeason, endSeason);
 };
 
 const isendPlayoffs = (leagueName: string) => {
   const { endPlayoffs, endSeason } = leagueConfigs[leagueName];
+  if (!endPlayoffs || !endSeason) return true;
   return isInThePeriod(endSeason, endPlayoffs);
 };
 
