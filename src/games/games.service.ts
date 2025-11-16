@@ -214,7 +214,15 @@ export class GameService {
     ) {
       const league = teamSelectedId.split('-')[0];
       if (league) {
-        await this.getLeagueGames(league, true);
+        const otherGamesInLeague = await this.findByLeague(league, 10);
+        const games = Object.keys(otherGamesInLeague).filter((gameDate) => {
+          return otherGamesInLeague[gameDate].some(
+            (game) => game.awayTeamShort,
+          );
+        });
+        if (games.length) {
+          await this.getLeagueGames(league, true);
+        }
       }
       return this.filterGames({ teamSelectedIds: teamSelectedId });
     }
