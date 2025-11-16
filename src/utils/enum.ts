@@ -11,3 +11,10 @@ export enum League {
   NCCABB = 'NCCABB',
   WNCAAB = 'WNCAAB',
 }
+
+export enum CollegeLeague {
+  NCAAF = 'NCAAF',
+  NCAAB = 'NCAAB',
+  NCCABB = 'NCCABB',
+  WNCAAB = 'WNCAAB',
+}
