@@ -103,13 +103,26 @@ export class GameService {
     const leagueLogos = await this.getTeamsLogo(teams);
 
     try {
-      currentGames = await getTeamsSchedule(teams, league, leagueLogos);
+      if (league === League.PWHL) {
+        const hockeyData = new HockeyData();
+        currentGames = await hockeyData.getHockeySchedule(
+          teams,
+          leagueLogos,
+          league,
+        );
+      } else {
+        currentGames = await getTeamsSchedule(teams, league, leagueLogos);
+      }
     } catch (error) {
       console.error(`Error fetching games for league ${league}:`, error);
       if (league === League.NHL) {
         try {
           const hockeyData = new HockeyData();
-          currentGames = await hockeyData.getNhlSchedule(teams, leagueLogos);
+          currentGames = await hockeyData.getHockeySchedule(
+            teams,
+            leagueLogos,
+            league,
+          );
         } catch (error) {
           console.error('Error fetching NHL data:', error);
         }

@@ -178,3 +178,36 @@ export interface TeamNHL {
   winPctg: number;
   wins: number;
 }
+
+export interface TeamPWHL {
+  id: string;
+  name: string;
+  city: string;
+  code: string;
+  nickname: string;
+  team_caption: string;
+  division_id: string;
+  division_long_name: string;
+  division_short_name: string;
+  team_logo_url: string;
+}
+
+export interface PWHLResponse {
+  SiteKit: {
+    Parameters: {
+      feed: string;
+      view: string;
+      key: string;
+      client_code: string;
+      league_id: string;
+      season_id: string;
+    };
+    Teamsbyseason: TeamPWHL[];
+    Copyright: {
+      required_copyright: string;
+      required_link: string;
+      powered_by: string;
+      powered_by_url: string;
+    };
+  };
+}

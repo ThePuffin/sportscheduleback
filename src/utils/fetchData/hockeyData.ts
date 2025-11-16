@@ -1,13 +1,19 @@
 import { League } from '../../utils/enum';
 import type { GameFormatted } from '../../utils/interface/game';
 import type { NHLGameAPI } from '../../utils/interface/gameNHL';
-import type { TeamNHL, TeamType } from '../../utils/interface/team';
+import type {
+  PWHLResponse,
+  TeamNHL,
+  TeamPWHL,
+  TeamType,
+} from '../../utils/interface/team';
+import { PWHLGameAPI } from '../interface/gamePWHL';
 import { capitalize } from '../utils';
 const leagueName = League.NHL;
 const { NODE_ENV } = process.env;
 
 export class HockeyData {
-  async getNhlTeams(): Promise<TeamType[]> {
+  async getNHLTeams(): Promise<TeamType[]> {
     try {
       let allTeams: TeamNHL[];
 
@@ -60,23 +66,78 @@ export class HockeyData {
     }
   }
 
-  getNhlSchedule = async (activeTeams, leagueLogos) => {
-    const allGames = {};
+  async getPWHLTeams(): Promise<TeamType[]> {
+    try {
+      const leagueName = League.PWHL;
+      let allTeams: TeamPWHL[];
 
+      const fetchedTeams = await fetch(
+        'https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=teamsbyseason&key=446521baf8c38984&client_code=pwhl',
+      );
+      const fetchTeams: PWHLResponse = await fetchedTeams.json();
+      allTeams = await fetchTeams?.SiteKit?.Teamsbyseason;
+      const activeTeams = allTeams.map((team: TeamPWHL) => {
+        const { code, name, team_logo_url, division_long_name } = team;
+        const teamID = code;
+        const uniqueId = `${leagueName}-${teamID}`;
+
+        return {
+          uniqueId,
+          value: uniqueId,
+          id: teamID,
+          abbrev: teamID,
+          label: capitalize(name),
+          teamLogo: team_logo_url,
+          teamCommonName: capitalize(name),
+          conferenceName: '',
+          divisionName: division_long_name,
+          league: leagueName.toUpperCase(),
+          color: undefined,
+          backgroundColor: undefined,
+        };
+      });
+
+      return activeTeams;
+    } catch (error) {
+      console.error('Error fetching data =>', error);
+      return [];
+    }
+  }
+
+  getHockeySchedule = async (activeTeams, leagueLogos, league) => {
+    const allGames = {};
+    console.log({ activeTeams });
     await Promise.all(
       activeTeams.map(async (team) => {
         try {
-          const { id, value, color, backgroundColor } = team;
-          const leagueID = `${leagueName}-${id}`;
-          allGames[leagueID] = await this.getNhlTeamSchedule(
-            id,
-            value,
-            leagueLogos,
-            color,
-            backgroundColor,
-          );
+          if (league === League.NHL) {
+            const { id, value, color, backgroundColor } = team;
+            const leagueID = `${leagueName}-${id}`;
+            allGames[leagueID] = await this.getNHLTeamschedule(
+              id,
+              value,
+              leagueLogos,
+              color,
+              backgroundColor,
+            );
+          }
+          if (league === League.PWHL) {
+            const { id, value, color, backgroundColor } = team;
+            const leagueID = `${leagueName}-${id}`;
+            console.log('fetching PWHL schedule for team:', id);
+            allGames[leagueID] = await this.getPWHLTeamschedule(
+              id,
+              value,
+              leagueLogos,
+              color,
+              backgroundColor,
+            );
+          }
         } catch (error) {
-          console.error(`Error fetching schedule for team ${error.id}:`, error);
+          console.error(
+            `Error fetching schedule for hockey team ${error.id}:`,
+            error,
+          );
           throw team;
         }
       }),
@@ -88,25 +149,107 @@ export class HockeyData {
       }
     }
 
-    console.info('updated NHL');
+    console.info('updated ', league);
     return allGames;
   };
 
-  fetchGamesData = async (id: string) => {
+  fetchGamesData = async (id: string, league: string) => {
     try {
-      const fetchedGames = await fetch(
-        `https://api-web.nhle.com/v1/club-schedule-season/${id}/now`,
-      );
-      const fetchGames = await fetchedGames.json();
+      let fetchGames;
+      if (league === League.NHL) {
+        const fetchedGames = await fetch(
+          `https://api-web.nhle.com/v1/club-schedule-season/${id}/now`,
+        );
+        const tempGames = await fetchedGames.json();
+
+        fetchGames = await tempGames.games;
+      }
+      if (league === League.PWHL) {
+        const fetchedGames = await fetch(
+          `https://lscluster.hockeytech.com/feed/?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
+        );
+        const allFetchGames = (await fetchedGames.json()).SiteKit.Schedule;
+        fetchGames = allFetchGames.filter(
+          (game) =>
+            game.home_team_code === id || game.visiting_team_code === id,
+        );
+        console.info('yes', id);
+        return (await fetchGames.games) || fetchGames;
+      }
       console.info('yes', id);
-      return await fetchGames.games;
+      return (await fetchGames.games) || fetchGames;
     } catch (error) {
       console.error('Error fetching games:', id, error);
       throw id;
     }
   };
 
-  getNhlTeamSchedule = async (
+  getPWHLTeamschedule = async (
+    id: string,
+    value: string,
+    leagueLogos: { string },
+    color: string | undefined,
+    backgroundColor: string | undefined,
+  ) => {
+    const leagueName = League.PWHL;
+    let games: PWHLGameAPI[];
+    games = await this.fetchGamesData(id, League.PWHL);
+    console.log({ games });
+    if (!games || games.length === 0) {
+      return [];
+    }
+    let gamesData: GameFormatted[] = games
+      .map((game: PWHLGameAPI) => {
+        const {
+          home_team_code,
+          visiting_team_code,
+          home_team_name,
+          visiting_team_name,
+          home_team_city,
+          visiting_team_city,
+          venue_name,
+          date_played,
+          GameDateISO8601,
+          timezone,
+        } = game;
+
+        const now = new Date();
+        const isActive = true;
+        if (new Date(GameDateISO8601) < now) return;
+
+        const awayTeamName = `${visiting_team_city} ${visiting_team_name}`;
+        const homeTeamName = `${home_team_city} ${home_team_name}`;
+
+        return {
+          arenaName: capitalize(venue_name) || '',
+          awayTeam: capitalize(awayTeamName),
+          awayTeamId: `${leagueName}-${visiting_team_code}`,
+          awayTeamLogo: leagueLogos[visiting_team_code],
+          awayTeamShort: visiting_team_code,
+          backgroundColor: backgroundColor || undefined,
+          color: color || undefined,
+          gameDate: date_played,
+          homeTeam: capitalize(homeTeamName),
+          homeTeamId: `${leagueName}-${home_team_code}`,
+          homeTeamLogo: leagueLogos[home_team_code],
+          homeTeamShort: home_team_code,
+          league: leagueName,
+          placeName: capitalize(home_team_city),
+          selectedTeam: home_team_code === id || visiting_team_code === id,
+          show: home_team_code === id || visiting_team_code === id,
+          startTimeUTC: GameDateISO8601,
+          teamSelectedId: value,
+          isActive,
+          uniqueId: `${value}-${date_played}-${game.id}`,
+          venueTimezone: timezone,
+        };
+      })
+      .filter((game) => game !== undefined && game !== null);
+    console.log({ gamesData });
+    return gamesData;
+  };
+
+  getNHLTeamschedule = async (
     id: string,
     value: string,
     leagueLogos: { string },
@@ -114,7 +257,7 @@ export class HockeyData {
     backgroundColor: string | undefined,
   ) => {
     let games: NHLGameAPI[];
-    games = await this.fetchGamesData(id);
+    games = await this.fetchGamesData(id, League.NHL);
 
     let gamesData: GameFormatted[] = games.map((game: NHLGameAPI) => {
       const {

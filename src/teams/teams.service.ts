@@ -45,12 +45,17 @@ export class TeamService {
         let activeTeams: TeamType[] = [];
         let teams: TeamType[] = [];
         try {
-          teams = await getESPNTeams(league);
+          if (league === League.PWHL) {
+            const hockeyData = new HockeyData();
+            teams = await hockeyData.getPWHLTeams();
+          } else {
+            teams = await getESPNTeams(league);
+          }
         } catch (error) {
           console.error(`Error fetching teams for league ${league}:`, error);
           if (league === League.NHL) {
             const hockeyData = new HockeyData();
-            teams = await hockeyData.getNhlTeams();
+            teams = await hockeyData.getNHLTeams();
           }
         }
         if (teams.length) {
