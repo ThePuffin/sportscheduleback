@@ -1,9 +1,9 @@
 import { readableDate } from '../../utils/date';
 import { League } from '../../utils/enum';
-import type { MLBGameAPI } from '../../utils/interface/gameMLB';
-import type { NBAGameAPI } from '../../utils/interface/gameNBA';
-import type { NFLGameAPI } from '../../utils/interface/gameNFL';
+import type { MLSGameAPI } from '../../utils/interface/gameMLS';
+import { CollegeRanking } from '../interface/college-ranking';
 import type { ESPNTeam, TeamESPN, TeamType } from '../interface/team';
+import { TeamDetailed } from '../interface/teamDetails';
 import { capitalize } from '../utils';
 const { NODE_ENV } = process.env;
 
@@ -54,7 +54,10 @@ const getDivision = async (
   const url = leaguesData[leagueName].fetchDetails + id;
   const fetchedTeams = await fetch(url);
   const fetchTeams = await fetchedTeams.json();
-  const { standingSummary = '' } = fetchTeams.team;
+  const { standingSummary = '' } = fetchTeams?.team;
+  if (standingSummary === '') {
+    return { conferenceName: '', divisionName: '' };
+  }
   const cut = standingSummary.split(' ');
   if (leagueName === League.NFL) {
     return { conferenceName: cut[3] || '', divisionName: cut[2] || '' };
@@ -172,12 +175,20 @@ const getEachTeamSchedule = async ({
     try {
       const link = leaguesData[leagueName].fetchGames.replace('${id}', id);
       const fetchedGames = await fetch(link);
-      const fetchGames: MLBGameAPI | NBAGameAPI | NFLGameAPI =
-        await fetchedGames.json();
-      games =
-        fetchGames?.events?.length && fetchGames.events[0]
-          ? fetchGames.events
-          : [];
+      const fetchGames: MLSGameAPI = await fetchedGames.json();
+      const { events, team } = fetchGames;
+
+      games = events && events?.length && events[0] ? events : [];
+
+      const now = new Date();
+      let gamesFilter = games.filter(({ date }) => new Date(date) >= now);
+      if (gamesFilter.length === 0) {
+        const link = leaguesData[leagueName].fetchTeam + '/' + id;
+        const fetchedTeams = await fetch(link);
+        const fetchTeams: TeamDetailed = await fetchedTeams.json();
+        games = fetchTeams?.team?.nextEvent || [];
+      }
+
       console.info('yes', value);
     } catch (error) {
       console.info('no', value, error);

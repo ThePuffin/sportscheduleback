@@ -10,6 +10,8 @@ export interface TeamType {
   league: string;
   updateDate?: string;
   abbrev?: string;
+  color?: string;
+  backgroundColor?: string;
 }
 
 export interface Props {
