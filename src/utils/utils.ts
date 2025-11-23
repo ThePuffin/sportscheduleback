@@ -55,6 +55,13 @@ const leagueConfigs = {
     endSeason: '10',
     endPlayoffs: '11',
   },
+  // [League.PWHL]: {
+  //   sport: 'hockey',
+  //   league: 'pwhl',
+  //   startSeason: '11',
+  //   endSeason: '04',
+  //   endPlayoffs: '06',
+  // },
 };
 
 const isInThePeriod = (start: string, end: string) => {
@@ -80,14 +87,18 @@ const isInThePeriod = (start: string, end: string) => {
 };
 
 const isCurrentSeason = (leagueName: string) => {
+  if (!leagueConfigs[leagueName]) {
+    return true;
+  }
   const { startSeason, endSeason } = leagueConfigs[leagueName];
-  if (!startSeason || !endSeason) return false;
   return isInThePeriod(startSeason, endSeason);
 };
 
 const isendPlayoffs = (leagueName: string) => {
+  if (!leagueConfigs[leagueName]) {
+    return false;
+  }
   const { endPlayoffs, endSeason } = leagueConfigs[leagueName];
-  if (!endPlayoffs || !endSeason) return true;
   return isInThePeriod(endSeason, endPlayoffs);
 };
 
