@@ -55,13 +55,13 @@ const leagueConfigs = {
     endSeason: '10',
     endPlayoffs: '11',
   },
-  // [League.PWHL]: {
-  //   sport: 'hockey',
-  //   league: 'pwhl',
-  //   startSeason: '11',
-  //   endSeason: '04',
-  //   endPlayoffs: '06',
-  // },
+  [League.PWHL]: {
+    sport: 'hockey',
+    league: 'pwhl',
+    startSeason: '11',
+    endSeason: '04',
+    endPlayoffs: '06',
+  },
 };
 
 const isInThePeriod = (start: string, end: string) => {
