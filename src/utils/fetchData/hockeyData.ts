@@ -236,7 +236,7 @@ export class HockeyData {
           placeName: capitalize(venue_location),
           selectedTeam: home_team_code === id,
           show: home_team_code === id,
-          startTimeUTC: GameDateISO8601,
+          startTimeUTC: new Date(GameDateISO8601).toISOString(),
           teamSelectedId: value,
           isActive,
           uniqueId: `${value}-${date_played}-${game.id}`,
