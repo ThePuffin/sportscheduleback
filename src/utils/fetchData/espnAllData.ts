@@ -236,7 +236,7 @@ const getEachTeamSchedule = async ({
           placeName: capitalize(venue?.address?.city) ?? '',
           selectedTeam: homeAbbrev === abbrev,
           show: homeAbbrev === abbrev,
-          startTimeUTC: date,
+          startTimeUTC: new Date(date).toISOString(),
           teamSelectedId: value,
           isActive,
           uniqueId: id ? `${value}-${id}` : `${value}-${gameDate}-${number}`,

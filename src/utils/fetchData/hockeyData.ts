@@ -290,7 +290,7 @@ export class HockeyData {
         placeName: capitalize(homeTeam.placeName.default),
         selectedTeam: homeTeam.abbrev === id,
         show: homeTeam.abbrev === id,
-        startTimeUTC,
+        startTimeUTC: new Date(startTimeUTC).toISOString(),
         teamSelectedId: value,
         isActive,
         uniqueId: `${value}-${gameDate}-1`,
