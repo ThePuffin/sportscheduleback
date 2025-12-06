@@ -218,19 +218,21 @@ const getEachTeamSchedule = async ({
         number++;
         const awayAbbrev = `${awayTeam.team.abbreviation}`;
         const homeAbbrev = `${homeTeam.team.abbreviation}`;
-
+        
         return {
           arenaName: capitalize(venue?.fullName) ?? '',
           awayTeam: capitalize(awayTeam.team.displayName),
           awayTeamId: `${leagueName}-${awayAbbrev}`,
-          awayTeamLogo: leagueLogos[awayAbbrev],
+          awayTeamLogo:
+            awayTeam.team?.logos?.[2]?.href || leagueLogos[awayAbbrev],
           awayTeamShort: awayAbbrev,
           backgroundColor: backgroundColor ?? undefined,
           color: color ?? undefined,
           gameDate: gameDate,
           homeTeam: capitalize(homeTeam.team.displayName),
           homeTeamId: `${leagueName}-${homeAbbrev}`,
-          homeTeamLogo: leagueLogos[homeAbbrev],
+          homeTeamLogo:
+            homeTeam.team?.logos?.[2]?.href || leagueLogos[homeAbbrev],
           homeTeamShort: homeAbbrev,
           league: leagueName.toUpperCase(),
           placeName: capitalize(venue?.address?.city) ?? '',

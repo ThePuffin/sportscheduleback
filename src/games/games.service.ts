@@ -4,7 +4,7 @@ import { DeleteResult } from 'mongodb';
 import * as mongoose from 'mongoose';
 import { Model } from 'mongoose';
 import { TeamService } from '../teams/teams.service';
-import { readableDate } from '../utils/date';
+import { addHours, readableDate } from '../utils/date';
 import { League } from '../utils/enum';
 import { getTeamsSchedule } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
@@ -23,11 +23,7 @@ export class GameService {
     private readonly teamService: TeamService,
   ) {}
 
-  addHours = (date, nbHours) => {
-    const day = new Date(date);
-    day.setTime(day.getTime() + nbHours * 60 * 60 * 1000);
-    return day;
-  };
+
 
   getTeams = (teamSelectedIds, games) => {
     if (teamSelectedIds) {
@@ -402,7 +398,7 @@ export class GameService {
   async removeDuplicatesAndOlds() {
     console.info('Removing duplicates and old games...');
     const games = await this.gameModel.find().exec();
-    const nowMinus12Hour = this.addHours(new Date(), -12);
+    const nowMinus12Hour = addHours(new Date(), -12);
     const oldGames = games.filter(({ startTimeUTC }) => {
       return new Date(startTimeUTC) < new Date(nowMinus12Hour);
     });
