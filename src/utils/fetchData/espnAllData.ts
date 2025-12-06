@@ -1,11 +1,9 @@
 import { readableDate } from '../../utils/date';
 import { League } from '../../utils/enum';
 import type { MLSGameAPI } from '../../utils/interface/gameMLS';
-import { CollegeRanking } from '../interface/college-ranking';
 import type { ESPNTeam, TeamESPN, TeamType } from '../interface/team';
 import { TeamDetailed } from '../interface/teamDetails';
 import { capitalize } from '../utils';
-const { NODE_ENV } = process.env;
 
 const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
 
@@ -79,13 +77,11 @@ const getDivision = async (
 
 export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
   try {
-    let allTeams: ESPNTeam[];
-
     const fetchedTeams = await fetch(leaguesData[leagueName].fetchTeam);
     const fetchTeams: TeamESPN = await fetchedTeams.json();
     const { sports } = fetchTeams;
     const { leagues } = sports[0];
-    allTeams = leagues[0].teams;
+    const allTeams: ESPNTeam[] = leagues[0].teams;
 
     const activeTeams: TeamType[] = allTeams
       .filter(({ team }) => team.isActive)
@@ -176,12 +172,12 @@ const getEachTeamSchedule = async ({
       const link = leaguesData[leagueName].fetchGames.replace('${id}', id);
       const fetchedGames = await fetch(link);
       const fetchGames: MLSGameAPI = await fetchedGames.json();
-      const { events, team } = fetchGames;
+      const { events } = fetchGames;
 
       games = events && events?.length && events[0] ? events : [];
 
       const now = new Date();
-      let gamesFilter = games.filter(({ date }) => new Date(date) >= now);
+      const gamesFilter = games.filter(({ date }) => new Date(date) >= now);
       if (gamesFilter.length === 0) {
         const link = leaguesData[leagueName].fetchTeam + '/' + id;
         const fetchedTeams = await fetch(link);
@@ -213,8 +209,12 @@ const getEachTeamSchedule = async ({
         const gameDate = readableDate(new Date(currentDate));
         const isActive = true;
 
-        const {team :awayTeam} = competitors.find((team) => team.homeAway === 'away');
-        const {team : homeTeam} = competitors.find((team) => team.homeAway === 'home');
+        const { team: awayTeam } = competitors.find(
+          (team) => team.homeAway === 'away',
+        );
+        const { team: homeTeam } = competitors.find(
+          (team) => team.homeAway === 'home',
+        );
         number++;
         const awayAbbrev = `${awayTeam.abbreviation}`;
         const homeAbbrev = `${homeTeam.abbreviation}`;
@@ -223,16 +223,14 @@ const getEachTeamSchedule = async ({
           arenaName: capitalize(venue?.fullName) ?? '',
           awayTeam: capitalize(awayTeam.displayName),
           awayTeamId: `${leagueName}-${awayAbbrev}`,
-          awayTeamLogo:
-            awayTeam?.logos?.[2]?.href || leagueLogos[awayAbbrev],
+          awayTeamLogo: awayTeam?.logos?.[2]?.href || leagueLogos[awayAbbrev],
           awayTeamShort: awayAbbrev,
           backgroundColor: backgroundColor ?? undefined,
           color: color ?? undefined,
           gameDate: gameDate,
           homeTeam: capitalize(homeTeam.displayName),
           homeTeamId: `${leagueName}-${homeAbbrev}`,
-          homeTeamLogo:
-            homeTeam?.logos?.[2]?.href || leagueLogos[homeAbbrev],
+          homeTeamLogo: homeTeam?.logos?.[2]?.href || leagueLogos[homeAbbrev],
           homeTeamShort: homeAbbrev,
           league: leagueName.toUpperCase(),
           placeName: capitalize(venue?.address?.city) ?? '',

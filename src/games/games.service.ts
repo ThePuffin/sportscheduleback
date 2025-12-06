@@ -23,8 +23,6 @@ export class GameService {
     private readonly teamService: TeamService,
   ) {}
 
-
-
   getTeams = (teamSelectedIds, games) => {
     if (teamSelectedIds) {
       return teamSelectedIds.split(',');

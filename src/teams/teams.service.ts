@@ -48,7 +48,7 @@ export class TeamService {
           !collegeLeagueValues.includes(league as unknown as CollegeLeague),
       );
       for (const league of leagues) {
-        let activeTeams: TeamType[] = [];
+        const activeTeams: TeamType[] = [];
         let teams: TeamType[] = [];
         try {
           if (league === League.PWHL) {

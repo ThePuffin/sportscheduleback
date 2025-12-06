@@ -10,7 +10,6 @@ import type {
 import { PWHLGameAPI } from '../interface/gamePWHL';
 import { capitalize } from '../utils';
 const leagueName = League.NHL;
-const { NODE_ENV } = process.env;
 
 export class HockeyData {
   async getNHLTeams(): Promise<TeamType[]> {
@@ -69,13 +68,12 @@ export class HockeyData {
   async getPWHLTeams(): Promise<TeamType[]> {
     try {
       const leagueName = League.PWHL;
-      let allTeams: TeamPWHL[];
 
       const fetchedTeams = await fetch(
         'https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=teamsbyseason&key=446521baf8c38984&client_code=pwhl',
       );
       const fetchTeams: PWHLResponse = await fetchedTeams.json();
-      allTeams = await fetchTeams?.SiteKit?.Teamsbyseason;
+      const allTeams: TeamPWHL[] = await fetchTeams?.SiteKit?.Teamsbyseason;
       const activeTeams = allTeams.map((team: TeamPWHL) => {
         const { code, name, team_logo_url, division_long_name } = team;
         const teamID = code;
@@ -190,12 +188,12 @@ export class HockeyData {
     backgroundColor: string | undefined,
   ) => {
     const leagueName = League.PWHL;
-    let games: PWHLGameAPI[];
-    games = await this.fetchGamesData(id, League.PWHL);
+
+    const games: PWHLGameAPI[] = await this.fetchGamesData(id, League.PWHL);
     if (!games || games.length === 0) {
       return [];
     }
-    let gamesData: GameFormatted[] = games
+    const gamesData: GameFormatted[] = games
       .map((game: PWHLGameAPI) => {
         const {
           home_team_code,
@@ -254,8 +252,7 @@ export class HockeyData {
     color: string | undefined,
     backgroundColor: string | undefined,
   ) => {
-    let games: NHLGameAPI[];
-    games = await this.fetchGamesData(id, League.NHL);
+    const games: NHLGameAPI[] = await this.fetchGamesData(id, League.NHL);
 
     let gamesData: GameFormatted[] = games.map((game: NHLGameAPI) => {
       const {

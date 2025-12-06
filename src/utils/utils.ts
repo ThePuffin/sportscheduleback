@@ -112,7 +112,7 @@ export const needRefresh = (leagueName: string, games) => {
   const daysToRefresh = numberOfDaysToRefresh(leagueName);
   const keys = Object.keys(games);
   if (keys.length === 0) return true;
-  let teamRefreshNeeded = [];
+  const teamRefreshNeeded = [];
 
   const firstkey = keys[0];
   const firstGame = games[firstkey][0];

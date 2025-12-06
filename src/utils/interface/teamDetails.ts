@@ -1,17 +1,6 @@
-/**
- * Interface for the root response object from the ESPN team detail endpoint.
- * (The provided JSON is missing the outer "sport" and "league" properties,
- * but includes "team", "defaultLeague", and "nextEvent" at the root level).
- */
 export interface TeamDetailed {
   team: Team;
-  // e.g., "usa.1"
-
-  // The provided JSON does not explicitly include 'sport' at the root,
-  // but it's often an implicit field or inferred from 'defaultLeague'.
 }
-
-// --- Team and Team-Related Interfaces ---
 
 export interface Team {
   id: string;
@@ -28,7 +17,7 @@ export interface Team {
   alternateColor: string;
   isActive: boolean;
   logos: Logo[];
-  record: {}; // Empty object in this specific response. Would contain TeamRecord if available.
+  record: object; // Empty object in this specific response. Would contain TeamRecord if available.
   groups: { id: string }; // Simplified based on the provided data.
   links: Link[];
   nextEvent: NextEvent[];
