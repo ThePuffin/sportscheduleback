@@ -213,26 +213,26 @@ const getEachTeamSchedule = async ({
         const gameDate = readableDate(new Date(currentDate));
         const isActive = true;
 
-        const awayTeam = competitors.find((team) => team.homeAway === 'away');
-        const homeTeam = competitors.find((team) => team.homeAway === 'home');
+        const {team :awayTeam} = competitors.find((team) => team.homeAway === 'away');
+        const {team : homeTeam} = competitors.find((team) => team.homeAway === 'home');
         number++;
-        const awayAbbrev = `${awayTeam.team.abbreviation}`;
-        const homeAbbrev = `${homeTeam.team.abbreviation}`;
-        
+        const awayAbbrev = `${awayTeam.abbreviation}`;
+        const homeAbbrev = `${homeTeam.abbreviation}`;
+
         return {
           arenaName: capitalize(venue?.fullName) ?? '',
-          awayTeam: capitalize(awayTeam.team.displayName),
+          awayTeam: capitalize(awayTeam.displayName),
           awayTeamId: `${leagueName}-${awayAbbrev}`,
           awayTeamLogo:
-            awayTeam.team?.logos?.[2]?.href || leagueLogos[awayAbbrev],
+            awayTeam?.logos?.[2]?.href || leagueLogos[awayAbbrev],
           awayTeamShort: awayAbbrev,
           backgroundColor: backgroundColor ?? undefined,
           color: color ?? undefined,
           gameDate: gameDate,
-          homeTeam: capitalize(homeTeam.team.displayName),
+          homeTeam: capitalize(homeTeam.displayName),
           homeTeamId: `${leagueName}-${homeAbbrev}`,
           homeTeamLogo:
-            homeTeam.team?.logos?.[2]?.href || leagueLogos[homeAbbrev],
+            homeTeam?.logos?.[2]?.href || leagueLogos[homeAbbrev],
           homeTeamShort: homeAbbrev,
           league: leagueName.toUpperCase(),
           placeName: capitalize(venue?.address?.city) ?? '',
