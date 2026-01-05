@@ -268,7 +268,7 @@ export class GameService {
     const filtredGames = await this.gameModel
       .find(filter)
       .sort({ startTimeUTC: 1 })
-      .limit(maxResults ? parseInt(maxResults, 10) : 0)
+      .limit(maxResults ? Number.parseInt(maxResults, 10) : 0)
       .exec();
 
     const games = Array.isArray(filtredGames) ? filtredGames : [];
@@ -333,13 +333,32 @@ export class GameService {
   }
 
   async findByDate(gameDate: string) {
-    const filter = { gameDate: gameDate, isActive: true };
+    const today = readableDate(new Date());
+    const filter: any = { isActive: true };
+
+    if (gameDate === today) {
+      const threeHoursAgo = new Date(addHours(new Date(), -3));
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayString = readableDate(yesterday);
+
+      filter.$or = [
+        { gameDate: gameDate },
+        {
+          gameDate: yesterdayString,
+          startTimeUTC: { $gte: threeHoursAgo.toISOString() },
+        },
+      ];
+    } else {
+      filter.gameDate = gameDate;
+    }
+
     const games = await this.gameModel
       .find(filter)
       .sort({ startTimeUTC: 1 })
       .exec();
 
-    if (!games.length) {
+    if (games.length === 0) {
       const allGames = await this.findAll();
       if (!allGames.length) {
         this.getAllGames();
@@ -430,11 +449,18 @@ export class GameService {
 
   async unactivateGames(teamId: string): Promise<void> {
     const games = await this.findByTeam(teamId, false);
+    const now = new Date();
+    const threeHoursAgo = new Date(addHours(now, -3));
 
     for (const date in games) {
       if (Array.isArray(games[date]) && games[date][0]?.awayTeamShort) {
-        games[date][0].isActive = false;
-        await this.create(games[date][0]);
+        const game = games[date][0];
+        const gameTime = new Date(game.startTimeUTC);
+        if (gameTime < now && gameTime > threeHoursAgo) {
+          continue;
+        }
+        game.isActive = false;
+        await this.create(game);
       }
     }
   }

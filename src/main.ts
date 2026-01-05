@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-const PORT = parseInt(process.env.PORT, 10) || 3000;
+const PORT = Number.parseInt(process.env.PORT, 10) || 3000;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

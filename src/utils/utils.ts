@@ -69,8 +69,8 @@ const isInThePeriod = (start: string, end: string) => {
   const year = today.getFullYear();
   const month = today.getMonth();
 
-  const startMonth = parseInt(start, 10) - 1;
-  const endMonth = parseInt(end, 10) - 1;
+  const startMonth = Number.parseInt(start, 10) - 1;
+  const endMonth = Number.parseInt(end, 10) - 1;
 
   if (startMonth <= endMonth) {
     // Season is within the same calendar year (e.g., March to September)
