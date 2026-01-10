@@ -393,6 +393,83 @@ export class GameService {
     }
   }
 
+  async findByDateHour(gameDate: string) {
+    const today = readableDate(new Date());
+    const filter: any = { isActive: true };
+
+    if (gameDate === today) {
+      const threeHoursAgo = new Date(addHours(new Date(), -3));
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayString = readableDate(yesterday);
+
+      filter.$or = [
+        { gameDate: gameDate },
+        {
+          gameDate: yesterdayString,
+          startTimeUTC: { $gte: threeHoursAgo.toISOString() },
+        },
+      ];
+    } else {
+      filter.gameDate = gameDate;
+    }
+
+    const games = await this.gameModel
+      .find(filter)
+      .sort({ startTimeUTC: 1 })
+      .exec();
+
+    if (games.length === 0) {
+      const allGames = await this.findAll();
+      if (!allGames.length) {
+        this.getAllGames();
+      }
+      return {};
+    } else {
+      for (const currentLeague of Object.values(League)) {
+        const filtredGames = games.filter(
+          ({ isActive, awayTeamId, league }) => {
+            return (
+              isActive === true &&
+              awayTeamId !== undefined &&
+              awayTeamId !== '' &&
+              league.toUpperCase() === currentLeague.toUpperCase()
+            );
+          },
+        );
+
+        const gamesIndex = randomNumber(filtredGames.length - 1);
+        const randomGames = filtredGames[gamesIndex];
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (new Date(randomGames?.updateDate) < yesterday) {
+          await this.getLeagueGames(currentLeague, false);
+        }
+      }
+
+      // avoid dupplicate games
+      const filteredGames = games.filter(({ homeTeamId, teamSelectedId }) => {
+        return homeTeamId === teamSelectedId;
+      });
+
+      const gamesByTimeSlot: { [key: string]: Game[] } = {};
+      filteredGames.forEach((game) => {
+        const date = new Date(game.startTimeUTC);
+        const hours = date.getUTCHours().toString().padStart(2, '0');
+        const minutes = date.getUTCMinutes();
+        const minutesStr = minutes < 30 ? '00' : '30';
+        const timeSlot = `${hours}:${minutesStr}`;
+
+        if (!gamesByTimeSlot[timeSlot]) {
+          gamesByTimeSlot[timeSlot] = [];
+        }
+        gamesByTimeSlot[timeSlot].push(game);
+      });
+
+      return gamesByTimeSlot;
+    }
+  }
+
   update(uniqueId: string, updateGameDto: UpdateGameDto) {
     const filter = { uniqueId: uniqueId };
     return this.gameModel.updateOne(filter, updateGameDto);

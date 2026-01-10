@@ -44,6 +44,11 @@ export class GamesController {
     return this.GameService.findByDate(gameDate);
   }
 
+  @Get('/hour/:gameDate')
+  findByDateHour(@Param('gameDate') gameDate: string) {
+    return this.GameService.findByDateHour(gameDate);
+  }
+
   @Get('/league/:league')
   findByLeague(
     @Param('league') league: string,

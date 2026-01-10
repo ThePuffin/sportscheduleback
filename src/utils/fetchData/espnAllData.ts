@@ -7,15 +7,11 @@ import { capitalize } from '../utils';
 
 const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
 
-// const ESPNAbbrevs = {
-//   NHL: {
-//     NJ: 'NJD',
-//     TB: 'TBL',
-//     LA: 'LAK',
-//     SJ: 'SJS',
-//     VG: 'VGK',
-//   },
-// };
+const ESPNAbbrevs = {
+  NHL: {
+    UTAH: 'UTA',
+  },
+};
 
 const leagueConfigs = {
   [League.NHL]: { sport: 'hockey', league: 'nhl' },
@@ -96,7 +92,11 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
           color,
           alternateColor,
         } = team;
-        const teamID = abbreviation;
+        let teamID = abbreviation;
+
+        if (ESPNAbbrevs[leagueName][teamID]) {
+          teamID = ESPNAbbrevs[leagueName][teamID];
+        }
         const uniqueId = `${leagueName}-${teamID}`;
         return {
           uniqueId,
