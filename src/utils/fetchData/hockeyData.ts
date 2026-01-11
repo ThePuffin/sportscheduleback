@@ -213,8 +213,12 @@ export class HockeyData {
         const isActive = true;
         if (new Date(GameDateISO8601) < now) return;
 
-        const awayTeamName = `${visiting_team_city} ${visiting_team_name}`;
-        const homeTeamName = `${home_team_city} ${home_team_name}`;
+        const awayTeamName = visiting_team_name.includes(visiting_team_city)
+          ? visiting_team_name
+          : `${visiting_team_city} ${visiting_team_name}`;
+        const homeTeamName = home_team_name.includes(home_team_city)
+          ? home_team_name
+          : `${home_team_city} ${home_team_name}`;
         const arena = venue_name.split('|')[0];
 
         return {
