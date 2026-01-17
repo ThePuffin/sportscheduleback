@@ -232,6 +232,8 @@ const getEachTeamSchedule = async ({
           homeTeamId: `${leagueName}-${homeAbbrev}`,
           homeTeamLogo: homeTeam?.logos?.[2]?.href || leagueLogos[homeAbbrev],
           homeTeamShort: homeAbbrev,
+          homeTeamScore: null,
+          awayTeamScore: null,
           league: leagueName.toUpperCase(),
           placeName: capitalize(venue?.address?.city) ?? '',
           selectedTeam: homeAbbrev === abbrev,
@@ -250,5 +252,186 @@ const getEachTeamSchedule = async ({
   } catch (error) {
     console.error('Error fetching data', error);
     return {};
+  }
+};
+
+export const getESPNScores = async (leagueKey: string, date: string) => {
+  try {
+    const results = [];
+    if (!leagueConfigs[leagueKey]) return results;
+    const { sport, league } = leagueConfigs[leagueKey];
+    const base = `${espnAPI}${sport}/${league}`;
+    // ESPN scoreboard endpoint: /scoreboard?dates=YYYYMMDD
+    const datestr = date.replace(/-/g, '');
+    const url = `${base}/scoreboard?dates=${datestr}`;
+    try {
+      const res = await fetch(url);
+      const json = await res.json();
+      const events = json?.events || [];
+      let finishedCount = 0;
+      for (const ev of events) {
+        const competitions = ev.competitions?.[0];
+        if (!competitions) continue;
+        const status = competitions.status?.type || competitions.status;
+        const displayClock = competitions.status?.displayClock || '';
+
+        const now = new Date();
+        const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+        const eventStart = ev.date ? new Date(ev.date) : null;
+
+        const statusIndicatesFinished =
+          status?.completed === true ||
+          status?.state === 'post' ||
+          (typeof status?.name === 'string' &&
+            /final|completed|post/i.test(status.name)) ||
+          (typeof displayClock === 'string' &&
+            /final|completed/i.test(displayClock));
+
+        const startedLongAgo = eventStart ? eventStart <= threeHoursAgo : false;
+        const isFinished = statusIndicatesFinished || startedLongAgo;
+
+        // Debug log for each event to help troubleshoot missing updates
+        try {
+          console.info(
+            `[getESPNScores][EVENT] league=${leagueKey} id=${ev.id} start=${ev.date} completed=${status?.completed} state=${status?.state} name=${status?.name} displayClock=${displayClock} startedLongAgo=${startedLongAgo} isFinished=${isFinished}`,
+          );
+        } catch (e) {
+          // ignore logging errors
+        }
+
+        // If not finished, try to fetch a boxscore/summary link (sometimes scores are available even if status not final)
+        if (!isFinished) {
+          try {
+            const tryFetchDetail = async () => {
+              try {
+                const url = `${espnAPI}${sport}/${league}/summary?event=${ev.id}`;
+                const r = await fetch(url);
+                if (!r.ok) return null;
+                const j = await r.json();
+                // normalize competitions structure
+                const comp =
+                  j?.header?.competitions?.[0] ||
+                  j?.competitions?.[0] ||
+                  competitions;
+                if (!comp) return null;
+                const home = comp.competitors?.find(
+                  (c) => c.homeAway === 'home',
+                );
+                const away = comp.competitors?.find(
+                  (c) => c.homeAway === 'away',
+                );
+                const homeScore =
+                  home?.score !== undefined && home?.score !== null
+                    ? Number(home.score)
+                    : null;
+                const awayScore =
+                  away?.score !== undefined && away?.score !== null
+                    ? Number(away.score)
+                    : null;
+                const statusDetail = comp.status?.type || comp.status;
+                const displayClockDetail = comp.status?.displayClock || '';
+                const statusIndicatesFinishedDetail =
+                  statusDetail?.completed === true ||
+                  statusDetail?.state === 'post' ||
+                  (typeof statusDetail?.name === 'string' &&
+                    /final|completed|post/i.test(statusDetail.name)) ||
+                  (typeof displayClockDetail === 'string' &&
+                    /final|completed/i.test(displayClockDetail));
+                const isFinalDetail =
+                  statusIndicatesFinishedDetail || startedLongAgo;
+                if (homeScore === null && awayScore === null) return null;
+                const id =
+                  ev.id || j.id || (comp.id || Math.random()).toString();
+                return {
+                  uniqueId: id,
+                  league: leagueKey,
+                  startTimeUTC: ev.date,
+                  homeTeamScore: homeScore,
+                  awayTeamScore: awayScore,
+                  homeTeamId: home
+                    ? `${leagueKey}-${home.team?.abbreviation || home.team?.id}`
+                    : undefined,
+                  awayTeamId: away
+                    ? `${leagueKey}-${away.team?.abbreviation || away.team?.id}`
+                    : undefined,
+                  homeTeamShort: home?.team?.abbreviation || undefined,
+                  awayTeamShort: away?.team?.abbreviation || undefined,
+                  isFinal:
+                    statusIndicatesFinishedDetail === true ||
+                    isFinalDetail === true,
+                  status: statusDetail?.name || displayClockDetail || '',
+                };
+              } catch (e) {
+                console.debug('[getESPNScores][BOX_FETCH] error', e);
+                return null;
+              }
+            };
+
+            const detail = await tryFetchDetail();
+            if (detail) {
+              results.push(detail);
+              console.info(
+                `[getESPNScores][BOX] pushed detail for event ${ev.id}`,
+              );
+              continue;
+            }
+          } catch (e) {
+            // ignore
+          }
+          continue;
+        }
+
+        const competitors = competitions.competitors || [];
+        const home = competitors.find((c) => c.homeAway === 'home');
+        const away = competitors.find((c) => c.homeAway === 'away');
+        const id =
+          ev.id ||
+          `${ev.date}-${(competitions.id || Math.random()).toString()}`;
+
+        const homeScore =
+          home?.score !== undefined && home?.score !== null
+            ? Number(home.score)
+            : null;
+        const awayScore =
+          away?.score !== undefined && away?.score !== null
+            ? Number(away.score)
+            : null;
+
+        finishedCount++;
+        const normalized = {
+          uniqueId: id,
+          league: leagueKey,
+          startTimeUTC: ev.date,
+          homeTeamScore: homeScore,
+          awayTeamScore: awayScore,
+          homeTeamId: home
+            ? `${leagueKey}-${home.team?.abbreviation || home.team?.id}`
+            : undefined,
+          awayTeamId: away
+            ? `${leagueKey}-${away.team?.abbreviation || away.team?.id}`
+            : undefined,
+          homeTeamShort: home?.team?.abbreviation || undefined,
+          awayTeamShort: away?.team?.abbreviation || undefined,
+          isFinal: statusIndicatesFinished === true,
+          status: status?.name || displayClock || '',
+        };
+        results.push(normalized);
+        try {
+          console.debug('[getESPNScores][NORMALIZED]', normalized);
+        } catch (e) {
+          // ignore
+        }
+      }
+      console.info(
+        `[getESPNScores] ${leagueKey} ${url} -> events=${events.length} finished=${finishedCount}`,
+      );
+    } catch (err) {
+      console.error(`Error fetching ESPN scores for ${leagueKey}:`, err);
+    }
+
+    return results;
+  } catch (error) {
+    console.error('Error in getESPNScores', error);
+    return [];
   }
 };

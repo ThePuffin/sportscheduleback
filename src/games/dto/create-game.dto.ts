@@ -28,6 +28,12 @@ export class CreateGameDto {
   @ApiProperty()
   homeTeamLogo: string;
 
+  @ApiProperty({ required: false, nullable: true })
+  homeTeamScore: number | null;
+
+  @ApiProperty({ required: false, nullable: true })
+  awayTeamScore: number | null;
+
   @ApiProperty()
   divisionName: string;
 

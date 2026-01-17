@@ -78,6 +78,11 @@ export class GamesController {
     return this.GameService.getLeagueGames(league, true);
   }
 
+  @Post('/scores')
+  async fetchScores()  {
+    return this.GameService.fetchGamesScores();
+  }
+
   @Patch(':uniqueId')
   update(
     @Param('uniqueId') uniqueId: string,

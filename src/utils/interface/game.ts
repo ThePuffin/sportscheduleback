@@ -4,6 +4,8 @@ export interface GameFormatted {
   awayTeam: string;
   awayTeamShort: string;
   awayTeamLogo: string;
+  awayTeamScore: number | null;
+  homeTeamScore: number | null;
   homeTeamId: string;
   homeTeam: string;
   homeTeamShort: string;

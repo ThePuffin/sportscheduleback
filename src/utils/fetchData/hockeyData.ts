@@ -234,6 +234,8 @@ export class HockeyData {
           homeTeamId: `${leagueName}-${home_team_code}`,
           homeTeamLogo: leagueLogos[home_team_code],
           homeTeamShort: home_team_code,
+          homeTeamScore: null,
+          awayTeamScore: null,
           league: leagueName,
           placeName: capitalize(venue_location),
           selectedTeam: home_team_code === id,
@@ -287,6 +289,8 @@ export class HockeyData {
         homeTeamId: `${leagueName}-${homeTeam.abbrev}`,
         homeTeamLogo: leagueLogos[homeTeam.abbrev],
         homeTeamShort: homeTeam.abbrev,
+        homeTeamScore: null,
+        awayTeamScore: null,
         league: leagueName,
         placeName: capitalize(homeTeam.placeName.default),
         selectedTeam: homeTeam.abbrev === id,
@@ -302,5 +306,33 @@ export class HockeyData {
     gamesData = gamesData.filter((game) => game !== undefined && game !== null);
 
     return gamesData;
+  };
+
+  getPWHLScores = async (date: string) => {
+    try {
+      const fetchedGames = await fetch(
+        `https://lscluster.hockeytech.com/feed/?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
+      );
+      const response = await fetchedGames.json();
+      const allGames: PWHLGameAPI[] = response.SiteKit.Schedule;
+
+      return allGames
+        .filter((game) => game.date_played === date)
+        .map((game) => ({
+          homeTeamScore: Number(game.home_goal_count),
+          awayTeamScore: Number(game.visiting_goal_count),
+          homeTeamShort: game.home_team_code,
+          awayTeamShort: game.visiting_team_code,
+          isFinal: game.final === '1',
+          status: game.game_status,
+          startTimeUTC: new Date(game.GameDateISO8601).toISOString(),
+          uniqueId: game.id,
+          gameDate: date,
+          league: League.PWHL,
+        }));
+    } catch (error) {
+      console.error('Error fetching PWHL scores:', error);
+      return [];
+    }
   };
 }

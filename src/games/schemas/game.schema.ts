@@ -32,6 +32,12 @@ export class Game {
   @Prop()
   homeTeamLogo: string;
 
+  @Prop({ required: false, default: null })
+  homeTeamScore: number | null;
+
+  @Prop({ required: false, default: null })
+  awayTeamScore: number | null;
+
   @Prop()
   divisionName: string;
 
