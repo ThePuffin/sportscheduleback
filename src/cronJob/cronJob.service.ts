@@ -41,7 +41,7 @@ export class CronService {
     await this.gameService.getLeagueGames(League.NHL);
   }
 
-  @Cron('*/5 * * * *') // EVERY 5 MINUTES
+  @Cron('*/30 * * * *') // EVERY 30 MINUTES
   async fetchAndApplyScores() {
     try {
       // get current time in New York
@@ -51,7 +51,7 @@ export class CronService {
       const hour = nyNow.getHours();
 
       // run only between 11:00 (11am) and 02:00 (2am next day) New York time
-      if (!(hour >= 11 || hour < 2)) {
+      if (!(hour >= 11 || hour < 3)) {
         return;
       }
 

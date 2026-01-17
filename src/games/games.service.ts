@@ -203,6 +203,18 @@ export class GameService {
 
   async findByTeam(teamSelectedId: string, needRefreshData = true) {
     const games = await this.filterGames({ teamSelectedIds: teamSelectedId });
+    for (const date in games) {
+      games[date] = games[date].filter((game) => {
+        return (
+          game.homeTeamScore === null ||
+          game.homeTeamScore === undefined ||
+          game.awayTeamScore === null ||
+          game.awayTeamScore === undefined
+        );
+      });
+      if (games[date].length === 0) delete games[date];
+    }
+
     const keys = Object.keys(games);
     if (
       needRefreshData &&
