@@ -12,6 +12,8 @@ export interface GameFormatted {
   homeTeamShort: string;
   homeTeamLogo: string;
   homeTeamLogoDark: string;
+  homeTeamRecord?: string;
+  awayTeamRecord?: string;
   arenaName: string;
   placeName: string;
   gameDate: string;

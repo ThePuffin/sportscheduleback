@@ -98,13 +98,19 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
           teamID = ESPNAbbrevs[leagueName][teamID];
         }
         const uniqueId = `${leagueName}-${teamID}`;
+        const teamLogo = logos?.[2]?.href ?? logos?.[0]?.href;
+        const teamLogoDark =
+          logos?.find((l) => l.rel?.includes('primary_logo_on_secondary_color'))
+            ?.href || teamLogo;
+
         return {
           uniqueId,
           value: uniqueId,
           id: id,
           abbrev: teamID,
           label: capitalize(displayName),
-          teamLogo: logos?.[2]?.href ?? logos?.[0]?.href,
+          teamLogo,
+          teamLogoDark,
           teamCommonName: capitalize(nickname),
           conferenceName: '',
           divisionName: '',

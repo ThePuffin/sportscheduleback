@@ -181,18 +181,39 @@ export class GameService {
         ...(await this.getLeagueGames(league, false)),
       };
     }
-    return this.gameModel.find().exec();
+    return this.findAll();
   }
 
-  async findAll(): Promise<Game[]> {
+  async findAll(): Promise<any[]> {
     const allGames = await this.gameModel
       .find({ isActive: true })
       .sort({ startTimeUTC: 1 })
+      .lean()
       .exec();
     if (Object.keys(allGames).length === 0 || allGames?.length === 0) {
       return this.getAllGames();
     }
-    return allGames;
+
+    const teams = await this.teamService.findAll();
+    const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
+
+    return allGames.map((game: any) => {
+      const homeTeam = teamsMap.get(game.homeTeamId);
+      const awayTeam = teamsMap.get(game.awayTeamId);
+      return {
+        ...game,
+        homeTeamRecord: homeTeam?.record || '',
+        awayTeamRecord: awayTeam?.record || '',
+        homeTeam: homeTeam?.label || game.homeTeam,
+        homeTeamShort: homeTeam?.abbrev || game.homeTeamShort,
+        homeTeamLogo: homeTeam?.teamLogo || game.homeTeamLogo,
+        homeTeamLogoDark: homeTeam?.teamLogoDark || game.homeTeamLogoDark,
+        awayTeam: awayTeam?.label || game.awayTeam,
+        awayTeamShort: awayTeam?.abbrev || game.awayTeamShort,
+        awayTeamLogo: awayTeam?.teamLogo || game.awayTeamLogo,
+        awayTeamLogoDark: awayTeam?.teamLogoDark || game.awayTeamLogoDark,
+      };
+    });
   }
 
   async findOne(uniqueId: string) {
@@ -288,14 +309,26 @@ export class GameService {
       .exec();
 
     const teams = await this.teamService.findAll();
-    const teamRecords = new Map(teams.map((t) => [t.uniqueId, t.record]));
+    const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
     const games = Array.isArray(filtredGames)
-      ? filtredGames.map((game: any) => ({
-          ...game,
-          homeTeamRecord: teamRecords.get(game.homeTeamId) || '',
-          awayTeamRecord: teamRecords.get(game.awayTeamId) || '',
-        }))
+      ? filtredGames.map((game: any) => {
+          const homeTeam = teamsMap.get(game.homeTeamId);
+          const awayTeam = teamsMap.get(game.awayTeamId);
+          return {
+            ...game,
+            homeTeamRecord: homeTeam?.record || '',
+            awayTeamRecord: awayTeam?.record || '',
+            homeTeam: homeTeam?.label || game.homeTeam,
+            homeTeamShort: homeTeam?.abbrev || game.homeTeamShort,
+            homeTeamLogo: homeTeam?.teamLogo || game.homeTeamLogo,
+            homeTeamLogoDark: homeTeam?.teamLogoDark || game.homeTeamLogoDark,
+            awayTeam: awayTeam?.label || game.awayTeam,
+            awayTeamShort: awayTeam?.abbrev || game.awayTeamShort,
+            awayTeamLogo: awayTeam?.teamLogo || game.awayTeamLogo,
+            awayTeamLogoDark: awayTeam?.teamLogoDark || game.awayTeamLogoDark,
+          };
+        })
       : [];
     const gamesByDay = {};
     const uniqueTeamSelectedIds = this.getTeams(teamSelectedIds, games);
@@ -417,17 +450,29 @@ export class GameService {
       }
 
       const teams = await this.teamService.findAll();
-      const teamRecords = new Map(teams.map((t) => [t.uniqueId, t.record]));
+      const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
       // avoid dupplicate games
       const filteredGames = games.filter(({ homeTeamId, teamSelectedId }) => {
         return homeTeamId === teamSelectedId;
       });
-      return filteredGames.map((game: any) => ({
-        ...game,
-        homeTeamRecord: teamRecords.get(game.homeTeamId) || '',
-        awayTeamRecord: teamRecords.get(game.awayTeamId) || '',
-      }));
+      return filteredGames.map((game: any) => {
+        const homeTeam = teamsMap.get(game.homeTeamId);
+        const awayTeam = teamsMap.get(game.awayTeamId);
+        return {
+          ...game,
+          homeTeamRecord: homeTeam?.record || '',
+          awayTeamRecord: awayTeam?.record || '',
+          homeTeam: homeTeam?.label || game.homeTeam,
+          homeTeamShort: homeTeam?.abbrev || game.homeTeamShort,
+          homeTeamLogo: homeTeam?.teamLogo || game.homeTeamLogo,
+          homeTeamLogoDark: homeTeam?.teamLogoDark || game.homeTeamLogoDark,
+          awayTeam: awayTeam?.label || game.awayTeam,
+          awayTeamShort: awayTeam?.abbrev || game.awayTeamShort,
+          awayTeamLogo: awayTeam?.teamLogo || game.awayTeamLogo,
+          awayTeamLogoDark: awayTeam?.teamLogoDark || game.awayTeamLogoDark,
+        };
+      });
     }
   }
 
