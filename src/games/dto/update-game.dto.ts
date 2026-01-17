@@ -17,6 +17,9 @@ export class UpdateGameDto {
   awayTeamLogo: string;
 
   @ApiProperty()
+  awayTeamLogoDark: string;
+
+  @ApiProperty()
   homeTeamId: string;
 
   @ApiProperty()
@@ -27,6 +30,9 @@ export class UpdateGameDto {
 
   @ApiProperty()
   homeTeamLogo: string;
+
+  @ApiProperty()
+  homeTeamLogoDark: string;
 
   @ApiProperty({ required: false, nullable: true })
   homeTeamScore: number | null;

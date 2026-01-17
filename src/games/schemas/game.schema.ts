@@ -21,6 +21,9 @@ export class Game {
   awayTeamLogo: string;
 
   @Prop()
+  awayTeamLogoDark: string;
+
+  @Prop()
   homeTeamId: string;
 
   @Prop()
@@ -31,6 +34,9 @@ export class Game {
 
   @Prop()
   homeTeamLogo: string;
+
+  @Prop()
+  homeTeamLogoDark: string;
 
   @Prop({ required: false, default: null })
   homeTeamScore: number | null;

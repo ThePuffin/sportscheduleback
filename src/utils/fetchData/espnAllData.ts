@@ -219,18 +219,34 @@ const getEachTeamSchedule = async ({
         const awayAbbrev = `${awayTeam.abbreviation}`;
         const homeAbbrev = `${homeTeam.abbreviation}`;
 
+        const awayTeamLogo =
+          awayTeam?.logos?.[2]?.href || leagueLogos[awayAbbrev];
+        const homeTeamLogo =
+          homeTeam?.logos?.[2]?.href || leagueLogos[homeAbbrev];
+
+        const awayTeamLogoDark =
+          awayTeam?.logos?.find((l) =>
+            l.rel?.includes('primary_logo_on_secondary_color'),
+          )?.href || awayTeamLogo;
+        const homeTeamLogoDark =
+          homeTeam?.logos?.find((l) =>
+            l.rel?.includes('primary_logo_on_secondary_color'),
+          )?.href || homeTeamLogo;
+
         return {
           arenaName: capitalize(venue?.fullName) ?? '',
           awayTeam: capitalize(awayTeam.displayName),
           awayTeamId: `${leagueName}-${awayAbbrev}`,
-          awayTeamLogo: awayTeam?.logos?.[2]?.href || leagueLogos[awayAbbrev],
+          awayTeamLogo,
+          awayTeamLogoDark,
           awayTeamShort: awayAbbrev,
           backgroundColor: backgroundColor ?? undefined,
           color: color ?? undefined,
           gameDate: gameDate,
           homeTeam: capitalize(homeTeam.displayName),
           homeTeamId: `${leagueName}-${homeAbbrev}`,
-          homeTeamLogo: homeTeam?.logos?.[2]?.href || leagueLogos[homeAbbrev],
+          homeTeamLogo,
+          homeTeamLogoDark,
           homeTeamShort: homeAbbrev,
           homeTeamScore: null,
           awayTeamScore: null,

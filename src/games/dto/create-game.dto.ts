@@ -14,6 +14,9 @@ export class CreateGameDto {
   awayTeamLogo: string;
 
   @ApiProperty()
+  awayTeamLogoDark: string;
+
+  @ApiProperty()
   awayTeam: string;
 
   @ApiProperty()
@@ -27,6 +30,9 @@ export class CreateGameDto {
 
   @ApiProperty()
   homeTeamLogo: string;
+
+  @ApiProperty()
+  homeTeamLogoDark: string;
 
   @ApiProperty({ required: false, nullable: true })
   homeTeamScore: number | null;
