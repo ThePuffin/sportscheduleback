@@ -499,9 +499,17 @@ export class GameService {
     const games = await this.gameModel.find().exec();
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    const oldGames = games.filter(({ startTimeUTC }) => {
-      return new Date(startTimeUTC) < sixMonthsAgo;
-    });
+    const oldGames = games.filter(
+      ({ startTimeUTC, homeTeamScore, awayTeamScore }) => {
+        const isOld = new Date(startTimeUTC) < sixMonthsAgo;
+        const hasScore =
+          homeTeamScore !== null &&
+          homeTeamScore !== undefined &&
+          awayTeamScore !== null &&
+          awayTeamScore !== undefined;
+        return isOld && !hasScore;
+      },
+    );
     for (const oldGame of oldGames) {
       await this.remove(oldGame.uniqueId);
     }
@@ -512,7 +520,24 @@ export class GameService {
     for (const game of games) {
       const key = `${game.teamSelectedId}-${game.startTimeUTC}`;
       if (gameMap.has(key)) {
-        duplicates.push(game);
+        const existing = gameMap.get(key);
+        const existingHasScore =
+          existing.homeTeamScore !== null &&
+          existing.homeTeamScore !== undefined &&
+          existing.awayTeamScore !== null &&
+          existing.awayTeamScore !== undefined;
+        const currentHasScore =
+          game.homeTeamScore !== null &&
+          game.homeTeamScore !== undefined &&
+          game.awayTeamScore !== null &&
+          game.awayTeamScore !== undefined;
+
+        if (currentHasScore && !existingHasScore) {
+          duplicates.push(existing);
+          gameMap.set(key, game);
+        } else {
+          duplicates.push(game);
+        }
       } else {
         gameMap.set(key, game);
       }
@@ -533,17 +558,19 @@ export class GameService {
   async unactivateGames(teamId: string): Promise<void> {
     const games = await this.findByTeam(teamId, false);
     const now = new Date();
-    const threeHoursAgo = new Date(addHours(now, -3));
 
     for (const date in games) {
-      if (Array.isArray(games[date]) && games[date][0]?.awayTeamShort) {
-        const game = games[date][0];
-        const gameTime = new Date(game.startTimeUTC);
-        if (gameTime < now && gameTime > threeHoursAgo) {
-          continue;
+      if (Array.isArray(games[date])) {
+        for (const game of games[date]) {
+          if (!game.awayTeamShort) continue;
+
+          const gameTime = new Date(game.startTimeUTC);
+          if (gameTime < now) {
+            continue;
+          }
+          game.isActive = false;
+          await this.create(game);
         }
-        game.isActive = false;
-        await this.create(game);
       }
     }
   }
@@ -555,7 +582,6 @@ export class GameService {
     // match started at least 3 hours ago and score is null or missing
     const gamesWithoutScores = await this.gameModel
       .find({
-        isActive: true,
         startTimeUTC: { $lte: threeHoursAgo.toISOString() },
         $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
       })
@@ -699,10 +725,8 @@ export class GameService {
           } catch (e) {
             // ignore
           }
-          // shorts+date match result available in `game`
         }
 
-        // last fallback: match by startTimeUTC within +/-5 minutes and teams
         if (
           !game &&
           score.startTimeUTC &&
@@ -722,7 +746,6 @@ export class GameService {
               $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
             })
             .exec();
-          // timeWindow match result available in `game`
         }
 
         if (game) {
@@ -738,6 +761,7 @@ export class GameService {
                 {
                   homeTeamScore: score.homeTeamScore,
                   awayTeamScore: score.awayTeamScore,
+                  isActive: true,
                   updateDate: new Date().toISOString(),
                 },
                 { new: true },
@@ -745,8 +769,6 @@ export class GameService {
               .exec();
             if (updated) appliedUpdates.push(updated);
           }
-        } else {
-          // no matching game found for this score
         }
       } catch (err) {
         // ignore update errors
