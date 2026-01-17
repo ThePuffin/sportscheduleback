@@ -345,6 +345,11 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
                     ? Number(away.score)
                     : null;
                 const statusDetail = comp.status?.type || comp.status;
+                const homeTeamRecord =
+                  home?.records?.find((r) => r.type === 'total')?.summary || '';
+                const awayTeamRecord =
+                  away?.records?.find((r) => r.type === 'total')?.summary || '';
+
                 const displayClockDetail = comp.status?.displayClock || '';
                 const statusIndicatesFinishedDetail =
                   statusDetail?.completed === true ||
@@ -375,6 +380,8 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
                   isFinal:
                     statusIndicatesFinishedDetail === true ||
                     isFinalDetail === true,
+                  homeTeamRecord,
+                  awayTeamRecord,
                   status: statusDetail?.name || displayClockDetail || '',
                 };
               } catch (e) {
@@ -413,6 +420,11 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
             ? Number(away.score)
             : null;
 
+        const homeTeamRecord =
+          home?.records?.find((r) => r.type === 'total')?.summary || '';
+        const awayTeamRecord =
+          away?.records?.find((r) => r.type === 'total')?.summary || '';
+
         finishedCount++;
         const normalized = {
           uniqueId: id,
@@ -429,6 +441,8 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
           homeTeamShort: home?.team?.abbreviation || undefined,
           awayTeamShort: away?.team?.abbreviation || undefined,
           isFinal: statusIndicatesFinished === true,
+          homeTeamRecord,
+          awayTeamRecord,
           status: status?.name || displayClock || '',
         };
         results.push(normalized);

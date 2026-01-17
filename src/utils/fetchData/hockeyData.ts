@@ -104,6 +104,7 @@ export class HockeyData {
 
   getHockeySchedule = async (activeTeams, leagueLogos, league) => {
     const allGames = {};
+
     await Promise.all(
       activeTeams.map(async (team) => {
         try {
@@ -177,6 +178,53 @@ export class HockeyData {
     } catch (error) {
       console.error('Error fetching games:', id, error);
       throw id;
+    }
+  };
+
+  getPWHLStandings = async () => {
+    try {
+      const teamsResponse = await fetch(
+        'https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=teamsbyseason&key=446521baf8c38984&client_code=pwhl',
+      );
+      const teamsJson: PWHLResponse = await teamsResponse.json();
+      const seasonId = teamsJson.SiteKit.Parameters.season_id;
+
+      const standingsResponse = await fetch(
+        `https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=standings&key=446521baf8c38984&client_code=pwhl&season_id=${seasonId}&lang=en`,
+      );
+      const standingsJson = await standingsResponse.json();
+      const standings = standingsJson.SiteKit.Standings;
+      const records = {};
+
+      standings.forEach((team) => {
+        const wins = team.wins;
+        const losses = team.losses;
+        const otLosses =
+          Number(team.ot_losses || 0) + Number(team.shootout_losses || 0);
+        records[team.team_code] = `${wins}-${losses}-${otLosses}`;
+      });
+      return records;
+    } catch (error) {
+      console.error('Error fetching PWHL standings:', error);
+      return {};
+    }
+  };
+
+  getNHLStandings = async () => {
+    try {
+      const response = await fetch('https://api-web.nhle.com/v1/standings/now');
+      const json = await response.json();
+      const standings = json.standings;
+      const records = {};
+      standings.forEach((team) => {
+        const abbrev =
+          team.teamAbbrev.default === 'ARI' ? 'UTA' : team.teamAbbrev.default;
+        records[abbrev] = `${team.wins}-${team.losses}-${team.otLosses}`;
+      });
+      return records;
+    } catch (error) {
+      console.error('Error fetching NHL standings:', error);
+      return {};
     }
   };
 
@@ -314,6 +362,7 @@ export class HockeyData {
 
   getPWHLScores = async (date: string) => {
     try {
+      const standings = await this.getPWHLStandings();
       const fetchedGames = await fetch(
         `https://lscluster.hockeytech.com/feed/?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
       );
@@ -327,7 +376,11 @@ export class HockeyData {
           awayTeamScore: Number(game.visiting_goal_count),
           homeTeamShort: game.home_team_code,
           awayTeamShort: game.visiting_team_code,
+          homeTeamId: `${League.PWHL}-${game.home_team_code}`,
+          awayTeamId: `${League.PWHL}-${game.visiting_team_code}`,
           isFinal: game.final === '1',
+          homeTeamRecord: standings[game.home_team_code] || '',
+          awayTeamRecord: standings[game.visiting_team_code] || '',
           status: game.game_status,
           startTimeUTC: new Date(game.GameDateISO8601).toISOString(),
           uniqueId: game.id,

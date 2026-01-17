@@ -284,9 +284,19 @@ export class GameService {
       .find(filter)
       .sort({ startTimeUTC: 1 })
       .limit(maxResults ? Number.parseInt(maxResults, 10) : 0)
+      .lean()
       .exec();
 
-    const games = Array.isArray(filtredGames) ? filtredGames : [];
+    const teams = await this.teamService.findAll();
+    const teamRecords = new Map(teams.map((t) => [t.uniqueId, t.record]));
+
+    const games = Array.isArray(filtredGames)
+      ? filtredGames.map((game: any) => ({
+          ...game,
+          homeTeamRecord: teamRecords.get(game.homeTeamId) || '',
+          awayTeamRecord: teamRecords.get(game.awayTeamId) || '',
+        }))
+      : [];
     const gamesByDay = {};
     const uniqueTeamSelectedIds = this.getTeams(teamSelectedIds, games);
     const dates = games.map((game) => new Date(game.gameDate));
@@ -306,38 +316,38 @@ export class GameService {
             game.isActive === true,
         );
         if (!gameOfDay.length && !league) {
-          gamesOfDay.push(
-            new this.gameModel({
-              _id: new mongoose.Types.ObjectId().toString(),
-              uniqueId: teamSelectedId + currentDate,
-              awayTeamId: '',
-              awayTeamShort: '',
-              awayTeam: '',
-              homeTeamId: '',
-              homeTeamShort: '',
-              homeTeam: '',
-              homeTeamScore: null,
-              awayTeamScore: null,
-              arenaName: '',
-              placeName: '',
-              gameDate: currentDate,
-              teamSelectedId: teamSelectedId,
-              show: false,
-              selectedTeam: false,
-              league: '',
-              venueTimezone: '',
-              isActive: true,
-              startTimeUTC: '',
-              updateDate: '',
-              __v: 0,
-              awayTeamLogo: '',
-              awayTeamLogoDark: '',
-              homeTeamLogo: '',
-              homeTeamLogoDark: '',
-              color: undefined,
-              backgroundColor: undefined,
-            }),
-          );
+          gamesOfDay.push({
+            _id: new mongoose.Types.ObjectId().toString(),
+            uniqueId: teamSelectedId + currentDate,
+            awayTeamId: '',
+            awayTeamShort: '',
+            awayTeam: '',
+            homeTeamId: '',
+            homeTeamShort: '',
+            homeTeam: '',
+            homeTeamScore: null,
+            awayTeamScore: null,
+            arenaName: '',
+            placeName: '',
+            gameDate: currentDate,
+            teamSelectedId: teamSelectedId,
+            show: false,
+            selectedTeam: false,
+            league: '',
+            venueTimezone: '',
+            isActive: true,
+            startTimeUTC: '',
+            updateDate: '',
+            __v: 0,
+            awayTeamLogo: '',
+            awayTeamLogoDark: '',
+            homeTeamLogo: '',
+            homeTeamLogoDark: '',
+            homeTeamRecord: '',
+            awayTeamRecord: '',
+            color: undefined,
+            backgroundColor: undefined,
+          });
         } else {
           gamesOfDay.push(...gameOfDay);
         }
@@ -648,6 +658,26 @@ export class GameService {
 
     // Now try to update matching games in DB before returning
     const appliedUpdates: any[] = [];
+
+    for (const score of results) {
+      if (score.homeTeamRecord && score.homeTeamId) {
+        await this.teamService.updateRecord(
+          score.homeTeamId,
+          score.homeTeamRecord,
+        );
+      }
+      if (score.awayTeamRecord && score.awayTeamId) {
+        await this.teamService.updateRecord(
+          score.awayTeamId,
+          score.awayTeamRecord,
+        );
+      }
+
+      // Suppression des champs temporaires pour qu'ils n'apparaissent pas dans la réponse API
+      delete score.homeTeamRecord;
+      delete score.awayTeamRecord;
+    }
+
     for (const score of results) {
       try {
         if (!score.isFinal) {
