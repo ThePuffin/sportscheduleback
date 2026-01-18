@@ -73,7 +73,7 @@ const getDivision = async (
     return { conferenceName: '', divisionName: '', record };
   }
   const cut = standingSummary.split(' ');
-  if (leagueName === League.NFL) {
+  if (leagueName === League.NFL || leagueName === League.MLB) {
     return {
       conferenceName: cut[3] || '',
       divisionName: cut[2] || '',
@@ -92,12 +92,6 @@ const getDivision = async (
       divisionName,
       record,
     };
-  } else if (leagueName === League.MLB) {
-    return {
-      conferenceName: cut[3] || '',
-      divisionName: cut[2] || '',
-      record,
-    };
   } else {
     return { conferenceName: '', divisionName: '', record };
   }
@@ -111,7 +105,7 @@ const getESPNStandings = async (leagueName: string) => {
     const records = {};
 
     const traverse = (node) => {
-      if (node.standings && node.standings.entries) {
+      if (node.standings?.entries) {
         node.standings.entries.forEach((entry) => {
           const teamId = entry.team.id;
           const stats = entry.stats;
@@ -160,14 +154,15 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
         } = team;
         let teamID = abbreviation;
 
-        if (ESPNAbbrevs[leagueName] && ESPNAbbrevs[leagueName][teamID]) {
+        if (ESPNAbbrevs[leagueName]?.[teamID]) {
           teamID = ESPNAbbrevs[leagueName][teamID];
         }
         const uniqueId = `${leagueName}-${teamID}`;
         const teamLogo = logos?.[2]?.href ?? logos?.[0]?.href;
         const teamLogoDark =
-          logos?.find((l) => l.rel?.includes('primary_logo_on_secondary_color'))
-            ?.href || teamLogo;
+          logos?.find(
+            (l) => l.rel?.includes('dark') && l.rel?.includes('scoreboard'),
+          )?.href || teamLogo;
 
         const record = standings[id];
 
@@ -259,7 +254,7 @@ const getEachTeamSchedule = async ({
       const fetchGames: MLSGameAPI = await fetchedGames.json();
       const { events } = fetchGames;
 
-      games = events && events?.length && events[0] ? events : [];
+      games = events?.[0] ? events : [];
 
       const now = new Date();
       const gamesFilter = games.filter(({ date }) => new Date(date) >= now);
@@ -305,17 +300,21 @@ const getEachTeamSchedule = async ({
         const homeAbbrev = `${homeTeam.abbreviation}`;
 
         const awayTeamLogo =
-          awayTeam?.logos?.[2]?.href || leagueLogos[awayAbbrev];
+          awayTeam?.logos?.find(
+            (l) => l.rel?.includes('full') && l.rel?.includes('scoreboard'),
+          )?.href || leagueLogos[awayAbbrev];
         const homeTeamLogo =
-          homeTeam?.logos?.[2]?.href || leagueLogos[homeAbbrev];
+          homeTeam?.logos?.find(
+            (l) => l.rel?.includes('full') && l.rel?.includes('scoreboard'),
+          )?.href || leagueLogos[homeAbbrev];
 
         const awayTeamLogoDark =
-          awayTeam?.logos?.find((l) =>
-            l.rel?.includes('primary_logo_on_secondary_color'),
+          awayTeam?.logos?.find(
+            (l) => l.rel?.includes('dark') && l.rel?.includes('scoreboard'),
           )?.href || awayTeamLogo;
         const homeTeamLogoDark =
-          homeTeam?.logos?.find((l) =>
-            l.rel?.includes('primary_logo_on_secondary_color'),
+          homeTeam?.logos?.find(
+            (l) => l.rel?.includes('dark') && l.rel?.includes('scoreboard'),
           )?.href || homeTeamLogo;
 
         return {
@@ -351,8 +350,8 @@ const getEachTeamSchedule = async ({
     gamesData = gamesData.filter((game) => game !== undefined && game !== null);
     return gamesData;
   } catch (error) {
-    console.error('Error fetching data', error);
-    return {};
+    console.error(`Error in getEachTeamSchedule for ${value}:`, error);
+    return [];
   }
 };
 
@@ -461,6 +460,7 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
                   status: statusDetail?.name || displayClockDetail || '',
                 };
               } catch (e) {
+                console.error(`Error fetching summary for event ${ev.id}:`, e);
                 return null;
               }
             };
@@ -471,7 +471,10 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
               continue;
             }
           } catch (e) {
-            // ignore
+            console.error(
+              `Error processing detailed fetch for event ${ev.id}:`,
+              e,
+            );
           }
           continue;
         }

@@ -10,6 +10,7 @@ import type {
 import { PWHLGameAPI } from '../interface/gamePWHL';
 import { capitalize } from '../utils';
 const leagueName = League.NHL;
+const pwhlAPI = 'https://lscluster.hockeytech.com/feed/';
 
 export class HockeyData {
   async getNHLTeams(): Promise<TeamType[]> {
@@ -74,7 +75,7 @@ export class HockeyData {
       const leagueName = League.PWHL;
 
       const fetchedTeams = await fetch(
-        'https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=teamsbyseason&key=446521baf8c38984&client_code=pwhl&fmt=json',
+        `${pwhlAPI}index.php?feed=modulekit&view=teamsbyseason&key=446521baf8c38984&client_code=pwhl&fmt=json`,
       );
       const fetchTeams: PWHLResponse = await fetchedTeams.json();
       const allTeams: TeamPWHL[] = await fetchTeams?.SiteKit?.Teamsbyseason;
@@ -92,9 +93,9 @@ export class HockeyData {
           otLosses = 0;
         if (recordStr) {
           const parts = recordStr.split('-');
-          wins = parseInt(parts[0]) || 0;
-          losses = parseInt(parts[1]) || 0;
-          otLosses = parseInt(parts[2]) || 0;
+          wins = Number.parseInt(parts[0]) || 0;
+          losses = Number.parseInt(parts[1]) || 0;
+          otLosses = Number.parseInt(parts[2]) || 0;
         }
 
         return {
@@ -185,7 +186,7 @@ export class HockeyData {
       }
       if (league === League.PWHL) {
         const fetchedGames = await fetch(
-          `https://lscluster.hockeytech.com/feed/?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
+          `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
         );
         const allFetchGames = (await fetchedGames.json()).SiteKit.Schedule;
         fetchGames = allFetchGames.filter(
@@ -207,19 +208,19 @@ export class HockeyData {
     try {
       if (!seasonId) {
         const seasonsResponse = await fetch(
-          'https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=seasons&key=446521baf8c38984&client_code=pwhl&fmt=json',
+          `${pwhlAPI}index.php?feed=modulekit&view=seasons&key=446521baf8c38984&client_code=pwhl&fmt=json`,
         );
         const seasonsJson = await seasonsResponse.json();
         const seasons = seasonsJson?.SiteKit?.Seasons;
         if (Array.isArray(seasons) && seasons.length > 0) {
-          seasonId = seasons[seasons.length - 1].season_id;
+          seasonId = seasons.at(-1).season_id;
         }
       }
 
       if (!seasonId) return {};
 
       const standingsResponse = await fetch(
-        `https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=statviewtype&stat=conference&type=standings&season_id=${seasonId}&key=446521baf8c38984&client_code=pwhl&fmt=json`,
+        `${pwhlAPI}index.php?feed=modulekit&view=statviewtype&stat=conference&type=standings&season_id=${seasonId}&key=446521baf8c38984&client_code=pwhl&fmt=json`,
       );
       const standingsJson = await standingsResponse.json();
       const standingsList = standingsJson?.SiteKit?.Statviewtype;
@@ -230,11 +231,11 @@ export class HockeyData {
       standingsList.forEach((team) => {
         const code = team.team_code;
         if (code) {
-          const wins = parseInt(team.wins, 10) || 0;
-          const losses = parseInt(team.losses, 10) || 0;
+          const wins = Number.parseInt(team.wins, 10) || 0;
+          const losses = Number.parseInt(team.losses, 10) || 0;
           const otLosses =
-            (parseInt(team.ot_losses, 10) || 0) +
-            (parseInt(team.shootout_losses, 10) || 0);
+            (Number.parseInt(team.ot_losses, 10) || 0) +
+            (Number.parseInt(team.shootout_losses, 10) || 0);
           records[code] = `${wins}-${losses}-${otLosses}`;
         }
       });
@@ -399,7 +400,7 @@ export class HockeyData {
     try {
       const standings = await this.getPWHLStandings();
       const fetchedGames = await fetch(
-        `https://lscluster.hockeytech.com/feed/?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
+        `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
       );
       const response = await fetchedGames.json();
       const allGames: PWHLGameAPI[] = response.SiteKit.Schedule;
