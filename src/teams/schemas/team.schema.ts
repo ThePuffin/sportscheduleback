@@ -21,6 +21,9 @@ export class Team {
   teamLogo: string;
 
   @Prop()
+  teamLogoDark: string;
+
+  @Prop()
   teamCommonName: string;
 
   @Prop()
@@ -43,6 +46,18 @@ export class Team {
 
   @Prop({ default: new Date() })
   updateDate: string;
+
+  @Prop()
+  wins: number;
+
+  @Prop()
+  losses: number;
+
+  @Prop()
+  ties: number;
+
+  @Prop()
+  otLosses: number;
 }
 
 export const TeamSchema = SchemaFactory.createForClass(Team);

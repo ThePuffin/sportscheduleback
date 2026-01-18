@@ -21,20 +21,23 @@ export class TeamService {
     const { uniqueId } = teamDto;
 
     if (uniqueId) {
-      const existingTeam = await this.teamModel.findOne({ uniqueId }).exec();
-      if (existingTeam) {
-        Object.assign(existingTeam, teamDto);
-        const saved = await existingTeam.save();
-        return this.addRecord(saved.toObject());
-      }
+      const saved = await this.teamModel
+        .findOneAndUpdate(
+          { uniqueId },
+          { $set: teamDto },
+          { new: true, upsert: true },
+        )
+        .lean()
+        .exec();
+      return this.addRecord({ ...saved, ...teamDto });
     }
 
     const newTeam = new this.teamModel(teamDto);
     const saved = await newTeam.save();
-    return this.addRecord(saved.toObject());
+    return this.addRecord({ ...saved.toObject(), ...teamDto });
   }
 
-  async getTeams(): Promise<any> {
+  async getTeams(leagueParam?: string): Promise<any> {
     if (this.isFetchingTeams) {
       console.info(`getTeams is already running.`);
       return;
@@ -45,10 +48,15 @@ export class TeamService {
       const collegeLeagueValues = Object.values(
         CollegeLeague,
       ) as CollegeLeague[];
-      const leagues = Object.values(League).filter(
-        (league) =>
-          !collegeLeagueValues.includes(league as unknown as CollegeLeague),
-      );
+      let leagues: string[] = [];
+      if (leagueParam) {
+        leagues = [leagueParam.toUpperCase()];
+      } else {
+        leagues = Object.values(League).filter(
+          (league) =>
+            !collegeLeagueValues.includes(league as unknown as CollegeLeague),
+        );
+      }
       for (const league of leagues) {
         const activeTeams: TeamType[] = [];
         let teams: TeamType[] = [];
@@ -159,7 +167,7 @@ export class TeamService {
         updateData.ties = ties;
       }
     }
-    await this.teamModel.updateOne({ uniqueId }, updateData).exec();
+    await this.teamModel.updateOne({ uniqueId }, { $set: updateData }).exec();
   }
 
   private addRecord(team: any) {

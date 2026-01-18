@@ -56,6 +56,9 @@ export class HockeyData {
           league: leagueName.toUpperCase(),
           color: undefined,
           backgroundColor: undefined,
+          wins: team.wins,
+          losses: team.losses,
+          otLosses: team.otLosses,
         };
       });
 
@@ -71,14 +74,28 @@ export class HockeyData {
       const leagueName = League.PWHL;
 
       const fetchedTeams = await fetch(
-        'https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=teamsbyseason&key=446521baf8c38984&client_code=pwhl',
+        'https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=teamsbyseason&key=446521baf8c38984&client_code=pwhl&fmt=json',
       );
       const fetchTeams: PWHLResponse = await fetchedTeams.json();
       const allTeams: TeamPWHL[] = await fetchTeams?.SiteKit?.Teamsbyseason;
+      const seasonId = fetchTeams?.SiteKit?.Parameters?.season_id;
+      const standings = await this.getPWHLStandings(seasonId);
+
       const activeTeams = allTeams.map((team: TeamPWHL) => {
         const { code, name, team_logo_url, division_long_name } = team;
         const teamID = code;
         const uniqueId = `${leagueName}-${teamID}`;
+
+        const recordStr = standings[teamID];
+        let wins = 0,
+          losses = 0,
+          otLosses = 0;
+        if (recordStr) {
+          const parts = recordStr.split('-');
+          wins = parseInt(parts[0]) || 0;
+          losses = parseInt(parts[1]) || 0;
+          otLosses = parseInt(parts[2]) || 0;
+        }
 
         return {
           uniqueId,
@@ -94,6 +111,9 @@ export class HockeyData {
           league: leagueName.toUpperCase(),
           color: undefined,
           backgroundColor: undefined,
+          wins,
+          losses,
+          otLosses,
         };
       });
 
@@ -183,27 +203,40 @@ export class HockeyData {
     }
   };
 
-  getPWHLStandings = async () => {
+  getPWHLStandings = async (seasonId?: string) => {
     try {
-      const teamsResponse = await fetch(
-        'https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=teamsbyseason&key=446521baf8c38984&client_code=pwhl',
-      );
-      const teamsJson: PWHLResponse = await teamsResponse.json();
-      const seasonId = teamsJson.SiteKit.Parameters.season_id;
+      if (!seasonId) {
+        const seasonsResponse = await fetch(
+          'https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=seasons&key=446521baf8c38984&client_code=pwhl&fmt=json',
+        );
+        const seasonsJson = await seasonsResponse.json();
+        const seasons = seasonsJson?.SiteKit?.Seasons;
+        if (Array.isArray(seasons) && seasons.length > 0) {
+          seasonId = seasons[seasons.length - 1].season_id;
+        }
+      }
+
+      if (!seasonId) return {};
 
       const standingsResponse = await fetch(
-        `https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=standings&key=446521baf8c38984&client_code=pwhl&season_id=${seasonId}&lang=en`,
+        `https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&view=statviewtype&stat=conference&type=standings&season_id=${seasonId}&key=446521baf8c38984&client_code=pwhl&fmt=json`,
       );
       const standingsJson = await standingsResponse.json();
-      const standings = standingsJson.SiteKit.Standings;
+      const standingsList = standingsJson?.SiteKit?.Statviewtype;
+      if (!standingsList) return {};
+
       const records = {};
 
-      standings.forEach((team) => {
-        const wins = team.wins;
-        const losses = team.losses;
-        const otLosses =
-          Number(team.ot_losses || 0) + Number(team.shootout_losses || 0);
-        records[team.team_code] = `${wins}-${losses}-${otLosses}`;
+      standingsList.forEach((team) => {
+        const code = team.team_code;
+        if (code) {
+          const wins = parseInt(team.wins, 10) || 0;
+          const losses = parseInt(team.losses, 10) || 0;
+          const otLosses =
+            (parseInt(team.ot_losses, 10) || 0) +
+            (parseInt(team.shootout_losses, 10) || 0);
+          records[code] = `${wins}-${losses}-${otLosses}`;
+        }
       });
       return records;
     } catch (error) {

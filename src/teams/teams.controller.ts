@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { TeamType } from '../utils/interface/team';
 import { UpdateTeamDto } from './dto/update-team.dto';
@@ -36,8 +37,8 @@ export class TeamsController {
   }
 
   @Post('refresh')
-  async refresh() {
-    return this.TeamService.getTeams();
+  async refresh(@Query('leagueParam') leagueParam?: string) {
+    return this.TeamService.getTeams(leagueParam);
   }
 
   @Patch(':uniqueId')

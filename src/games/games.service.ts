@@ -635,8 +635,12 @@ export class GameService {
 
     // Now try to update matching games in DB before returning
     const appliedUpdates: any[] = [];
+    const leaguesToUpdate = new Set<string>();
 
     for (const score of results) {
+      if (score.league) {
+        leaguesToUpdate.add(score.league);
+      }
       if (score.homeTeamRecord && score.homeTeamId) {
         await this.teamService.updateRecord(
           score.homeTeamId,
@@ -649,10 +653,6 @@ export class GameService {
           score.awayTeamRecord,
         );
       }
-
-      // Suppression des champs temporaires pour qu'ils n'apparaissent pas dans la réponse API
-      delete score.homeTeamRecord;
-      delete score.awayTeamRecord;
     }
 
     for (const score of results) {
@@ -787,13 +787,22 @@ export class GameService {
                 },
                 { new: true },
               )
+              .lean()
               .exec();
-            if (updated) appliedUpdates.push(updated);
+            if (updated) {
+              (updated as any).homeTeamRecord = score.homeTeamRecord;
+              (updated as any).awayTeamRecord = score.awayTeamRecord;
+              appliedUpdates.push(updated);
+            }
           }
         }
       } catch (err) {
         // ignore update errors
       }
+    }
+
+    for (const league of leaguesToUpdate) {
+      await this.teamService.getTeams(league);
     }
 
     return appliedUpdates.length ? appliedUpdates : results;
