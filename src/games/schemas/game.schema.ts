@@ -83,6 +83,18 @@ export class Game {
   @Prop()
   backgroundColor: string;
 
+  @Prop()
+  awayTeamColor: string;
+
+  @Prop()
+  awayTeamBackgroundColor: string;
+
+  @Prop()
+  homeTeamColor: string;
+
+  @Prop()
+  homeTeamBackgroundColor: string;
+
   @Prop({ default: new Date() })
   updateDate: string;
 }

@@ -12,6 +12,8 @@ export interface TeamType {
   abbrev?: string;
   color?: string;
   backgroundColor?: string;
+  record?: string;
+  teamLogoDark?: string;
 }
 
 export interface Props {

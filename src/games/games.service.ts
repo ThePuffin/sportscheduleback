@@ -47,6 +47,28 @@ export class GameService {
     return logos;
   }
 
+  private _enrichGameWithTeamData(game: any, teamsMap: Map<string, TeamType>) {
+    const homeTeam = teamsMap.get(game.homeTeamId);
+    const awayTeam = teamsMap.get(game.awayTeamId);
+    return {
+      ...game,
+      homeTeamRecord: homeTeam?.record || '',
+      awayTeamRecord: awayTeam?.record || '',
+      homeTeam: homeTeam?.label || game.homeTeam,
+      homeTeamShort: homeTeam?.abbrev || game.homeTeamShort,
+      homeTeamLogo: homeTeam?.teamLogo || game.homeTeamLogo,
+      homeTeamLogoDark: homeTeam?.teamLogoDark || game.homeTeamLogoDark,
+      homeTeamColor: homeTeam?.color,
+      homeTeamBackgroundColor: homeTeam?.backgroundColor,
+      awayTeam: awayTeam?.label || game.awayTeam,
+      awayTeamShort: awayTeam?.abbrev || game.awayTeamShort,
+      awayTeamLogo: awayTeam?.teamLogo || game.awayTeamLogo,
+      awayTeamLogoDark: awayTeam?.teamLogoDark || game.awayTeamLogoDark,
+      awayTeamColor: awayTeam?.color,
+      awayTeamBackgroundColor: awayTeam?.backgroundColor,
+    };
+  }
+
   async create(gameDto: CreateGameDto | UpdateGameDto): Promise<Game> {
     const { uniqueId } = gameDto;
 
@@ -197,23 +219,9 @@ export class GameService {
     const teams = await this.teamService.findAll();
     const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
-    return allGames.map((game: any) => {
-      const homeTeam = teamsMap.get(game.homeTeamId);
-      const awayTeam = teamsMap.get(game.awayTeamId);
-      return {
-        ...game,
-        homeTeamRecord: homeTeam?.record || '',
-        awayTeamRecord: awayTeam?.record || '',
-        homeTeam: homeTeam?.label || game.homeTeam,
-        homeTeamShort: homeTeam?.abbrev || game.homeTeamShort,
-        homeTeamLogo: homeTeam?.teamLogo || game.homeTeamLogo,
-        homeTeamLogoDark: homeTeam?.teamLogoDark || game.homeTeamLogoDark,
-        awayTeam: awayTeam?.label || game.awayTeam,
-        awayTeamShort: awayTeam?.abbrev || game.awayTeamShort,
-        awayTeamLogo: awayTeam?.teamLogo || game.awayTeamLogo,
-        awayTeamLogoDark: awayTeam?.teamLogoDark || game.awayTeamLogoDark,
-      };
-    });
+    return allGames.map((game: any) =>
+      this._enrichGameWithTeamData(game, teamsMap),
+    );
   }
 
   async findOne(uniqueId: string) {
@@ -312,23 +320,9 @@ export class GameService {
     const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
     const games = Array.isArray(filtredGames)
-      ? filtredGames.map((game: any) => {
-          const homeTeam = teamsMap.get(game.homeTeamId);
-          const awayTeam = teamsMap.get(game.awayTeamId);
-          return {
-            ...game,
-            homeTeamRecord: homeTeam?.record || '',
-            awayTeamRecord: awayTeam?.record || '',
-            homeTeam: homeTeam?.label || game.homeTeam,
-            homeTeamShort: homeTeam?.abbrev || game.homeTeamShort,
-            homeTeamLogo: homeTeam?.teamLogo || game.homeTeamLogo,
-            homeTeamLogoDark: homeTeam?.teamLogoDark || game.homeTeamLogoDark,
-            awayTeam: awayTeam?.label || game.awayTeam,
-            awayTeamShort: awayTeam?.abbrev || game.awayTeamShort,
-            awayTeamLogo: awayTeam?.teamLogo || game.awayTeamLogo,
-            awayTeamLogoDark: awayTeam?.teamLogoDark || game.awayTeamLogoDark,
-          };
-        })
+      ? filtredGames.map((game: any) =>
+          this._enrichGameWithTeamData(game, teamsMap),
+        )
       : [];
     const gamesByDay = {};
     const uniqueTeamSelectedIds = this.getTeams(teamSelectedIds, games);
@@ -396,13 +390,13 @@ export class GameService {
 
   async findByDate(gameDate: string) {
     const today = readableDate(new Date());
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayString = readableDate(yesterdayDate);
     const filter: any = { isActive: true };
 
     if (gameDate === today) {
       const threeHoursAgo = new Date(addHours(new Date(), -3));
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayString = readableDate(yesterday);
 
       filter.$or = [
         { gameDate: gameDate },
@@ -428,24 +422,26 @@ export class GameService {
       }
       return [];
     } else {
-      for (const currentLeague of Object.values(League)) {
-        const filtredGames = games.filter(
-          ({ isActive, awayTeamId, league }) => {
-            return (
-              isActive === true &&
-              awayTeamId !== undefined &&
-              awayTeamId !== '' &&
-              league.toUpperCase() === currentLeague.toUpperCase()
-            );
-          },
-        );
+      if (gameDate >= yesterdayString) {
+        for (const currentLeague of Object.values(League)) {
+          const filtredGames = games.filter(
+            ({ isActive, awayTeamId, league }) => {
+              return (
+                isActive === true &&
+                awayTeamId !== undefined &&
+                awayTeamId !== '' &&
+                league.toUpperCase() === currentLeague.toUpperCase()
+              );
+            },
+          );
 
-        const gamesIndex = randomNumber(filtredGames.length - 1);
-        const randomGames = filtredGames[gamesIndex];
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        if (new Date(randomGames?.updateDate) < yesterday) {
-          await this.getLeagueGames(currentLeague, false);
+          const gamesIndex = randomNumber(filtredGames.length - 1);
+          const randomGames = filtredGames[gamesIndex];
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          if (new Date(randomGames?.updateDate) < yesterday) {
+            await this.getLeagueGames(currentLeague, false);
+          }
         }
       }
 
@@ -456,23 +452,9 @@ export class GameService {
       const filteredGames = games.filter(({ homeTeamId, teamSelectedId }) => {
         return homeTeamId === teamSelectedId;
       });
-      return filteredGames.map((game: any) => {
-        const homeTeam = teamsMap.get(game.homeTeamId);
-        const awayTeam = teamsMap.get(game.awayTeamId);
-        return {
-          ...game,
-          homeTeamRecord: homeTeam?.record || '',
-          awayTeamRecord: awayTeam?.record || '',
-          homeTeam: homeTeam?.label || game.homeTeam,
-          homeTeamShort: homeTeam?.abbrev || game.homeTeamShort,
-          homeTeamLogo: homeTeam?.teamLogo || game.homeTeamLogo,
-          homeTeamLogoDark: homeTeam?.teamLogoDark || game.homeTeamLogoDark,
-          awayTeam: awayTeam?.label || game.awayTeam,
-          awayTeamShort: awayTeam?.abbrev || game.awayTeamShort,
-          awayTeamLogo: awayTeam?.teamLogo || game.awayTeamLogo,
-          awayTeamLogoDark: awayTeam?.teamLogoDark || game.awayTeamLogoDark,
-        };
-      });
+      return filteredGames.map((game: any) =>
+        this._enrichGameWithTeamData(game, teamsMap),
+      );
     }
   }
 
@@ -810,13 +792,13 @@ export class GameService {
 
   async findByDateHour(gameDate: string) {
     const today = readableDate(new Date());
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayString = readableDate(yesterdayDate);
     const filter: any = { isActive: true };
 
     if (gameDate === today) {
       const threeHoursAgo = new Date(addHours(new Date(), -3));
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayString = readableDate(yesterday);
 
       filter.$or = [
         { gameDate: gameDate },
@@ -842,24 +824,26 @@ export class GameService {
       }
       return {};
     } else {
-      for (const currentLeague of Object.values(League)) {
-        const filtredGames = games.filter(
-          ({ isActive, awayTeamId, league }) => {
-            return (
-              isActive === true &&
-              awayTeamId !== undefined &&
-              awayTeamId !== '' &&
-              league.toUpperCase() === currentLeague.toUpperCase()
-            );
-          },
-        );
+      if (gameDate >= yesterdayString) {
+        for (const currentLeague of Object.values(League)) {
+          const filtredGames = games.filter(
+            ({ isActive, awayTeamId, league }) => {
+              return (
+                isActive === true &&
+                awayTeamId !== undefined &&
+                awayTeamId !== '' &&
+                league.toUpperCase() === currentLeague.toUpperCase()
+              );
+            },
+          );
 
-        const gamesIndex = randomNumber(filtredGames.length - 1);
-        const randomGames = filtredGames[gamesIndex];
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        if (new Date(randomGames?.updateDate) < yesterday) {
-          await this.getLeagueGames(currentLeague, false);
+          const gamesIndex = randomNumber(filtredGames.length - 1);
+          const randomGames = filtredGames[gamesIndex];
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          if (new Date(randomGames?.updateDate) < yesterday) {
+            await this.getLeagueGames(currentLeague, false);
+          }
         }
       }
 
@@ -873,22 +857,8 @@ export class GameService {
 
       const gamesByTimeSlot: { [key: string]: any[] } = {};
       filteredGames.forEach((game: any) => {
-        const homeTeam = teamsMap.get(game.homeTeamId);
-        const awayTeam = teamsMap.get(game.awayTeamId);
-        game = {
-          ...game,
-          homeTeamRecord: homeTeam?.record || '',
-          awayTeamRecord: awayTeam?.record || '',
-          homeTeam: homeTeam?.label || game.homeTeam,
-          homeTeamShort: homeTeam?.abbrev || game.homeTeamShort,
-          homeTeamLogo: homeTeam?.teamLogo || game.homeTeamLogo,
-          homeTeamLogoDark: homeTeam?.teamLogoDark || game.homeTeamLogoDark,
-          awayTeam: awayTeam?.label || game.awayTeam,
-          awayTeamShort: awayTeam?.abbrev || game.awayTeamShort,
-          awayTeamLogo: awayTeam?.teamLogo || game.awayTeamLogo,
-          awayTeamLogoDark: awayTeam?.teamLogoDark || game.awayTeamLogoDark,
-        };
-        const date = new Date(game.startTimeUTC);
+        const enrichedGame = this._enrichGameWithTeamData(game, teamsMap);
+        const date = new Date(enrichedGame.startTimeUTC);
         const hours = date.getUTCHours().toString().padStart(2, '0');
         const minutes = date.getUTCMinutes();
         const minutesStr = minutes < 30 ? '00' : '30';
@@ -897,7 +867,7 @@ export class GameService {
         if (!gamesByTimeSlot[timeSlot]) {
           gamesByTimeSlot[timeSlot] = [];
         }
-        gamesByTimeSlot[timeSlot].push(game);
+        gamesByTimeSlot[timeSlot].push(enrichedGame);
       });
 
       return gamesByTimeSlot;
