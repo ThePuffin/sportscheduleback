@@ -53,6 +53,9 @@ export class UpdateGameDto {
   teamSelectedId: string;
 
   @ApiProperty()
+  urlLive: string;
+
+  @ApiProperty()
   show: boolean;
 
   @ApiProperty()

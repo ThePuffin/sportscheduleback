@@ -53,6 +53,9 @@ export class CreateGameDto {
   teamSelectedId: string;
 
   @ApiProperty()
+  urlLive: string;
+
+  @ApiProperty()
   show: boolean;
 
   @ApiProperty()

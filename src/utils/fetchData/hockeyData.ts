@@ -7,6 +7,7 @@ import type {
   TeamPWHL,
   TeamType,
 } from '../../utils/interface/team';
+import { Colors, TeamColors } from '../Colors';
 import { PWHLGameAPI } from '../interface/gamePWHL';
 import { capitalize } from '../utils';
 const leagueName = League.NHL;
@@ -43,6 +44,8 @@ export class HockeyData {
         const teamID = teamAbbrev.default;
         const uniqueId = `${leagueName}-${teamID}`;
 
+        const teamColors = Colors[uniqueId] as TeamColors;
+
         return {
           uniqueId,
           value: uniqueId,
@@ -55,8 +58,8 @@ export class HockeyData {
           conferenceName,
           divisionName,
           league: leagueName.toUpperCase(),
-          color: undefined,
-          backgroundColor: undefined,
+          color: teamColors?.color,
+          backgroundColor: teamColors?.backgroundColor,
           wins: team.wins,
           losses: team.losses,
           otLosses: team.otLosses,
@@ -98,6 +101,8 @@ export class HockeyData {
           otLosses = Number.parseInt(parts[2]) || 0;
         }
 
+        const teamColors = Colors[uniqueId] as TeamColors;
+
         return {
           uniqueId,
           value: uniqueId,
@@ -110,8 +115,8 @@ export class HockeyData {
           conferenceName: '',
           divisionName: division_long_name,
           league: leagueName.toUpperCase(),
-          color: undefined,
-          backgroundColor: undefined,
+          color: teamColors?.color,
+          backgroundColor: teamColors?.backgroundColor,
           wins,
           losses,
           otLosses,
@@ -331,6 +336,7 @@ export class HockeyData {
           isActive,
           uniqueId: `${value}-${date_played}-${game.id}`,
           venueTimezone: timezone,
+          urlLive: `https://www.thepwhl.com/en/stats/game-center/${game.id}`,
         };
       })
       .filter((game) => game !== undefined && game !== null);
@@ -354,6 +360,7 @@ export class HockeyData {
         gameDate,
         venueTimezone,
         startTimeUTC,
+        gameCenterLink,
       } = game;
 
       const now = new Date();
@@ -388,6 +395,8 @@ export class HockeyData {
         isActive,
         uniqueId: `${value}-${gameDate}-1`,
         venueTimezone: venueTimezone,
+        urlLive: `https://www.nhl.com/${gameCenterLink}`,
+      
       };
     });
 

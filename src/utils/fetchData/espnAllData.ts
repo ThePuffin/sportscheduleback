@@ -277,7 +277,7 @@ const getEachTeamSchedule = async ({
       let number = 0;
       const now = new Date();
       gamesData = games.map((game) => {
-        const { date, competitions, id } = game;
+        const { date, competitions, id, links } = game;
 
         if (new Date(date) < now) return;
         const { venue, competitors } = competitions[0];
@@ -343,6 +343,14 @@ const getEachTeamSchedule = async ({
           isActive,
           uniqueId: id ? `${value}-${id}` : `${value}-${gameDate}-${number}`,
           venueTimezone,
+          urlLive:
+            links?.find(
+              (l) => l.rel?.includes('boxscore') && l.rel?.includes('desktop'),
+            )?.href ||
+            links?.find(
+              (l) => l.rel?.includes('summary') && l.rel?.includes('desktop'),
+            )?.href ||
+            '',
         };
       });
     }

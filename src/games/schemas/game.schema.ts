@@ -57,6 +57,9 @@ export class Game {
   teamSelectedId: string;
 
   @Prop()
+  urlLive: string;
+
+  @Prop()
   show: boolean;
 
   @Prop()
