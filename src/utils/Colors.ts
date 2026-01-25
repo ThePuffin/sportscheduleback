@@ -577,16 +577,16 @@ export const Colors: ColorsType = {
     backgroundColor: '#0C2340',
   },
   'PWHL-OTT': {
-    color: '##a51b2f',
+    color: '#a51b2f',
     backgroundColor: '#fdb81e',
   },
   'PWHL-MIN': {
     color: '#9e7dc5',
-    backgroundColor: ' #ffffff',
+    backgroundColor: '#ffffff',
   },
   'PWHL-MTL': {
     color: '#852734',
-    backgroundColor: ' #e2d4c4',
+    backgroundColor: '#e2d4c4',
   },
   'PWHL-NY': {
     backgroundColor: '#00b9b3',
