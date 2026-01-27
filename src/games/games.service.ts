@@ -574,6 +574,7 @@ export class GameService {
 
   async fetchGamesScores(): Promise<any[]> {
     const gamesWithoutScores = await this.fetchGamesWithoutScores();
+    const postponedGamesLeagues = new Set<string>();
     // number of games without scores is available in `gamesWithoutScores.length`
 
     // Group needed updates by League AND Date
@@ -639,10 +640,17 @@ export class GameService {
 
     for (const score of results) {
       try {
-        if (!score.isFinal) {
+        const isPostponed =
+          score.status === 'Postponed' ||
+          score.status?.type?.name === 'STATUS_POSTPONED' ||
+          score.status?.type?.detail?.includes('TBD');
+
+        if (isPostponed) {
+          postponedGamesLeagues.add(score.league);
+        }
+        if (!score.isFinal && !isPostponed) {
           continue;
         }
-        // score is final; process matching without logging
 
         // try to find by uniqueId exact first
         let game = null as any;
@@ -752,6 +760,11 @@ export class GameService {
         }
 
         if (game) {
+          if (isPostponed) {
+            await this.remove(game.uniqueId);
+            continue;
+          }
+
           const needsUpdate =
             game.homeTeamScore === null ||
             game.homeTeamScore === undefined ||
@@ -785,6 +798,9 @@ export class GameService {
 
     for (const league of leaguesToUpdate) {
       await this.teamService.getTeams(league);
+    }
+    for (const league of postponedGamesLeagues) {
+      await this.getLeagueGames(league, true);
     }
 
     return appliedUpdates.length ? appliedUpdates : results;
