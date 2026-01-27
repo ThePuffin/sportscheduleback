@@ -1,15 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { GameService } from '../games/games.service';
 import { TeamService } from '../teams/teams.service';
 import { League } from '../utils/enum';
 
 @Injectable()
-export class CronService {
+export class CronService implements OnModuleInit {
   constructor(
     private readonly teamService: TeamService,
     private readonly gameService: GameService,
   ) {}
+
+  async onModuleInit() {
+    console.info('[Cron] Server restart: Fetching games scores...');
+    await this.gameService.fetchGamesScores();
+  }
 
   @Cron('30 0 1 * *') // EVERY MONTH AT 0:30AM
   async updateTeams() {
