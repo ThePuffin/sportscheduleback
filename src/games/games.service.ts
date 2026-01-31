@@ -75,6 +75,18 @@ export class GameService {
     if (uniqueId) {
       const existingGame = await this.findOne(uniqueId);
       if (existingGame) {
+        if (
+          gameDto.homeTeamScore === null &&
+          existingGame.homeTeamScore != null
+        ) {
+          delete gameDto.homeTeamScore;
+        }
+        if (
+          gameDto.awayTeamScore === null &&
+          existingGame.awayTeamScore != null
+        ) {
+          delete gameDto.awayTeamScore;
+        }
         Object.assign(existingGame, gameDto);
         return await existingGame.save();
       }
@@ -559,13 +571,14 @@ export class GameService {
   }
 
   async fetchGamesWithoutScores(): Promise<Game[]> {
-    const threeHoursAgo = new Date();
-    threeHoursAgo.setHours(threeHoursAgo.getHours() - 3);
+    const twoHoursAndHalfAgo = new Date();
+    twoHoursAndHalfAgo.setHours(twoHoursAndHalfAgo.getHours() - 2);
+    twoHoursAndHalfAgo.setMinutes(twoHoursAndHalfAgo.getMinutes() - 30);
 
     // match started at least 3 hours ago and score is null or missing
     const gamesWithoutScores = await this.gameModel
       .find({
-        startTimeUTC: { $lte: threeHoursAgo.toISOString() },
+        startTimeUTC: { $lte: twoHoursAndHalfAgo.toISOString() },
         $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
       })
       .exec();
