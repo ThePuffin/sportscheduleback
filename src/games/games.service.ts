@@ -492,11 +492,11 @@ export class GameService {
   async removeDuplicatesAndOlds() {
     console.info('Removing duplicates and old games...');
     const games = await this.gameModel.find().exec();
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const tenMonthsAgo = new Date();
+    tenMonthsAgo.setMonth(tenMonthsAgo.getMonth() - 10);
     const oldGames = games.filter(
       ({ startTimeUTC, homeTeamScore, awayTeamScore }) => {
-        const isOld = new Date(startTimeUTC) < sixMonthsAgo;
+        const isOld = new Date(startTimeUTC) < tenMonthsAgo;
         const hasScore =
           homeTeamScore !== null &&
           homeTeamScore !== undefined &&
