@@ -12,6 +12,15 @@ export const capitalize = (str = '') => {
   );
 };
 
+export const getLuminance = (hex: string) => {
+  const c = hex.replace(/#/g, '');
+  const rgb = Number.parseInt(c, 16);
+  const r = (rgb >> 16) & 0xff;
+  const g = (rgb >> 8) & 0xff;
+  const b = (rgb >> 0) & 0xff;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+
 const leagueConfigs = {
   [League.NHL]: {
     sport: 'hockey',
@@ -122,5 +131,5 @@ export const needRefresh = (leagueName: string, games) => {
     (now.getTime() - lastRefresh.getTime()) / (1000 * 60 * 60 * 24),
   );
   teamRefreshNeeded.push(diffDays >= daysToRefresh);
-  return !teamRefreshNeeded.some((need) => need === false);
+  return !teamRefreshNeeded.includes((need) => need === false);
 };

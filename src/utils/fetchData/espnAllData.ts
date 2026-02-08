@@ -1,9 +1,10 @@
 import { readableDate } from '../../utils/date';
 import { League } from '../../utils/enum';
 import type { MLSGameAPI } from '../../utils/interface/gameMLS';
+import { Colors } from '../Colors';
 import type { ESPNTeam, TeamESPN, TeamType } from '../interface/team';
 import { TeamDetailed } from '../interface/teamDetails';
-import { capitalize } from '../utils';
+import { capitalize, getLuminance } from '../utils';
 
 const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
 
@@ -166,6 +167,19 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
 
         const record = standings[id];
 
+        let colorTeam = color
+          ? '#' + color
+          : Colors[uniqueId]?.color || Colors.default.color;
+        let backgroundColorTeam = alternateColor
+          ? '#' + alternateColor
+          : Colors[uniqueId]?.backgroundColor || Colors.default.backgroundColor;
+
+        if (getLuminance(colorTeam) < getLuminance(backgroundColorTeam)) {
+          const temp = colorTeam;
+          colorTeam = backgroundColorTeam;
+          backgroundColorTeam = temp;
+        }
+
         return {
           uniqueId,
           value: uniqueId,
@@ -178,8 +192,8 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
           conferenceName: '',
           divisionName: '',
           league: leagueName.toUpperCase(),
-          color: color || undefined,
-          backgroundColor: alternateColor || undefined,
+          color: colorTeam,
+          backgroundColor: backgroundColorTeam,
           wins: record?.wins,
           losses: record?.losses,
           ties: record?.ties,

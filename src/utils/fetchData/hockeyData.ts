@@ -7,9 +7,9 @@ import type {
   TeamPWHL,
   TeamType,
 } from '../../utils/interface/team';
-import { Colors, TeamColors } from '../Colors';
+import { Colors } from '../Colors';
 import { PWHLGameAPI } from '../interface/gamePWHL';
-import { capitalize } from '../utils';
+import { capitalize, getLuminance } from '../utils';
 const leagueName = League.NHL;
 const pwhlAPI = 'https://lscluster.hockeytech.com/feed/';
 
@@ -44,7 +44,15 @@ export class HockeyData {
         const teamID = teamAbbrev.default;
         const uniqueId = `${leagueName}-${teamID}`;
 
-        const teamColors = Colors[uniqueId] as TeamColors;
+        let colorTeam = Colors[uniqueId]?.color || Colors.default.color;
+        let backgroundColorTeam =
+          Colors[uniqueId]?.backgroundColor || Colors.default.backgroundColor;
+
+        if (getLuminance(colorTeam) < getLuminance(backgroundColorTeam)) {
+          const temp = colorTeam;
+          colorTeam = backgroundColorTeam;
+          backgroundColorTeam = temp;
+        }
 
         return {
           uniqueId,
@@ -58,8 +66,8 @@ export class HockeyData {
           conferenceName,
           divisionName,
           league: leagueName.toUpperCase(),
-          color: teamColors?.color,
-          backgroundColor: teamColors?.backgroundColor,
+          color: colorTeam,
+          backgroundColor: backgroundColorTeam,
           wins: team.wins,
           losses: team.losses,
           otLosses: team.otLosses,
@@ -101,7 +109,15 @@ export class HockeyData {
           otLosses = Number.parseInt(parts[2]) || 0;
         }
 
-        const teamColors = Colors[uniqueId] as TeamColors;
+        let colorTeam = Colors[uniqueId]?.color || Colors.default.color;
+        let backgroundColorTeam =
+          Colors[uniqueId]?.backgroundColor || Colors.default.backgroundColor;
+
+        if (getLuminance(colorTeam) < getLuminance(backgroundColorTeam)) {
+          const temp = colorTeam;
+          colorTeam = backgroundColorTeam;
+          backgroundColorTeam = temp;
+        }
 
         return {
           uniqueId,
@@ -115,8 +131,8 @@ export class HockeyData {
           conferenceName: '',
           divisionName: division_long_name,
           league: leagueName.toUpperCase(),
-          color: teamColors?.color,
-          backgroundColor: teamColors?.backgroundColor,
+          color: colorTeam,
+          backgroundColor: backgroundColorTeam,
           wins,
           losses,
           otLosses,
@@ -396,7 +412,6 @@ export class HockeyData {
         uniqueId: `${value}-${gameDate}-1`,
         venueTimezone: venueTimezone,
         urlLive: `https://www.nhl.com/${gameCenterLink}`,
-      
       };
     });
 

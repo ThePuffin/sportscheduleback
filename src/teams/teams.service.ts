@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import * as fs from 'node:fs';
 import { Model } from 'mongoose';
+import * as path from 'node:path';
 import { CollegeLeague, League } from '../utils/enum';
 import { getESPNTeams } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
@@ -98,6 +100,10 @@ export class TeamService {
         allActivesTeams.push(...savedTeams);
       }
 
+      if (process.env.NODE_ENV === 'development') {
+        await this.generateTeamsAndColorsFiles();
+      }
+
       return allActivesTeams;
     } catch (error) {
       console.error(error);
@@ -123,6 +129,9 @@ export class TeamService {
     lastMonth.setDate(lastMonth.getMonth() - 1);
     if (new Date(randomTeam?.updateDate) < lastMonth) {
       this.getTeams();
+    }
+    if (process.env.NODE_ENV === 'development') {
+      await this.generateTeamsAndColorsFiles();
     }
     return allTeams.map((team) => this.addRecord(team));
   }
@@ -189,6 +198,52 @@ export class TeamService {
     const teams = await this.teamModel.find().exec();
     for (const team of teams) {
       await this.remove(team.uniqueId);
+    }
+  }
+
+  private async generateTeamsAndColorsFiles() {
+    try {
+      const allTeams = await this.teamModel
+        .find()
+        .sort({ label: 1 })
+        .lean()
+        .exec();
+      const lines = allTeams.map(
+        (team) => `  '${team.uniqueId}': '${team.label.replace(/'/g, "\\'")}',`,
+      );
+      const fileContent = `export const TeamsEnum: Record<string, string> = {\n${lines.join(
+        '\n',
+      )}\n};\n`;
+      const filePath = path.join(
+        process.cwd(),
+        '../frontend/constants/Teams.tsx',
+      );
+      await fs.promises.writeFile(filePath, fileContent);
+
+      const colorLines = allTeams.map((team: any) => {
+        return `  '${team.uniqueId}': {\n    color: '${
+          team.color ?? '#000000'
+        }',\n    backgroundColor: '${team.backgroundColor ?? '#ffffff'}',\n  },`;
+      });
+      const colorsFileContent = `export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: string }> = {\n${colorLines.join(
+        '\n',
+      )}\n};\n`;
+      const colorsFilePath = path.join(
+        process.cwd(),
+        '../frontend/constants/ColorsTeam.tsx',
+      );
+      await fs.promises.writeFile(colorsFilePath, colorsFileContent);
+
+      const colorsFilePathBack = path.join(
+        process.cwd(),
+        '../utils/ColorsTeam.ts',
+      );
+      await fs.promises.writeFile(colorsFilePathBack, colorsFileContent);
+    } catch (error) {
+      console.error(
+        'Error generating TeamsEnum or ColorsTeamEnum file:',
+        error,
+      );
     }
   }
 }
