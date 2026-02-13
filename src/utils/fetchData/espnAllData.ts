@@ -421,13 +421,25 @@ const getEachTeamSchedule = async ({
             (l) => l.rel?.includes('dark') && l.rel?.includes('scoreboard'),
           )?.href || homeTeamLogo;
 
+        let homeTeamShort = homeAbbrev;
+        let awayTeamShort = awayAbbrev;
+        if (leagueName.includes('OLYMPICS')) {
+          if (leagueName.includes('MEN')) {
+            homeTeamShort = homeAbbrev + '-M';
+            awayTeamShort = awayAbbrev + '-M';
+          } else {
+            homeTeamShort = homeAbbrev + '-W';
+            awayTeamShort = awayAbbrev + '-W';
+          }
+        }
+
         return {
           arenaName: capitalize(venue?.fullName) ?? '',
           awayTeam: capitalize(awayTeam.displayName),
           awayTeamId: `${leagueName}-${awayAbbrev}`,
           awayTeamLogo,
           awayTeamLogoDark,
-          awayTeamShort: awayAbbrev,
+          awayTeamShort,
           backgroundColor: backgroundColor ?? undefined,
           color: color ?? undefined,
           gameDate: gameDate,
@@ -435,7 +447,7 @@ const getEachTeamSchedule = async ({
           homeTeamId: `${leagueName}-${homeAbbrev}`,
           homeTeamLogo,
           homeTeamLogoDark,
-          homeTeamShort: homeAbbrev,
+          homeTeamShort,
           homeTeamScore: null,
           awayTeamScore: null,
           league: leagueName.toUpperCase(),

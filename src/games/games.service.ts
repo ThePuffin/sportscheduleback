@@ -435,17 +435,20 @@ export class GameService {
       return [];
     } else {
       if (gameDate >= yesterdayString) {
-        for (const currentLeague of Object.values(League)) {
+        const leaguesInGames = Array.from(new Set(games.map((g) => g.league)));
+        for (const currentLeague of leaguesInGames) {
           const filtredGames = games.filter(
             ({ isActive, awayTeamId, league }) => {
               return (
                 isActive === true &&
                 awayTeamId !== undefined &&
                 awayTeamId !== '' &&
-                league.toUpperCase() === currentLeague.toUpperCase()
+                league?.toUpperCase() === currentLeague?.toUpperCase()
               );
             },
           );
+
+          if (filtredGames.length === 0) continue;
 
           const gamesIndex = randomNumber(filtredGames.length - 1);
           const randomGames = filtredGames[gamesIndex];
@@ -623,7 +626,10 @@ export class GameService {
               results.push(...espnScores);
             }
           } catch (err) {
-            // ignore fetch errors for ESPN
+            console.error(
+              `Error fetching scores for ${league} on ${date}:`,
+              err,
+            );
           }
         }
       }
