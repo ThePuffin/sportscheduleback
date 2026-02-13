@@ -423,14 +423,13 @@ const getEachTeamSchedule = async ({
 
         let homeTeamShort = homeAbbrev;
         let awayTeamShort = awayAbbrev;
-        if (leagueName.includes('OLYMPICS')) {
-          if (leagueName.includes('MEN')) {
-            homeTeamShort = homeAbbrev + '-M';
-            awayTeamShort = awayAbbrev + '-M';
-          } else {
-            homeTeamShort = homeAbbrev + '-W';
-            awayTeamShort = awayAbbrev + '-W';
-          }
+        if (leagueName.includes('OLYMPICS-WOMEN')) {
+          homeTeamShort = homeAbbrev + '-W';
+          awayTeamShort = awayAbbrev + '-W';
+        }
+        if (leagueName.includes('OLYMPICS-MEN')) {
+          homeTeamShort = homeAbbrev + '-M';
+          awayTeamShort = awayAbbrev + '-M';
         }
 
         return {
@@ -549,6 +548,19 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
                 const awayTeamRecord =
                   away?.records?.find((r) => r.type === 'total')?.summary || '';
 
+                let homeTeamShort = home?.team?.abbreviation || undefined;
+                let awayTeamShort = away?.team?.abbreviation || undefined;
+
+                if (leagueKey.includes('OLYMPICS')) {
+                  if (leagueKey.includes('WOMEN')) {
+                    if (homeTeamShort) homeTeamShort += '-W';
+                    if (awayTeamShort) awayTeamShort += '-W';
+                  } else {
+                    if (homeTeamShort) homeTeamShort += '-M';
+                    if (awayTeamShort) awayTeamShort += '-M';
+                  }
+                }
+
                 const displayClockDetail = comp.status?.displayClock || '';
                 const statusIndicatesFinishedDetail =
                   statusDetail?.completed === true ||
@@ -574,8 +586,8 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
                   awayTeamId: away
                     ? `${leagueKey}-${away.team?.abbreviation || away.team?.id}`
                     : undefined,
-                  homeTeamShort: home?.team?.abbreviation || undefined,
-                  awayTeamShort: away?.team?.abbreviation || undefined,
+                  homeTeamShort,
+                  awayTeamShort,
                   isFinal:
                     statusIndicatesFinishedDetail === true ||
                     isFinalDetail === true,
@@ -624,6 +636,19 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
         const awayTeamRecord =
           away?.records?.find((r) => r.type === 'total')?.summary || '';
 
+        let homeTeamShort = home?.team?.abbreviation || undefined;
+        let awayTeamShort = away?.team?.abbreviation || undefined;
+
+        if (leagueKey.includes('OLYMPICS')) {
+          if (leagueKey.includes('WOMEN')) {
+            if (homeTeamShort) homeTeamShort += '-W';
+            if (awayTeamShort) awayTeamShort += '-W';
+          } else {
+            if (homeTeamShort) homeTeamShort += '-M';
+            if (awayTeamShort) awayTeamShort += '-M';
+          }
+        }
+
         finishedCount++;
         const normalized = {
           uniqueId: id,
@@ -637,8 +662,8 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
           awayTeamId: away
             ? `${leagueKey}-${away.team?.abbreviation || away.team?.id}`
             : undefined,
-          homeTeamShort: home?.team?.abbreviation || undefined,
-          awayTeamShort: away?.team?.abbreviation || undefined,
+          homeTeamShort,
+          awayTeamShort,
           isFinal: statusIndicatesFinished === true,
           homeTeamRecord,
           awayTeamRecord,
