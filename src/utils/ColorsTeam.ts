@@ -1,7 +1,4 @@
-export const ColorsTeamEnum: Record<
-  string,
-  { color: string; backgroundColor: string }
-> = {
+export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: string }> = {
   'NHL-ANA': {
     color: '#fc4c02',
     backgroundColor: '#000000',
@@ -82,14 +79,13 @@ export const ColorsTeamEnum: Record<
     color: '#dd1a32',
     backgroundColor: '#000000',
   },
-  'OLYMPICS-WOMEN-CAN': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
-  },
-
   'OLYMPICS-MEN-CAN': {
     color: '#ffffff',
     backgroundColor: '#000000',
+  },
+  'OLYMPICS-WOMEN-CAN': {
+    color: '#ffffff',
+    backgroundColor: '#ff0000',
   },
   'NHL-CAR': {
     color: '#e30426',
@@ -183,14 +179,13 @@ export const ColorsTeamEnum: Record<
     color: '#f05023',
     backgroundColor: '#0a2240',
   },
-  'OLYMPICS-WOMEN-CZE': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
-  },
-
   'OLYMPICS-MEN-CZE': {
     color: '#ffffff',
     backgroundColor: '#000000',
+  },
+  'OLYMPICS-WOMEN-CZE': {
+    color: '#ffffff',
+    backgroundColor: '#d7141a',
   },
   'MLS-DC': {
     color: '#d61018',
@@ -216,7 +211,6 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#000000',
   },
-
   'NFL-DEN': {
     color: '#fc4c02',
     backgroundColor: '#0a2343',
@@ -253,39 +247,34 @@ export const ColorsTeamEnum: Record<
     color: '#c6093b',
     backgroundColor: '#001f5b',
   },
-
-  'OLYMPICS-WOMEN-FIN': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
-  },
   'OLYMPICS-MEN-FIN': {
     color: '#ffffff',
     backgroundColor: '#000000',
+  },
+  'OLYMPICS-WOMEN-FIN': {
+    color: '#ffffff',
+    backgroundColor: '#002f6c',
   },
   'NHL-FLA': {
     color: '#e51937',
     backgroundColor: '#002d62',
   },
-
-  'OLYMPICS-WOMEN-FRA': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
-  },
   'OLYMPICS-MEN-FRA': {
     color: '#ffffff',
     backgroundColor: '#000000',
   },
-
-  'OLYMPICS-WOMEN-GER': {
+  'OLYMPICS-WOMEN-FRA': {
     color: '#ffffff',
+    backgroundColor: '#002395',
+  },
+  'OLYMPICS-WOMEN-GER': {
+    color: '#ffce00',
     backgroundColor: '#000000',
   },
-
   'OLYMPICS-MEN-GER': {
     color: '#ffffff',
     backgroundColor: '#000000',
   },
-
   'WNBA-GS': {
     color: '#b38fcf',
     backgroundColor: '#000000',
@@ -332,22 +321,20 @@ export const ColorsTeamEnum: Record<
   },
   'OLYMPICS-WOMEN-ITA': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#0064aa',
   },
   'OLYMPICS-MEN-ITA': {
     color: '#ffffff',
     backgroundColor: '#000000',
   },
-
   'NFL-JAX': {
     color: '#d7a22a',
     backgroundColor: '#007487',
   },
   'OLYMPICS-WOMEN-JPN': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#bc002d',
   },
-
   'NFL-KC': {
     color: '#ffb612',
     backgroundColor: '#e31837',
@@ -376,7 +363,6 @@ export const ColorsTeamEnum: Record<
     color: '#a5acaf',
     backgroundColor: '#000000',
   },
-
   'OLYMPICS-MEN-LAT': {
     color: '#ffffff',
     backgroundColor: '#000000',
@@ -673,7 +659,6 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#000000',
   },
-
   'MLS-SKC': {
     color: '#a7c6ed',
     backgroundColor: '#0a2240',
@@ -690,23 +675,21 @@ export const ColorsTeamEnum: Record<
     color: '#ec1458',
     backgroundColor: '#001544',
   },
-
   'OLYMPICS-MEN-SWE': {
     color: '#ffffff',
     backgroundColor: '#000000',
   },
   'OLYMPICS-WOMEN-SWE': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
+    color: '#fecc00',
+    backgroundColor: '#006aa7',
   },
-
   'OLYMPICS-MEN-SUI': {
     color: '#ffffff',
     backgroundColor: '#000000',
   },
   'OLYMPICS-WOMEN-SUI': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#da291c',
   },
   'NFL-TB': {
     color: '#bd1c36',
@@ -754,9 +737,8 @@ export const ColorsTeamEnum: Record<
   },
   'OLYMPICS-WOMEN-USA': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#002868',
   },
-
   'NBA-UTAH': {
     color: '#79a3dc',
     backgroundColor: '#4e008e',
