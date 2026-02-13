@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import * as fs from 'node:fs';
 import { Model } from 'mongoose';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { CollegeLeague, League } from '../utils/enum';
 import { getESPNTeams } from '../utils/fetchData/espnAllData';
@@ -236,7 +236,7 @@ export class TeamService {
 
       const colorsFilePathBack = path.join(
         process.cwd(),
-        '../utils/ColorsTeam.ts',
+        'src/utils/ColorsTeam.ts',
       );
       await fs.promises.writeFile(colorsFilePathBack, colorsFileContent);
     } catch (error) {
