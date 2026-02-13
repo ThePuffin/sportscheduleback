@@ -79,6 +79,22 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#dd1a32',
     backgroundColor: '#000000',
   },
+  'OLYMPICS-WOMEN-CAN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-MEN-CAN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-WOMEN-CAN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-MEN-CAN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
   'NHL-CAR': {
     color: '#e30426',
     backgroundColor: '#000000',
@@ -171,6 +187,22 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#f05023',
     backgroundColor: '#0a2240',
   },
+  'OLYMPICS-WOMEN-CZE': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-MEN-CZE': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-WOMEN-CZE': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-MEN-CZE': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
   'MLS-DC': {
     color: '#d61018',
     backgroundColor: '#000000',
@@ -190,6 +222,14 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   'WNBA-DAL': {
     color: '#c4d600',
     backgroundColor: '#002b5c',
+  },
+  'OLYMPICS-MEN-DEN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-MEN-DEN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NFL-DEN': {
     color: '#fc4c02',
@@ -227,9 +267,57 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#c6093b',
     backgroundColor: '#001f5b',
   },
+  'OLYMPICS-WINTER-WOMEN-FIN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-MEN-FIN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WOMEN-FIN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-MEN-FIN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
   'NHL-FLA': {
     color: '#e51937',
     backgroundColor: '#002d62',
+  },
+  'OLYMPICS-WINTER-MEN-FRA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WOMEN-FRA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-MEN-FRA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-WOMEN-FRA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WOMEN-GER': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-MEN-GER': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-MEN-GER': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-WOMEN-GER': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'WNBA-GS': {
     color: '#b38fcf',
@@ -275,9 +363,33 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#f7b5cd',
     backgroundColor: '#231f20',
   },
+  'OLYMPICS-WOMEN-ITA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-MEN-ITA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-WOMEN-ITA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-MEN-ITA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
   'NFL-JAX': {
     color: '#d7a22a',
     backgroundColor: '#007487',
+  },
+  'OLYMPICS-WOMEN-JPN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-WOMEN-JPN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NFL-KC': {
     color: '#ffb612',
@@ -305,6 +417,14 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   },
   'NFL-LV': {
     color: '#a5acaf',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-MEN-LAT': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-MEN-LAT': {
+    color: '#ffffff',
     backgroundColor: '#000000',
   },
   'MLB-LAA': {
@@ -595,6 +715,14 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#E1DBC9',
     backgroundColor: '#0C5256',
   },
+  'OLYMPICS-MEN-SVK': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-MEN-SVK': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
   'MLS-SKC': {
     color: '#a7c6ed',
     backgroundColor: '#0a2240',
@@ -610,6 +738,38 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   'MLS-STL': {
     color: '#ec1458',
     backgroundColor: '#001544',
+  },
+  'OLYMPICS-WINTER-MEN-SWE': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-MEN-SWE': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WOMEN-SWE': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-WOMEN-SWE': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-MEN-SUI': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-WOMEN-SUI': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-MEN-SUI': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WOMEN-SUI': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NFL-TB': {
     color: '#bd1c36',
@@ -650,6 +810,22 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   'PWHL-TOR': {
     color: '#0067B9',
     backgroundColor: '#0C2340',
+  },
+  'OLYMPICS-MEN-USA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WOMEN-USA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-MEN-USA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-WINTER-WOMEN-USA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NBA-UTAH': {
     color: '#79a3dc',

@@ -25,6 +25,14 @@ const leagueConfigs = {
   [League.NCAAB]: { sport: 'basketball', league: 'mens-college-basketball' },
   [League.WNCAAB]: { sport: 'basketball', league: 'womens-college-basketball' },
   [League.NCCABB]: { sport: 'baseball', league: 'college-baseball' },
+  [League.OLYMPICS_HOCKEY_MEN]: {
+    sport: 'hockey',
+    league: 'olympics-mens-ice-hockey',
+  },
+  [League.OLYMPICS_HOCKEY_WOMEN]: {
+    sport: 'hockey',
+    league: 'olympics-womens-ice-hockey',
+  },
 };
 
 const leaguesData = Object.fromEntries(
@@ -52,49 +60,55 @@ const getDivision = async (
   divisionName: string;
   record?: { wins: number; losses: number; ties?: number; otLosses?: number };
 }> => {
-  const url = leaguesData[leagueName].fetchDetails + id;
-  const fetchedTeams = await fetch(url);
-  const fetchTeams = await fetchedTeams.json();
-  const team = fetchTeams?.team || {};
-  const { standingSummary = '' } = team;
+  try {
+    const url = leaguesData[leagueName].fetchDetails + id;
+    const fetchedTeams = await fetch(url);
+    const fetchTeams = await fetchedTeams.json();
+    const team = fetchTeams?.team || {};
+    const { standingSummary = '' } = team;
 
-  let record;
-  if (team.record?.items) {
-    const total = team.record.items.find((i) => i.type === 'total');
-    if (total?.stats) {
-      const wins = total.stats.find((s) => s.name === 'wins')?.value;
-      const losses = total.stats.find((s) => s.name === 'losses')?.value;
-      const ties = total.stats.find((s) => s.name === 'ties')?.value;
-      const otLosses = total.stats.find((s) => s.name === 'otLosses')?.value;
-      record = { wins, losses, ties, otLosses };
+    let record;
+    if (team.record?.items) {
+      const total = team.record.items.find((i) => i.type === 'total');
+      if (total?.stats) {
+        const wins = total.stats.find((s) => s.name === 'wins')?.value;
+        const losses = total.stats.find((s) => s.name === 'losses')?.value;
+        const ties = total.stats.find((s) => s.name === 'ties')?.value;
+        const otLosses = total.stats.find((s) => s.name === 'otLosses')?.value;
+        record = { wins, losses, ties, otLosses };
+      }
     }
-  }
 
-  if (standingSummary === '') {
-    return { conferenceName: '', divisionName: '', record };
-  }
-  const cut = standingSummary.split(' ');
-  if (leagueName === League.NFL || leagueName === League.MLB) {
-    return {
-      conferenceName: cut[3] || '',
-      divisionName: cut[2] || '',
-      record,
-    };
-  } else if (leagueName === League.NBA) {
-    const divisionName = cut[2] || '';
-    const conference = {
-      Atlantic: 'East',
-      Central: 'East',
-      Northwest: 'West',
-      Pacific: 'West',
-    };
-    return {
-      conferenceName: conference[divisionName] || '',
-      divisionName,
-      record,
-    };
-  } else {
-    return { conferenceName: '', divisionName: '', record };
+    if (standingSummary === '') {
+      return { conferenceName: '', divisionName: '', record };
+    }
+    const cut = standingSummary.split(' ');
+    if (leagueName === League.NFL || leagueName === League.MLB) {
+      return {
+        conferenceName: cut[3] || '',
+        divisionName: cut[2] || '',
+        record,
+      };
+    } else if (leagueName === League.NBA) {
+      const divisionName = cut[2] || '';
+      const conference = {
+        Atlantic: 'East',
+        Central: 'East',
+        Northwest: 'West',
+        Pacific: 'West',
+      };
+      return {
+        conferenceName: conference[divisionName] || '',
+        divisionName,
+        record,
+      };
+    } else if (leagueName.includes('OLYMPICS')) {
+      return { conferenceName: standingSummary, divisionName: '', record };
+    } else {
+      return { conferenceName: '', divisionName: '', record };
+    }
+  } catch (error) {
+    return { conferenceName: '', divisionName: '' };
   }
 };
 
@@ -133,16 +147,72 @@ const getESPNStandings = async (leagueName: string) => {
 
 export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
   try {
+    if (!leaguesData[leagueName]) return [];
     const fetchedTeams = await fetch(leaguesData[leagueName].fetchTeam);
     const fetchTeams: TeamESPN = await fetchedTeams.json();
     const { sports } = fetchTeams;
+    if (!sports) return [];
     const { leagues } = sports[0];
-    const allTeams: ESPNTeam[] = leagues[0].teams;
+    let allTeams: ESPNTeam[] = leagues[0].teams || [];
     const standings = await getESPNStandings(leagueName);
 
+    if (allTeams.length === 0 && leagueName.includes('OLYMPICS')) {
+      try {
+        const url = leaguesData[leagueName].fetchStandings;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        const traverse = (node) => {
+          if (node.standings?.entries) {
+            node.standings.entries.forEach((entry) => {
+              if (entry.team) {
+                if (!allTeams.find((t) => t.team.id === entry.team.id)) {
+                  allTeams.push({ team: entry.team });
+                }
+              }
+            });
+          }
+          if (node.children) {
+            node.children.forEach((child) => traverse(child));
+          }
+        };
+
+        traverse(data);
+      } catch (error) {
+        console.error('Error fetching standings for teams fallback:', error);
+      }
+    }
+
+    if (allTeams.length === 0 && leagueName.includes('OLYMPICS')) {
+      try {
+        const { sport, league } = leagueConfigs[leagueName];
+        const url = `${espnAPI}${sport}/${league}/scoreboard?dates=2026`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const events = data.events || [];
+        events.forEach((event) => {
+          event.competitions?.[0]?.competitors?.forEach((comp) => {
+            if (
+              comp.team &&
+              !allTeams.find((t) => t.team.id === comp.team.id)
+            ) {
+              allTeams.push({ team: comp.team });
+            }
+          });
+        });
+      } catch (error) {
+        console.error('Error fetching scoreboard for teams fallback:', error);
+      }
+    }
+
     const activeTeams: TeamType[] = allTeams
-      .filter(({ team }) => team.isActive)
-      .sort((a, b) => (a.team.slug > b.team.slug ? 1 : -1))
+      .filter(({ team }) => {
+        if (leagueName.includes('OLYMPICS')) return true;
+        return team.isActive;
+      })
+      .sort((a, b) =>
+        (a.team.slug || a.team.id) > (b.team.slug || b.team.id) ? 1 : -1,
+      )
       .map(({ team }) => {
         const {
           abbreviation,
@@ -153,7 +223,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
           color,
           alternateColor,
         } = team;
-        let teamID = abbreviation;
+        let teamID = abbreviation || id;
 
         if (ESPNAbbrevs[leagueName]?.[teamID]) {
           teamID = ESPNAbbrevs[leagueName][teamID];
@@ -188,7 +258,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
           label: capitalize(displayName),
           teamLogo,
           teamLogoDark,
-          teamCommonName: capitalize(nickname),
+          teamCommonName: capitalize(nickname || displayName),
           conferenceName: '',
           divisionName: '',
           league: leagueName.toUpperCase(),
@@ -262,27 +332,47 @@ const getEachTeamSchedule = async ({
 }) => {
   try {
     let games;
-    try {
-      const link = leaguesData[leagueName].fetchGames.replace('${id}', id);
-      const fetchedGames = await fetch(link);
-      const fetchGames: MLSGameAPI = await fetchedGames.json();
-      const { events } = fetchGames;
-
-      games = events?.[0] ? events : [];
-
-      const now = new Date();
-      const gamesFilter = games.filter(({ date }) => new Date(date) >= now);
-      if (gamesFilter.length === 0) {
-        const link = leaguesData[leagueName].fetchTeam + '/' + id;
-        const fetchedTeams = await fetch(link);
-        const fetchTeams: TeamDetailed = await fetchedTeams.json();
-        games = fetchTeams?.team?.nextEvent || [];
+    if (leagueName.includes('OLYMPICS')) {
+      try {
+        if (!leagueConfigs[leagueName]) {
+          games = [];
+        } else {
+          const { sport, league } = leagueConfigs[leagueName];
+          const url = `${espnAPI}${sport}/${league}/scoreboard?dates=2026`;
+          const res = await fetch(url);
+          const data = await res.json();
+          const events = data.events || [];
+          games = events.filter((ev) =>
+            ev.competitions?.[0]?.competitors?.some((c) => c.team?.id === id),
+          );
+        }
+      } catch (error) {
+        console.info('no olympic games found', value, error);
+        games = [];
       }
+    } else {
+      try {
+        const link = leaguesData[leagueName].fetchGames.replace('${id}', id);
+        const fetchedGames = await fetch(link);
+        const fetchGames: MLSGameAPI = await fetchedGames.json();
+        const { events } = fetchGames;
 
-      console.info('yes', value);
-    } catch (error) {
-      console.info('no', value, error);
-      games = [];
+        games = events?.[0] ? events : [];
+
+        const now = new Date();
+        const gamesFilter = games.filter(({ date }) => new Date(date) >= now);
+        if (gamesFilter.length === 0) {
+          const link = leaguesData[leagueName].fetchTeam + '/' + id;
+          const fetchedTeams = await fetch(link);
+          const fetchTeams: TeamDetailed = await fetchedTeams.json();
+          games = fetchTeams?.team?.nextEvent || [];
+        }
+
+        console.info('yes', value);
+      } catch (error) {
+        console.info('no', value, error);
+        games = [];
+      }
     }
     let gamesData = [];
     if (!games.length) {
@@ -293,7 +383,7 @@ const getEachTeamSchedule = async ({
       gamesData = games.map((game) => {
         const { date, competitions, id, links } = game;
 
-        if (new Date(date) < now) return;
+        if (new Date(date) < now && !leagueName.includes('OLYMPICS')) return;
         const { venue, competitors } = competitions[0];
         const venueTimezone = 'America/Los_Angeles';
         const currentDate = new Date(
