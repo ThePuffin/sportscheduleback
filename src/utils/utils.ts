@@ -71,34 +71,60 @@ const leagueConfigs = {
     endSeason: '04',
     endPlayoffs: '06',
   },
-  [League.OLYMPICS_HOCKEY_MEN]: {
-    sport: 'hockey',
-    league: 'olympics.men',
-    startSeason: '12',
-    endSeason: '01',
-    endPlayoffs: '02',
-  },
-  [League.OLYMPICS_HOCKEY_WOMEN]: {
-    sport: 'hockey',
-    league: 'olympics.women',
-    startSeason: '12',
-    endSeason: '01',
-    endPlayoffs: '02',
-  },
-  // [League.OLYMPICS_BASKETBALL_MEN]: {
-  //   sport: 'basketball',
-  //   league: 'olympics.men',
-  //   startSeason: '07',
-  //   endSeason: '08',
-  //   endPlayoffs: '09',
-  // },
-  // [League.OLYMPICS_BASKETBALL_WOMEN]: {
-  //   sport: 'basketball',
-  //   league: 'olympics.women',
-  //   startSeason: '07',
-  //   endSeason: '08',
-  //   endPlayoffs: '09',
-  // },
+};
+
+const getLeagueConfig = (leagueName: string) => {
+  if (
+    leagueName === League.OLYMPICS_MEN ||
+    leagueName === League.OLYMPICS_WOMEN
+  ) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    // Winter Olympics (Hockey): 2026, 2030... (Year % 4 === 2)
+    // Active roughly Dec (year-1) to March (year)
+    if (
+      ((year + 1) % 4 === 2 && month === 11) ||
+      (year % 4 === 2 && month <= 3)
+    ) {
+      return {
+        sport: 'hockey',
+        league:
+          leagueName === League.OLYMPICS_WOMEN
+            ? 'olympics.women'
+            : 'olympics.men',
+        startSeason: '12',
+        endSeason: '02',
+        endPlayoffs: '03',
+      };
+    }
+
+    // Summer Olympics (Basketball): 2028, 2032... (Year % 4 === 0)
+    // Active roughly May to Aug
+    if (year % 4 === 0 && month >= 4 && month <= 7) {
+      return {
+        sport: 'basket',
+        league:
+          leagueName === League.OLYMPICS_WOMEN
+            ? 'olympics.women'
+            : 'olympics.men',
+        startSeason: '05',
+        endSeason: '06',
+        endPlayoffs: '07',
+      };
+    }
+
+    // Off-season / No Olympics this year
+    return {
+      sport: 'hockey',
+      league: 'olympics',
+      startSeason: '99',
+      endSeason: '99',
+      endPlayoffs: '99',
+    };
+  }
+  return leagueConfigs[leagueName];
 };
 
 const isInThePeriod = (start: string, end: string) => {
@@ -124,18 +150,20 @@ const isInThePeriod = (start: string, end: string) => {
 };
 
 const isCurrentSeason = (leagueName: string) => {
-  if (!leagueConfigs[leagueName]) {
+  const config = getLeagueConfig(leagueName);
+  if (!config) {
     return true;
   }
-  const { startSeason, endSeason } = leagueConfigs[leagueName];
+  const { startSeason, endSeason } = config;
   return isInThePeriod(startSeason, endSeason);
 };
 
 const isendPlayoffs = (leagueName: string) => {
-  if (!leagueConfigs[leagueName]) {
+  const config = getLeagueConfig(leagueName);
+  if (!config) {
     return false;
   }
-  const { endPlayoffs, endSeason } = leagueConfigs[leagueName];
+  const { endPlayoffs, endSeason } = config;
   return isInThePeriod(endSeason, endPlayoffs);
 };
 

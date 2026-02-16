@@ -8,10 +8,28 @@ import { capitalize, getLuminance } from '../utils';
 
 const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
 
+const getNormalizedLeagueName = (leagueName: string) => {
+  if (leagueName.includes('OLYMPICS')) {
+    if (leagueName.includes('WOMEN')) return 'OLYMPICS-WOMEN';
+    return 'OLYMPICS-MEN';
+  }
+  return leagueName;
+};
+
 const ESPNAbbrevs = {
   NHL: {
     UTAH: 'UTA',
   },
+};
+
+const OLYMPICS_HOCKEY_MEN = 'OLYMPICS-HOCKEY-MEN';
+const OLYMPICS_HOCKEY_WOMEN = 'OLYMPICS-HOCKEY-WOMEN';
+const OLYMPICS_BASKETBALL_MEN = 'OLYMPICS-BASKETBALL-MEN';
+const OLYMPICS_BASKETBALL_WOMEN = 'OLYMPICS-BASKETBALL-WOMEN';
+
+const aggregateLeagues = {
+  'OLYMPICS-MEN': [OLYMPICS_HOCKEY_MEN, OLYMPICS_BASKETBALL_MEN],
+  'OLYMPICS-WOMEN': [OLYMPICS_HOCKEY_WOMEN, OLYMPICS_BASKETBALL_WOMEN],
 };
 
 const leagueConfigs = {
@@ -25,13 +43,21 @@ const leagueConfigs = {
   [League.NCAAB]: { sport: 'basketball', league: 'mens-college-basketball' },
   [League.WNCAAB]: { sport: 'basketball', league: 'womens-college-basketball' },
   [League.NCCABB]: { sport: 'baseball', league: 'college-baseball' },
-  [League.OLYMPICS_HOCKEY_MEN]: {
+  [OLYMPICS_HOCKEY_MEN]: {
     sport: 'hockey',
     league: 'olympics-mens-ice-hockey',
   },
-  [League.OLYMPICS_HOCKEY_WOMEN]: {
+  [OLYMPICS_HOCKEY_WOMEN]: {
     sport: 'hockey',
     league: 'olympics-womens-ice-hockey',
+  },
+  [OLYMPICS_BASKETBALL_MEN]: {
+    sport: 'basketball',
+    league: 'olympics-mens-basketball',
+  },
+  [OLYMPICS_BASKETBALL_WOMEN]: {
+    sport: 'basketball',
+    league: 'olympics-womens-basketball',
   },
 };
 
@@ -147,6 +173,15 @@ const getESPNStandings = async (leagueName: string) => {
 
 export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
   try {
+    // Handle aggregate leagues (e.g. OLYMPICS-WOMEN)
+    if (aggregateLeagues[leagueName]) {
+      let allTeams: TeamType[] = [];
+      for (const subLeague of aggregateLeagues[leagueName]) {
+        const teams = await getESPNTeams(subLeague);
+        allTeams = [...allTeams, ...teams];
+      }
+      return allTeams;
+    }
     if (!leaguesData[leagueName]) return [];
     const fetchedTeams = await fetch(leaguesData[leagueName].fetchTeam);
     const fetchTeams: TeamESPN = await fetchedTeams.json();
@@ -228,6 +263,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
         if (ESPNAbbrevs[leagueName]?.[teamID]) {
           teamID = ESPNAbbrevs[leagueName][teamID];
         }
+        const normalizedLeagueName = getNormalizedLeagueName(leagueName);
         const uniqueId = `${leagueName}-${teamID}`;
         const teamLogo = logos?.[2]?.href ?? logos?.[0]?.href;
         const teamLogoDark =
@@ -261,7 +297,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
           teamCommonName: capitalize(nickname || displayName),
           conferenceName: '',
           divisionName: '',
-          league: leagueName.toUpperCase(),
+          league: normalizedLeagueName.toUpperCase(),
           color: colorTeam,
           backgroundColor: backgroundColorTeam,
           wins: record?.wins,
@@ -331,6 +367,24 @@ const getEachTeamSchedule = async ({
   backgroundColor,
 }) => {
   try {
+    const normalizedLeagueName = getNormalizedLeagueName(leagueName);
+    // Handle aggregate leagues for Olympics
+    if (aggregateLeagues[leagueName]) {
+      let allGames = [];
+      for (const subLeague of aggregateLeagues[leagueName]) {
+        const games = await getEachTeamSchedule({
+          id,
+          abbrev,
+          value,
+          leagueName: subLeague,
+          leagueLogos,
+          color,
+          backgroundColor,
+        });
+        allGames = [...allGames, ...games];
+      }
+      return allGames;
+    }
     let games;
     if (leagueName.includes('OLYMPICS')) {
       try {
@@ -441,7 +495,7 @@ const getEachTeamSchedule = async ({
           homeTeamShort,
           homeTeamScore: null,
           awayTeamScore: null,
-          league: leagueName.toUpperCase(),
+          league: normalizedLeagueName.toUpperCase(),
           placeName: capitalize(venue?.address?.city) ?? '',
           selectedTeam: homeAbbrev === abbrev,
           show: homeAbbrev === abbrev,
@@ -472,7 +526,16 @@ const getEachTeamSchedule = async ({
 
 export const getESPNScores = async (leagueKey: string, date: string) => {
   try {
+    if (aggregateLeagues[leagueKey]) {
+      let allScores = [];
+      for (const subLeague of aggregateLeagues[leagueKey]) {
+        const scores = await getESPNScores(subLeague, date);
+        allScores = [...allScores, ...scores];
+      }
+      return allScores;
+    }
     const results = [];
+    const normalizedLeagueName = getNormalizedLeagueName(leagueKey);
     if (!leagueConfigs[leagueKey]) return results;
     const { sport, league } = leagueConfigs[leagueKey];
     const base = `${espnAPI}${sport}/${league}`;
@@ -558,7 +621,7 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
                   ev.id || j.id || (comp.id || Math.random()).toString();
                 return {
                   uniqueId: id,
-                  league: leagueKey,
+                  league: normalizedLeagueName,
                   startTimeUTC: ev.date,
                   homeTeamScore: homeScore,
                   awayTeamScore: awayScore,
@@ -624,7 +687,7 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
         finishedCount++;
         const normalized = {
           uniqueId: id,
-          league: leagueKey,
+          league: normalizedLeagueName,
           startTimeUTC: ev.date,
           homeTeamScore: homeScore,
           awayTeamScore: awayScore,
