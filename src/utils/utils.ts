@@ -75,8 +75,8 @@ const leagueConfigs = {
 
 const getLeagueConfig = (leagueName: string) => {
   if (
-    leagueName === League.OLYMPICS_MEN ||
-    leagueName === League.OLYMPICS_WOMEN
+    leagueName === League['OLYMPICS-MEN'] ||
+    leagueName === League['OLYMPICS-WOMEN']
   ) {
     const now = new Date();
     const year = now.getFullYear();
@@ -91,27 +91,12 @@ const getLeagueConfig = (leagueName: string) => {
       return {
         sport: 'hockey',
         league:
-          leagueName === League.OLYMPICS_WOMEN
+          leagueName === League['OLYMPICS-WOMEN']
             ? 'olympics.women'
             : 'olympics.men',
         startSeason: '12',
         endSeason: '02',
         endPlayoffs: '03',
-      };
-    }
-
-    // Summer Olympics (Basketball): 2028, 2032... (Year % 4 === 0)
-    // Active roughly May to Aug
-    if (year % 4 === 0 && month >= 4 && month <= 7) {
-      return {
-        sport: 'basket',
-        league:
-          leagueName === League.OLYMPICS_WOMEN
-            ? 'olympics.women'
-            : 'olympics.men',
-        startSeason: '05',
-        endSeason: '06',
-        endPlayoffs: '07',
       };
     }
 
