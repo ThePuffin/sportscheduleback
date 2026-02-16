@@ -71,6 +71,34 @@ const leagueConfigs = {
     endSeason: '04',
     endPlayoffs: '06',
   },
+  [League.OLYMPICS_HOCKEY_MEN]: {
+    sport: 'hockey',
+    league: 'olympics.men',
+    startSeason: '12',
+    endSeason: '01',
+    endPlayoffs: '02',
+  },
+  [League.OLYMPICS_HOCKEY_WOMEN]: {
+    sport: 'hockey',
+    league: 'olympics.women',
+    startSeason: '12',
+    endSeason: '01',
+    endPlayoffs: '02',
+  },
+  // [League.OLYMPICS_BASKETBALL_MEN]: {
+  //   sport: 'basketball',
+  //   league: 'olympics.men',
+  //   startSeason: '07',
+  //   endSeason: '08',
+  //   endPlayoffs: '09',
+  // },
+  // [League.OLYMPICS_BASKETBALL_WOMEN]: {
+  //   sport: 'basketball',
+  //   league: 'olympics.women',
+  //   startSeason: '07',
+  //   endSeason: '08',
+  //   endPlayoffs: '09',
+  // },
 };
 
 const isInThePeriod = (start: string, end: string) => {
