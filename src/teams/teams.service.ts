@@ -95,7 +95,7 @@ export class TeamService {
       }
 
       if (process.env.NODE_ENV === 'development') {
-        await this.generateTeamsAndColorsFiles();
+        await this.generateLeaguesTeamsAndColorsFiles();
       }
 
       return allActivesTeams;
@@ -125,7 +125,7 @@ export class TeamService {
       this.getTeams();
     }
     if (process.env.NODE_ENV === 'development') {
-      await this.generateTeamsAndColorsFiles();
+      await this.generateLeaguesTeamsAndColorsFiles();
     }
     return allTeams.map((team) => this.addRecord(team));
   }
@@ -203,8 +203,20 @@ export class TeamService {
     }
   }
 
-  private async generateTeamsAndColorsFiles() {
+  private async generateLeaguesTeamsAndColorsFiles() {
     try {
+      const AllLeagues = await this.findAllLeagues();
+      const leaguesLines = AllLeagues.map(
+        (league) => `  '${league}': '${league}',`,
+      );
+      const leaguesFileContent = `export const LeaguesEnum: Record<string, string> = {\n${leaguesLines.join(
+        '\n',
+      )}\n};\n`;
+      const leaguesFilePath = path.join(
+        process.cwd(),
+        '../frontend/constants/Leagues.tsx',
+      );
+      await fs.promises.writeFile(leaguesFilePath, leaguesFileContent);
       const allTeams = await this.teamModel
         .find()
         .sort({ label: 1 })
