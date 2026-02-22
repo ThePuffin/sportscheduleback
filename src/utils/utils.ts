@@ -71,6 +71,34 @@ const leagueConfigs = {
     endSeason: '04',
     endPlayoffs: '06',
   },
+  [League.NCAAF]: {
+    sport: 'football',
+    league: 'college-football',
+    startSeason: '08',
+    endSeason: '12',
+    endPlayoffs: '01',
+  },
+  [League.NCAAB]: {
+    sport: 'basketball',
+    league: 'mens-college-basketball',
+    startSeason: '11',
+    endSeason: '03',
+    endPlayoffs: '04',
+  },
+  [League.WNCAAB]: {
+    sport: 'basketball',
+    league: 'womens-college-basketball',
+    startSeason: '11',
+    endSeason: '03',
+    endPlayoffs: '04',
+  },
+  [League.NCCABB]: {
+    sport: 'baseball',
+    league: 'college-baseball',
+    startSeason: '02',
+    endSeason: '05',
+    endPlayoffs: '06',
+  },
 };
 
 const getLeagueConfig = (leagueName: string) => {
@@ -83,20 +111,32 @@ const getLeagueConfig = (leagueName: string) => {
     const month = now.getMonth();
 
     // Winter Olympics (Hockey): 2026, 2030... (Year % 4 === 2)
-    // Active roughly Dec (year-1) to March (year)
-    if (
-      ((year + 1) % 4 === 2 && month === 11) ||
-      (year % 4 === 2 && month <= 3)
-    ) {
+    // Active roughly January (year) to March (year)
+    if (year % 4 === 2 && month <= 3) {
       return {
         sport: 'hockey',
         league:
           leagueName === League['OLYMPICS-WOMEN']
             ? 'olympics.women'
             : 'olympics.men',
-        startSeason: '12',
+        startSeason: '01',
         endSeason: '02',
         endPlayoffs: '03',
+      };
+    }
+
+    // Summer Olympics (basket): 2028, 2032... (Year % 4 === 2)
+    // Active roughly May (year) to September (year)
+    if (year % 4 === 0 && month <= 9) {
+      return {
+        sport: 'basket',
+        league:
+          leagueName === League['OLYMPICS-WOMEN']
+            ? 'olympics.women'
+            : 'olympics.men',
+        startSeason: '05',
+        endSeason: '06',
+        endPlayoffs: '09',
       };
     }
 

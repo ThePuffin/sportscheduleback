@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { CollegeLeague, League } from '../utils/enum';
+import { League } from '../utils/enum';
 import { getESPNTeams } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
@@ -47,17 +47,11 @@ export class TeamService {
     try {
       this.isFetchingTeams = true;
       const allActivesTeams: any[] = [];
-      const collegeLeagueValues = Object.values(
-        CollegeLeague,
-      ) as CollegeLeague[];
       let leagues: string[] = [];
       if (leagueParam) {
         leagues = [leagueParam.toUpperCase()];
       } else {
-        leagues = Object.values(League).filter(
-          (league) =>
-            !collegeLeagueValues.includes(league as unknown as CollegeLeague),
-        );
+        leagues = Object.values(League);
       }
       for (const league of leagues) {
         const activeTeams: TeamType[] = [];
@@ -163,9 +157,9 @@ export class TeamService {
   async updateRecord(uniqueId: string, record: string) {
     if (!record) return;
     const parts = record.split('-');
-    const wins = parseInt(parts[0], 10);
-    const losses = parseInt(parts[1], 10);
-    const ties = parts[2] ? parseInt(parts[2], 10) : null;
+    const wins = Number.parseInt(parts[0], 10);
+    const losses = Number.parseInt(parts[1], 10);
+    const ties = parts[2] ? Number.parseInt(parts[2], 10) : null;
 
     const updateData: any = { wins, losses };
     if (ties !== null) {
@@ -190,6 +184,14 @@ export class TeamService {
   async remove(uniqueId: string) {
     const filter = { uniqueId: uniqueId };
     const deleted = await this.teamModel.findOneAndDelete(filter).exec();
+    return deleted;
+  }
+
+  async removeByLeague(league: string): Promise<any> {
+    const filter = { league: league };
+    console.log(`Removing teams with league: ${league}`);
+    const deleted = await this.teamModel.deleteMany(filter).exec();
+    console.log(`Removed ${deleted.deletedCount} teams`);
     return deleted;
   }
 

@@ -1,5 +1,5 @@
 import { readableDate } from '../../utils/date';
-import { League } from '../../utils/enum';
+import { CollegeLeague, League } from '../../utils/enum';
 import type { MLSGameAPI } from '../../utils/interface/gameMLS';
 import { Colors } from '../Colors';
 import type { ESPNTeam, TeamESPN, TeamType } from '../interface/team';
@@ -218,10 +218,14 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
       }
     }
 
-    if (allTeams.length === 0 && leagueName.includes('OLYMPICS')) {
+    if (
+      (allTeams.length === 0 && leagueName.includes('OLYMPICS')) ||
+      CollegeLeague.hasOwnProperty(leagueName)
+    ) {
+      const currentYear = new Date().getFullYear();
       try {
         const { sport, league } = leagueConfigs[leagueName];
-        const url = `${espnAPI}${sport}/${league}/scoreboard?dates=2026`;
+        const url = `${espnAPI}${sport}/${league}/scoreboard?dates=${currentYear}`;
         const res = await fetch(url);
         const data = await res.json();
         const events = data.events || [];
@@ -229,7 +233,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
           event.competitions?.[0]?.competitors?.forEach((comp) => {
             if (
               comp.team &&
-              !allTeams.find((t) => t.team.id === comp.team.id)
+              !allTeams.some((t) => t.team.id === comp.team.id)
             ) {
               allTeams.push({ team: comp.team });
             }
@@ -385,24 +389,40 @@ const getEachTeamSchedule = async ({
       }
       return allGames;
     }
-    let games;
-    if (leagueName.includes('OLYMPICS')) {
-      try {
-        if (!leagueConfigs[leagueName]) {
-          games = [];
-        } else {
-          const { sport, league } = leagueConfigs[leagueName];
-          const url = `${espnAPI}${sport}/${league}/scoreboard?dates=2026`;
-          const res = await fetch(url);
-          const data = await res.json();
-          const events = data.events || [];
-          games = events.filter((ev) =>
-            ev.competitions?.[0]?.competitors?.some((c) => c.team?.id === id),
-          );
+    let games = [];
+    if (leagueName.includes('OLYMPICS') || leagueName === League.MLS) {
+      const years = [new Date().getFullYear()];
+      if (leagueName === League.MLS) {
+        years.push(new Date().getFullYear() + 1);
+      }
+      for (const year of years) {
+        try {
+          if (leagueConfigs[leagueName]) {
+            const { sport, league } = leagueConfigs[leagueName];
+            let page = 1;
+            let hasMore = true;
+            while (hasMore) {
+              const url = `${espnAPI}${sport}/${league}/scoreboard?dates=${year}&limit=1000&page=${page}`;
+              const res = await fetch(url);
+              const data = await res.json();
+              const events = data.events || [];
+              const eventsFiltered = events.filter((ev) =>
+                ev.competitions?.[0]?.competitors?.some(
+                  (c) => c.team?.id === id,
+                ),
+              );
+              games.push(...eventsFiltered);
+              if (events.length < 1000) {
+                hasMore = false;
+              } else {
+                page++;
+              }
+            }
+            console.log(id, 'total games found', games.length);
+          }
+        } catch (error) {
+          console.info('no games found' + leagueName, value, error);
         }
-      } catch (error) {
-        console.info('no olympic games found', value, error);
-        games = [];
       }
     } else {
       try {

@@ -54,6 +54,11 @@ export class TeamsController {
     return this.TeamService.removeAll();
   }
 
+  @Delete('/league/:league')
+  removeByLeague(@Param('league') league: string) {
+    return this.TeamService.removeByLeague(league);
+  }
+
   @Delete(':uniqueId')
   remove(@Param('uniqueId') uniqueId: string) {
     return this.TeamService.remove(uniqueId);
