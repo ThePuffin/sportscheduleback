@@ -132,62 +132,73 @@ export class GameService {
     const teams = await this.teamService.findByLeague(league);
     let currentGames = {};
     const leagueLogos = await this.getTeamsLogo(teams);
+    const batchSize = 40;
+    let updateNumber = 0;
 
     try {
-      if (league === League.PWHL) {
-        const hockeyData = new HockeyData();
-        currentGames = await hockeyData.getHockeySchedule(
-          teams,
-          leagueLogos,
-          league,
-        );
-      } else {
-        currentGames = await getTeamsSchedule(teams, league, leagueLogos);
-      }
-    } catch (error) {
-      console.error(`Error fetching games for league ${league}:`, error);
-      if (league === League.NHL) {
+      for (let i = 0; i < teams.length; i += batchSize) {
+        const teamsBatch = teams.slice(i, i + batchSize);
+        let batchGames = {};
         try {
-          const hockeyData = new HockeyData();
-          currentGames = await hockeyData.getHockeySchedule(
-            teams,
-            leagueLogos,
-            league,
-          );
+          if (league === League.PWHL) {
+            const hockeyData = new HockeyData();
+            batchGames = await hockeyData.getHockeySchedule(
+              teamsBatch,
+              leagueLogos,
+              league,
+            );
+          } else {
+            batchGames = await getTeamsSchedule(
+              teamsBatch,
+              league,
+              leagueLogos,
+            );
+          }
         } catch (error) {
-          console.error('Error fetching NHL data:', error);
-        }
-      }
-    }
-    try {
-      if (Object.keys(currentGames).length) {
-        for (const team of teams) {
-          await this.unactivateGames(team.uniqueId);
-        }
-      }
-      let updateNumber = 0;
-      for (const team in currentGames) {
-        const games = currentGames[team] || [];
-        if (games.length) {
-          for (const game of games) {
-            game.updateDate = new Date().toISOString();
+          console.error(`Error fetching games for league ${league}:`, error);
+          if (league === League.NHL) {
             try {
-              await this.create(game);
+              const hockeyData = new HockeyData();
+              batchGames = await hockeyData.getHockeySchedule(
+                teamsBatch,
+                leagueLogos,
+                league,
+              );
             } catch (error) {
-              console.error({ error });
+              console.error('Error fetching NHL data:', error);
             }
           }
         }
-        updateNumber++;
-        console.info(
-          'updated:',
-          team,
-          '(',
-          updateNumber,
-          '/',
-          teams.length,
-          ')',
-        );
+
+        if (Object.keys(batchGames).length) {
+          for (const team of teamsBatch) {
+            await this.unactivateGames(team.uniqueId);
+          }
+        }
+        for (const team in batchGames) {
+          const games = batchGames[team] || [];
+          if (games.length) {
+            for (const game of games) {
+              game.updateDate = new Date().toISOString();
+              try {
+                await this.create(game);
+              } catch (error) {
+                console.error({ error });
+              }
+            }
+          }
+          updateNumber++;
+          console.info(
+            'updated:',
+            team,
+            '(',
+            updateNumber,
+            '/',
+            teams.length,
+            ')',
+          );
+        }
+        currentGames = { ...currentGames, ...batchGames };
       }
       this.removeDuplicatesAndOlds();
       return currentGames;
