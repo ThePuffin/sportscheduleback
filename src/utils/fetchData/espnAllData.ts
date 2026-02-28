@@ -741,3 +741,69 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
     return [];
   }
 };
+
+export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
+  try {
+    if (aggregateLeagues[leagueKey]) {
+      for (const subLeague of aggregateLeagues[leagueKey]) {
+        const result = await getESPNGameScore(subLeague, gameId);
+        if (result) return result;
+      }
+      return null;
+    }
+
+    const normalizedLeagueName = getNormalizedLeagueName(leagueKey);
+    if (!leagueConfigs[leagueKey]) return null;
+    const { sport, league } = leagueConfigs[leagueKey];
+    const url = `${espnAPI}${sport}/${league}/summary?event=${gameId}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    const header = data.header;
+    const competitions = header?.competitions?.[0];
+    if (!competitions) return null;
+
+    const competition = competitions;
+    const home = competition.competitors?.find((c) => c.homeAway === 'home');
+    const away = competition.competitors?.find((c) => c.homeAway === 'away');
+
+    const homeScore =
+      home?.score !== undefined && home?.score !== null
+        ? Number(home.score)
+        : null;
+    const awayScore =
+      away?.score !== undefined && away?.score !== null
+        ? Number(away.score)
+        : null;
+
+    if (homeScore === null && awayScore === null) return null;
+
+    const status = competition.status?.type || competition.status;
+    const displayClock = competition.status?.displayClock || '';
+
+    const isFinal =
+      status?.completed === true ||
+      status?.state === 'post' ||
+      (typeof status?.name === 'string' &&
+        /final|completed|post/i.test(status.name)) ||
+      (typeof displayClock === 'string' &&
+        /final|completed/i.test(displayClock));
+
+    return {
+      uniqueId: gameId,
+      league: normalizedLeagueName,
+      homeTeamScore: homeScore,
+      awayTeamScore: awayScore,
+      isFinal,
+      status: status?.name || displayClock || '',
+      startTimeUTC: competition.date,
+    };
+  } catch (error) {
+    console.error(
+      `Error fetching single game score for ${leagueKey} ${gameId}:`,
+      error,
+    );
+    return null;
+  }
+};

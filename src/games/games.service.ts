@@ -7,6 +7,7 @@ import { TeamService } from '../teams/teams.service';
 import { addHours, readableDate } from '../utils/date';
 import { League } from '../utils/enum';
 import {
+  getESPNGameScore,
   getESPNScores,
   getTeamsSchedule,
 } from '../utils/fetchData/espnAllData';
@@ -635,14 +636,40 @@ export class GameService {
             if (Array.isArray(espnScores) && espnScores.length) {
               results.push(...espnScores);
             }
-
-            console.log(espnScores);
           } catch (err) {
             console.error(
               `Error fetching scores for ${league} on ${date}:`,
               err,
             );
           }
+        }
+      }
+    }
+
+    // Fallback: Check for missing scores and fetch individually
+    const fetchedEventIds = new Set(results.map((r) => r.uniqueId));
+    for (const game of gamesWithoutScores) {
+      if (game.league === League.PWHL) continue;
+
+      const parts = game.uniqueId.split('-');
+      const possibleId = parts[parts.length - 1];
+
+      // Check if it looks like an ESPN ID (numeric) and wasn't already fetched
+      if (/^\d+$/.test(possibleId) && !fetchedEventIds.has(possibleId)) {
+        try {
+          const individualScore = await getESPNGameScore(
+            game.league,
+            possibleId,
+          );
+          if (individualScore && individualScore.isFinal) {
+            results.push(individualScore);
+            fetchedEventIds.add(possibleId);
+          }
+        } catch (e) {
+          console.error(
+            `Failed to fetch individual score for ${game.uniqueId}`,
+            e,
+          );
         }
       }
     }
