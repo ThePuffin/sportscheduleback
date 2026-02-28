@@ -251,7 +251,7 @@ export class TeamService {
       await fs.promises.writeFile(leaguesFilePath, leaguesFileContent);
       const allTeams = await this.teamModel
         .find()
-        .sort({ label: 1 })
+        .sort({ uniqueId: 1 })
         .lean()
         .exec();
       const lines = allTeams.map(
@@ -287,20 +287,45 @@ export class TeamService {
       await fs.promises.writeFile(colorsFilePathBack, colorsFileContent);
 
       // --- generate a mapping of university logos keyed by team id (abbrev) ---
-      // only include college leagues so we don't duplicate professional teams
-      const logoLines = allTeams
+      // only include college leagues so we don't duplicate professional teams.
+      // we want a single entry per abbreviation and prefer the first non-empty
+      // logo we encounter; later duplicates are ignored.
+      const logoMap = new Map<string, string>();
+      allTeams
         .filter((team: any) =>
           Object.values(CollegeLeague).includes(team.league),
         )
-        .map((team: any) => {
+        .forEach((team: any) => {
           // use the portion of uniqueId after the hyphen (usually the abbreviation)
           const parts = team.uniqueId ? team.uniqueId.split('-') : [];
-          const id = parts.length > 1 ? parts[1] : team.abbrev || '';
-          return `  '${id}': '${team.teamLogo || ''}',`;
+          let id = parts.length > 1 ? parts[1] : team.abbrev || '';
+          id = id.trim().toUpperCase();
+          if (!id) return;
+
+          const logo = team.teamLogo || '';
+
+          if (logoMap.has(id)) {
+            // if we already have a non-empty logo, keep it; otherwise replace
+            // the empty placeholder with whatever we have now.
+            if (logoMap.get(id)) {
+              return;
+            }
+          }
+          logoMap.set(id, logo);
         });
+
+      // --- create content for university logos file ---
+      // sort by key to make output deterministic and easier to diff.
+      const sortedEntries = Array.from(logoMap.entries()).sort(([a], [b]) =>
+        a.localeCompare(b),
+      );
+      const logoLines = sortedEntries.map(
+        ([id, logo]) => `  '${id}': '${logo}',`,
+      );
       const logosFileContent = `export const UniversityLogos: Record<string, string> = {\n${logoLines.join(
         '\n',
       )}\n};\n`;
+
       const logosFilePath = path.join(
         process.cwd(),
         '../frontend/constants/UniversityLogos.tsx',

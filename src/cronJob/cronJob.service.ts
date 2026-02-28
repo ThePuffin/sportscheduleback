@@ -12,8 +12,16 @@ export class CronService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    console.info('[Cron] Server restart: Fetching games scores...');
-    await this.gameService.fetchGamesScores();
+    console.info(
+      '[Cron] Server restart: Scheduling initial fetchGamesScores...',
+    );
+    setImmediate(() => {
+      this.gameService
+        .fetchGamesScores()
+        .catch((err) =>
+          console.error('[Cron] initial fetchGamesScores error:', err),
+        );
+    });
   }
 
   @Cron('30 0 1 * *') // EVERY MONTH AT 0:30AM
