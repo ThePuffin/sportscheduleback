@@ -3012,7 +3012,7 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#000000',
   },
   'NCCABB-SOU': {
-    color: '#ffffff',
+    color: '#291B4C',
     backgroundColor: '#000000',
   },
   'NCCABB-SPU': {

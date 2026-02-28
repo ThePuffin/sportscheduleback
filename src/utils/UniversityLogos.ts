@@ -338,7 +338,7 @@ export const UniversityLogos: Record<string, string> = {
   'SM': '',
   'SMC': 'https://a.espncdn.com/guid/2d911cfa-e9f3-314b-8140-ea61ca745733/logos/primary_logo_on_white_color.png',
   'SMU': 'https://a.espncdn.com/i/teamlogos/ncaa/500/2567.png',
-  'SOU': '',
+  'SOU': 'https://a.espncdn.com/guid/60420ee8-a72d-3a26-b1c1-9979e33637e0/logos/primary_logo_on_white_color.png',
   'SPU': 'https://a.espncdn.com/guid/21a80261-4ac7-3bbc-8335-29484f31c6d5/logos/primary_logo_on_white_color.png',
   'SSU': 'https://a.espncdn.com/i/teamlogos/ncaa/500/2532.png',
   'ST.': 'https://a.espncdn.com/i/teamlogos/ncaa/500/133.png',

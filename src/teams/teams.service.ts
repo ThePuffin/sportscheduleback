@@ -20,6 +20,7 @@ export class TeamService {
 
   async create(
     teamDto: CreateTeamDto | UpdateTeamDto | TeamType,
+    skipGenerateFiles: boolean = false,
   ): Promise<any> {
     const { uniqueId } = teamDto;
 
@@ -41,14 +42,14 @@ export class TeamService {
 
     const record = this.addRecord({ ...saved, ...teamDto });
 
-    // regenerate the enums/files so both front and back reflect the change.
-    // doing it unconditionally keeps the constant files in sync when any
-    // piece of team data is modified (including logos). the method itself
-    // writes to both frontend and backend locations.
-    try {
-      await this.generateLeaguesTeamsAndColorsFiles();
-    } catch (err) {
-      console.error('Failed to regenerate league/team files:', err);
+    // Skip regenerating files during batch imports for performance
+    // Files will be regenerated once at the end of the batch
+    if (!skipGenerateFiles) {
+      try {
+        await this.generateLeaguesTeamsAndColorsFiles();
+      } catch (err) {
+        console.error('Failed to regenerate league/team files:', err);
+      }
     }
 
     return record;
@@ -101,7 +102,8 @@ export class TeamService {
               activeTeam.teamLogo = UniversityLogos[abbrev];
             }
           }
-          const saved = await this.create(activeTeam);
+          // Skip file generation during batch import for performance
+          const saved = await this.create(activeTeam, true);
           savedTeams.push(saved);
           updateNumber++;
           console.info(
@@ -117,9 +119,8 @@ export class TeamService {
         allActivesTeams.push(...savedTeams);
       }
 
-      if (process.env.NODE_ENV === 'development') {
-        await this.generateLeaguesTeamsAndColorsFiles();
-      }
+      // Generate files once after all teams have been imported
+      await this.generateLeaguesTeamsAndColorsFiles();
 
       return allActivesTeams;
     } catch (error) {
