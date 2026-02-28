@@ -531,7 +531,12 @@ const getEachTeamSchedule = async ({
             links?.find(
               (l) => l.rel?.includes('summary') && l.rel?.includes('desktop'),
             )?.href ||
-            '',
+            (id &&
+            leagueConfigs[leagueName] &&
+            leagueName !== League.MLS &&
+            !leagueName.includes('OLYMPICS')
+              ? `https://www.espn.com/${leagueConfigs[leagueName].league}/game/_/gameId/${id}`
+              : ''),
         };
       });
     }

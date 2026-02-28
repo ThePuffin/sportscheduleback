@@ -635,6 +635,8 @@ export class GameService {
             if (Array.isArray(espnScores) && espnScores.length) {
               results.push(...espnScores);
             }
+
+            console.log(espnScores);
           } catch (err) {
             console.error(
               `Error fetching scores for ${league} on ${date}:`,
