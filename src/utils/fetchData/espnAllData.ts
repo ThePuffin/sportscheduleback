@@ -4,6 +4,7 @@ import type { MLSGameAPI } from '../../utils/interface/gameMLS';
 import { Colors } from '../Colors';
 import type { ESPNTeam, TeamESPN, TeamType } from '../interface/team';
 import { TeamDetailed } from '../interface/teamDetails';
+import { UniversityLogos } from '../UniversityLogos';
 import { capitalize, getLuminance } from '../utils';
 
 const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
@@ -269,11 +270,20 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
         }
         const normalizedLeagueName = getNormalizedLeagueName(leagueName);
         const uniqueId = `${leagueName}-${teamID}`;
-        const teamLogo = logos?.[2]?.href ?? logos?.[0]?.href;
+        // ESPN sometimes returns no logos; fall back to our manual list if we
+        // have an entry for this abbreviation. the abbreviation is the second
+        // part of the uniqueId when saved in the database.
+        let teamLogo = logos?.[2]?.href ?? logos?.[0]?.href;
+        if (!teamLogo) {
+          teamLogo = UniversityLogos[teamID] || '';
+        }
         const teamLogoDark =
           logos?.find(
             (l) => l.rel?.includes('dark') && l.rel?.includes('scoreboard'),
-          )?.href || teamLogo;
+          )?.href ||
+          teamLogo ||
+          UniversityLogos[teamID] ||
+          '';
 
         const record = standings[id];
 

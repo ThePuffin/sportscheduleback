@@ -3,10 +3,11 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { League } from '../utils/enum';
+import { CollegeLeague, League } from '../utils/enum';
 import { getESPNTeams } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
+import { UniversityLogos } from '../utils/UniversityLogos';
 import { randomNumber } from '../utils/utils';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
@@ -22,8 +23,9 @@ export class TeamService {
   ): Promise<any> {
     const { uniqueId } = teamDto;
 
+    let saved: any;
     if (uniqueId) {
-      const saved = await this.teamModel
+      saved = await this.teamModel
         .findOneAndUpdate(
           { uniqueId },
           { $set: teamDto },
@@ -31,12 +33,25 @@ export class TeamService {
         )
         .lean()
         .exec();
-      return this.addRecord({ ...saved, ...teamDto });
+    } else {
+      const newTeam = new this.teamModel(teamDto);
+      saved = await newTeam.save();
+      saved = saved.toObject ? saved.toObject() : saved;
     }
 
-    const newTeam = new this.teamModel(teamDto);
-    const saved = await newTeam.save();
-    return this.addRecord({ ...saved.toObject(), ...teamDto });
+    const record = this.addRecord({ ...saved, ...teamDto });
+
+    // regenerate the enums/files so both front and back reflect the change.
+    // doing it unconditionally keeps the constant files in sync when any
+    // piece of team data is modified (including logos). the method itself
+    // writes to both frontend and backend locations.
+    try {
+      await this.generateLeaguesTeamsAndColorsFiles();
+    } catch (err) {
+      console.error('Failed to regenerate league/team files:', err);
+    }
+
+    return record;
   }
 
   async getTeams(leagueParam?: string): Promise<any> {
@@ -78,6 +93,14 @@ export class TeamService {
         let updateNumber = 0;
         for (const activeTeam of activeTeams) {
           activeTeam.updateDate = new Date().toISOString();
+          // if ESPN didn't give us a logo, try our manual mapping before saving
+          if (!activeTeam.teamLogo) {
+            const parts = activeTeam.uniqueId?.split('-') || [];
+            const abbrev = parts[1] || activeTeam.abbrev || '';
+            if (abbrev && UniversityLogos[abbrev]) {
+              activeTeam.teamLogo = UniversityLogos[abbrev];
+            }
+          }
           const saved = await this.create(activeTeam);
           savedTeams.push(saved);
           updateNumber++;
@@ -149,9 +172,18 @@ export class TeamService {
     return teams.map((team) => this.addRecord(team));
   }
 
-  update(uniqueId: string, updateTeamDto: UpdateTeamDto) {
+  async update(uniqueId: string, updateTeamDto: UpdateTeamDto) {
     const filter = { uniqueId: uniqueId };
-    return this.teamModel.updateOne(filter, updateTeamDto);
+    const res = await this.teamModel.updateOne(filter, updateTeamDto).exec();
+
+    // regenerate the frontend/back mapping files after any update.
+    try {
+      await this.generateLeaguesTeamsAndColorsFiles();
+    } catch (err) {
+      console.error('Failed to regenerate league/team files:', err);
+    }
+
+    return res;
   }
 
   async updateRecord(uniqueId: string, record: string) {
@@ -253,6 +285,33 @@ export class TeamService {
         'src/utils/ColorsTeam.ts',
       );
       await fs.promises.writeFile(colorsFilePathBack, colorsFileContent);
+
+      // --- generate a mapping of university logos keyed by team id (abbrev) ---
+      // only include college leagues so we don't duplicate professional teams
+      const logoLines = allTeams
+        .filter((team: any) =>
+          Object.values(CollegeLeague).includes(team.league),
+        )
+        .map((team: any) => {
+          // use the portion of uniqueId after the hyphen (usually the abbreviation)
+          const parts = team.uniqueId ? team.uniqueId.split('-') : [];
+          const id = parts.length > 1 ? parts[1] : team.abbrev || '';
+          return `  '${id}': '${team.teamLogo || ''}',`;
+        });
+      const logosFileContent = `export const UniversityLogos: Record<string, string> = {\n${logoLines.join(
+        '\n',
+      )}\n};\n`;
+      const logosFilePath = path.join(
+        process.cwd(),
+        '../frontend/constants/UniversityLogos.tsx',
+      );
+      await fs.promises.writeFile(logosFilePath, logosFileContent);
+
+      const logosFilePathBack = path.join(
+        process.cwd(),
+        'src/utils/UniversityLogos.ts',
+      );
+      await fs.promises.writeFile(logosFilePathBack, logosFileContent);
     } catch (error) {
       console.error(
         'Error generating TeamsEnum or ColorsTeamEnum file:',
