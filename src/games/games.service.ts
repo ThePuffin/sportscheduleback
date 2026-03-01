@@ -21,7 +21,8 @@ import { Game } from './schemas/game.schema';
 
 @Injectable()
 export class GameService {
-  private isFetchingGames: boolean = false;
+  private isFetchingGames: { [league: string]: boolean } = {};
+  private manualRefreshInProgress: { [league: string]: boolean } = {};
   private isFetchingScores: boolean = false;
   private leagueRefreshTimestamps: { [league: string]: Date[] } = {};
   constructor(
@@ -107,9 +108,23 @@ export class GameService {
     return await newGame.save();
   }
 
-  async getLeagueGames(league: string, forceUpdate = false): Promise<any> {
-    if (this.isFetchingGames) {
+  async getLeagueGames(
+    league: string,
+    forceUpdate = false,
+    skipCascade = false,
+  ): Promise<any> {
+    if (this.isFetchingGames[league]) {
       console.info(`getLeagueGames is already running.`);
+      return;
+    }
+    // If a manual refresh is in progress for a different league, skip this refresh
+    const otherManualRefresh = Object.keys(this.manualRefreshInProgress).some(
+      (k) => this.manualRefreshInProgress[k] && k !== league,
+    );
+    if (otherManualRefresh) {
+      console.info(
+        `Skipping getLeagueGames for ${league} because another manual refresh is in progress.`,
+      );
       return;
     }
     if (!forceUpdate) {
@@ -139,7 +154,10 @@ export class GameService {
     // Add current timestamp
     this.leagueRefreshTimestamps[league] = [...todayTimestamps, now];
 
-    this.isFetchingGames = true; // Set the flag to true
+    this.isFetchingGames[league] = true; // Set the flag to true
+    if (skipCascade) {
+      this.manualRefreshInProgress[league] = true;
+    }
     const teams = await this.teamService.findByLeague(league);
     let currentGames = {};
     const leagueLogos = await this.getTeamsLogo(teams);
@@ -219,7 +237,10 @@ export class GameService {
       }
       throw new Error('An unknown error occurred');
     } finally {
-      this.isFetchingGames = false; // Reset the flag when the method finishes
+      this.isFetchingGames[league] = false; // Reset the flag when the method finishes
+      if (skipCascade) {
+        this.manualRefreshInProgress[league] = false;
+      }
     }
   }
 
@@ -227,7 +248,8 @@ export class GameService {
     let currentGames = {};
     let teams = await this.teamService.findAll();
     if (!teams.length) {
-      teams = await this.teamService.getTeams();
+      console.info('No teams found in DB. Fetching teams...');
+      teams = (await this.teamService.getTeams()) || [];
     }
     const leagues = Array.from(new Set(teams.map((team) => team.league)));
 
@@ -247,6 +269,7 @@ export class GameService {
       .lean()
       .exec();
     if (Object.keys(allGames).length === 0 || allGames?.length === 0) {
+      console.info('No games found in DB. Fetching all games...');
       return this.getAllGames();
     }
 
@@ -495,6 +518,9 @@ export class GameService {
           const yesterday = new Date();
           yesterday.setDate(yesterday.getDate() - 1);
           if (new Date(randomGames?.updateDate) < yesterday) {
+            console.info(
+              `Data for ${currentLeague} is stale (older than 24h). Refreshing...`,
+            );
             await this.getLeagueGames(currentLeague, false);
           }
         }
@@ -537,22 +563,14 @@ export class GameService {
     const games = await this.gameModel.find().exec();
     const tenMonthsAgo = new Date();
     tenMonthsAgo.setMonth(tenMonthsAgo.getMonth() - 10);
-    const oldGames = games.filter(
-      ({ startTimeUTC, homeTeamScore, awayTeamScore }) => {
-        const isOld = new Date(startTimeUTC) < tenMonthsAgo;
-        const hasScore =
-          homeTeamScore !== null &&
-          homeTeamScore !== undefined &&
-          awayTeamScore !== null &&
-          awayTeamScore !== undefined;
-        return isOld && !hasScore;
-      },
-    );
+    const oldGames = games.filter(({ startTimeUTC }) => {
+      const isOld = new Date(startTimeUTC) < tenMonthsAgo;
+      return isOld;
+    });
     for (const oldGame of oldGames) {
       await this.remove(oldGame.uniqueId);
     }
     const duplicates = [];
-
     const gameMap = new Map();
 
     for (const game of games) {
@@ -594,22 +612,26 @@ export class GameService {
   }
 
   async unactivateGames(teamId: string): Promise<void> {
-    const games = await this.findByTeam(teamId, false);
+    const today = readableDate(new Date());
+    const games = await this.gameModel
+      .find({
+        teamSelectedId: teamId,
+        isActive: true,
+        gameDate: { $gte: today },
+      })
+      .lean()
+      .exec();
     const now = new Date();
 
-    for (const date in games) {
-      if (Array.isArray(games[date])) {
-        for (const game of games[date]) {
-          if (!game.awayTeamShort) continue;
+    for (const game of games) {
+      if (!game.awayTeamShort) continue;
 
-          const gameTime = new Date(game.startTimeUTC);
-          if (gameTime < now) {
-            continue;
-          }
-          game.isActive = false;
-          await this.create(game);
-        }
+      const gameTime = new Date(game.startTimeUTC);
+      if (gameTime < now) {
+        continue;
       }
+      game.isActive = false;
+      await this.create(game);
     }
   }
 
@@ -890,11 +912,20 @@ export class GameService {
         }
       }
 
-      for (const league of leaguesToUpdate) {
-        await this.teamService.getTeams(league);
-      }
-      for (const league of postponedGamesLeagues) {
-        await this.getLeagueGames(league, true);
+      const anyManualRefresh = Object.values(this.manualRefreshInProgress).some(
+        (v) => v,
+      );
+      if (anyManualRefresh) {
+        console.info(
+          'Skipping cascaded teams/leagues updates because a manual refresh is in progress.',
+        );
+      } else {
+        for (const league of leaguesToUpdate) {
+          await this.teamService.getTeams(league);
+        }
+        for (const league of postponedGamesLeagues) {
+          await this.getLeagueGames(league, true);
+        }
       }
 
       return appliedUpdates.length ? appliedUpdates : results;
@@ -958,6 +989,9 @@ export class GameService {
           const yesterday = new Date();
           yesterday.setDate(yesterday.getDate() - 1);
           if (new Date(randomGames?.updateDate) < yesterday) {
+            console.info(
+              `Data for ${currentLeague} is stale (older than 24h). Refreshing...`,
+            );
             await this.getLeagueGames(currentLeague, false);
           }
         }

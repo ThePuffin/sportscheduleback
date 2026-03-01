@@ -15,7 +15,7 @@ import { Team } from './schemas/team.schema';
 
 @Injectable()
 export class TeamService {
-  private isFetchingTeams: boolean = false;
+  private isFetchingTeams: { [league: string]: boolean } = {};
   constructor(@InjectModel(Team.name) public teamModel: Model<Team>) {}
 
   async create(
@@ -56,12 +56,13 @@ export class TeamService {
   }
 
   async getTeams(leagueParam?: string): Promise<any> {
-    if (this.isFetchingTeams) {
+    const leagueKey = leagueParam ? leagueParam.toUpperCase() : 'ALL';
+    if (this.isFetchingTeams[leagueKey]) {
       console.info(`getTeams is already running.`);
       return;
     }
     try {
-      this.isFetchingTeams = true;
+      this.isFetchingTeams[leagueKey] = true;
       const allActivesTeams: any[] = [];
       let leagues: string[] = [];
       if (leagueParam) {
@@ -127,7 +128,7 @@ export class TeamService {
       console.error(error);
       throw new Error('Error fetching teams: ' + error.message);
     } finally {
-      this.isFetchingTeams = false;
+      this.isFetchingTeams[leagueKey] = false;
     }
   }
 
@@ -146,7 +147,7 @@ export class TeamService {
     const lastMonth = new Date();
     lastMonth.setDate(lastMonth.getMonth() - 1);
     if (new Date(randomTeam?.updateDate) < lastMonth) {
-      this.getTeams();
+      await this.getTeams();
     }
     if (process.env.NODE_ENV === 'development') {
       await this.generateLeaguesTeamsAndColorsFiles();

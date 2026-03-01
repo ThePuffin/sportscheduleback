@@ -80,7 +80,7 @@ export class GamesController {
 
   @Post('/refresh/:league')
   async refreshByLeague(@Param('league') league: string) {
-    return this.GameService.getLeagueGames(league, true);
+    return this.GameService.getLeagueGames(league, true, true);
   }
 
   @Post('/scores')
