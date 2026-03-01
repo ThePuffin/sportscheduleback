@@ -39,6 +39,11 @@ export class GamesController {
     });
   }
 
+  @Get('/dates/range')
+  getDateRange() {
+    return this.GameService.getDateRange();
+  }
+
   @Get('/date/:gameDate')
   findByDate(@Param('gameDate') gameDate: string) {
     return this.GameService.findByDate(gameDate);
@@ -79,7 +84,7 @@ export class GamesController {
   }
 
   @Post('/scores')
-  async fetchScores()  {
+  async fetchScores() {
     return this.GameService.fetchGamesScores();
   }
 

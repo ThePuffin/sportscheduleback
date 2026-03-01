@@ -264,6 +264,24 @@ export class GameService {
     return game;
   }
 
+  async getDateRange() {
+    const result = await this.gameModel.aggregate([
+      { $match: { isActive: true } },
+      {
+        $group: {
+          _id: null,
+          minDate: { $min: '$gameDate' },
+          maxDate: { $max: '$gameDate' },
+        },
+      },
+    ]);
+
+    if (result.length > 0) {
+      return { minDate: result[0].minDate, maxDate: result[0].maxDate };
+    }
+    return { minDate: null, maxDate: null };
+  }
+
   async findByTeam(teamSelectedId: string, needRefreshData = true) {
     const games = await this.filterGames({ teamSelectedIds: teamSelectedId });
     for (const date in games) {
