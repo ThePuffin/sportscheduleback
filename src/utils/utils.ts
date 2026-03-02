@@ -99,6 +99,48 @@ const leagueConfigs = {
     endSeason: '05',
     endPlayoffs: '06',
   },
+  [League.NCAAVB]: {
+    sport: 'volleyball',
+    league: 'womens-college-volleyball',
+    startSeason: '08',
+    endSeason: '12',
+    endPlayoffs: '12',
+  },
+  [League.NCAAMH]: {
+    sport: 'hockey',
+    league: 'mens-college-hockey',
+    startSeason: '10',
+    endSeason: '04',
+    endPlayoffs: '04',
+  },
+  [League.NCAAWH]: {
+    sport: 'hockey',
+    league: 'womens-college-hockey',
+    startSeason: '09',
+    endSeason: '03',
+    endPlayoffs: '03',
+  },
+  [League.NCAAS]: {
+    sport: 'softball',
+    league: 'college-softball',
+    startSeason: '02',
+    endSeason: '06',
+    endPlayoffs: '06',
+  },
+  [League.UFL]: {
+    sport: 'football',
+    league: 'ufl',
+    startSeason: '03',
+    endSeason: '06',
+    endPlayoffs: '06',
+  },
+  [League.NWSL]: {
+    sport: 'soccer',
+    league: 'usa.nwsl',
+    startSeason: '03',
+    endSeason: '11',
+    endPlayoffs: '11',
+  },
 };
 
 const getLeagueConfig = (leagueName: string) => {

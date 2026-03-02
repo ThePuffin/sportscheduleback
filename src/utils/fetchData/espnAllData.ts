@@ -44,6 +44,12 @@ const leagueConfigs = {
   [League.NCAAB]: { sport: 'basketball', league: 'mens-college-basketball' },
   [League.WNCAAB]: { sport: 'basketball', league: 'womens-college-basketball' },
   [League.NCCABB]: { sport: 'baseball', league: 'college-baseball' },
+  [League.NCAAVB]: { sport: 'volleyball', league: 'womens-college-volleyball' },
+  [League.NCAAMH]: { sport: 'hockey', league: 'mens-college-hockey' },
+  [League.NCAAWH]: { sport: 'hockey', league: 'womens-college-hockey' },
+  [League.NCAAS]: { sport: 'softball', league: 'college-softball' },
+  [League.UFL]: { sport: 'football', league: 'ufl' },
+  [League.NWSL]: { sport: 'soccer', league: 'usa.nwsl' },
   [OLYMPICS_HOCKEY_MEN]: {
     sport: 'hockey',
     league: 'olympics-mens-ice-hockey',

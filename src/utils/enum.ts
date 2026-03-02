@@ -10,6 +10,12 @@ export enum League {
   NCAAB = 'NCAAB',
   NCCABB = 'NCCABB',
   WNCAAB = 'WNCAAB',
+  NCAAVB = 'NCAAVB',
+  NCAAMH = 'NCAAMH',
+  NCAAS = 'NCAAS',
+  NCAAWH = 'NCAAWH',
+  UFL = 'UFL',
+  NWSL = 'NWSL',
   'OLYMPICS-MEN' = 'OLYMPICS-MEN',
   'OLYMPICS-WOMEN' = 'OLYMPICS-WOMEN',
 }
@@ -19,4 +25,8 @@ export enum CollegeLeague {
   NCAAB = 'NCAAB',
   NCCABB = 'NCCABB',
   WNCAAB = 'WNCAAB',
+  NCAAVB = 'NCAAVB',
+  NCAAMH = 'NCAAMH',
+  NCAAS = 'NCAAS',
+  NCAAWH = 'NCAAWH',
 }
