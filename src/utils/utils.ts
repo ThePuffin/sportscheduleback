@@ -127,13 +127,6 @@ const leagueConfigs = {
     endSeason: '06',
     endPlayoffs: '06',
   },
-  [League.UFL]: {
-    sport: 'football',
-    league: 'ufl',
-    startSeason: '03',
-    endSeason: '06',
-    endPlayoffs: '06',
-  },
   [League.NWSL]: {
     sport: 'soccer',
     league: 'usa.nwsl',

@@ -4639,26 +4639,6 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#EEE9D8',
     backgroundColor: '#0F4777',
   },
-  'UFL-BHAM': {
-    color: '#c6b784',
-    backgroundColor: '#a32035',
-  },
-  'UFL-DAL': {
-    color: '#69b3e7',
-    backgroundColor: '#000000',
-  },
-  'UFL-DC': {
-    color: '#ffffff',
-    backgroundColor: '#c8102e',
-  },
-  'UFL-HOU': {
-    color: '#e4002b',
-    backgroundColor: '#000000',
-  },
-  'UFL-STL': {
-    color: '#a2aaad',
-    backgroundColor: '#002677',
-  },
   'WNBA-ATL': {
     color: '#5091cc',
     backgroundColor: '#e31837',

@@ -14,7 +14,6 @@ export enum League {
   NCAAMH = 'NCAAMH',
   NCAAS = 'NCAAS',
   NCAAWH = 'NCAAWH',
-  UFL = 'UFL',
   NWSL = 'NWSL',
   'OLYMPICS-MEN' = 'OLYMPICS-MEN',
   'OLYMPICS-WOMEN' = 'OLYMPICS-WOMEN',
