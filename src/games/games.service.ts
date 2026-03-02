@@ -127,16 +127,27 @@ export class GameService {
       );
       return;
     }
+
+    const now = new Date();
+    const timestamps = this.leagueRefreshTimestamps[league] || [];
+
     if (!forceUpdate) {
+      if (timestamps.length > 0) {
+        const lastUpdate = timestamps.at(-1);
+        const halfHourAgo = new Date(now.getTime() - 30 * 60 * 1000);
+        if (lastUpdate && lastUpdate > halfHourAgo) {
+          console.info(
+            `Skipping refresh for ${league}: last update was less than 1/2 hour ago.`,
+          );
+          return;
+        }
+      }
       const game = await this.findByLeague(league, 1);
       if (!needRefresh(league, game)) {
         console.info(`No need to refresh games for league ${league}.`);
         return;
       }
     }
-
-    const now = new Date();
-    const timestamps = this.leagueRefreshTimestamps[league] || [];
 
     // Filter out timestamps not from today
     const today = now.toISOString().split('T')[0];
@@ -657,13 +668,27 @@ export class GameService {
     this.isFetchingScores = true;
     try {
       const gamesWithoutScores = await this.fetchGamesWithoutScores();
+
+      const now = new Date();
+      const seventyTwoHoursAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000);
+      const gamesToDelete = gamesWithoutScores.filter(
+        (game) => new Date(game.startTimeUTC) < seventyTwoHoursAgo,
+      );
+      const gamesToProcess = gamesWithoutScores.filter(
+        (game) => new Date(game.startTimeUTC) >= seventyTwoHoursAgo,
+      );
+
+      for (const game of gamesToDelete) {
+        await this.remove(game.uniqueId);
+      }
+
       const postponedGamesLeagues = new Set<string>();
       // number of games without scores is available in `gamesWithoutScores.length`
 
       // Group needed updates by League AND Date
       const tasks = new Map<string, Set<string>>();
 
-      gamesWithoutScores.forEach((game) => {
+      gamesToProcess.forEach((game) => {
         if (game.league && game.gameDate) {
           if (!tasks.has(game.league)) {
             tasks.set(game.league, new Set());
@@ -704,7 +729,7 @@ export class GameService {
 
       // Fallback: Check for missing scores and fetch individually
       const fetchedEventIds = new Set(results.map((r) => r.uniqueId));
-      for (const game of gamesWithoutScores) {
+      for (const game of gamesToProcess) {
         if (game.league === League.PWHL) continue;
 
         const parts = game.uniqueId.split('-');
@@ -717,7 +742,7 @@ export class GameService {
               game.league,
               possibleId,
             );
-            if (individualScore && individualScore.isFinal) {
+            if (individualScore?.isFinal) {
               results.push(individualScore);
               fetchedEventIds.add(possibleId);
             }
