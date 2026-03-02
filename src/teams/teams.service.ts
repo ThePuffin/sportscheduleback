@@ -44,11 +44,13 @@ export class TeamService {
 
     // Skip regenerating files during batch imports for performance
     // Files will be regenerated once at the end of the batch
-    if (!skipGenerateFiles) {
-      try {
-        await this.generateLeaguesTeamsAndColorsFiles();
-      } catch (err) {
-        console.error('Failed to regenerate league/team files:', err);
+    if (process.env.NODE_ENV === 'development') {
+      if (!skipGenerateFiles) {
+        try {
+          await this.generateLeaguesTeamsAndColorsFiles();
+        } catch (err) {
+          console.error('Failed to regenerate league/team files:', err);
+        }
       }
     }
 
@@ -66,7 +68,6 @@ export class TeamService {
       const allActivesTeams: any[] = [];
       let leagues: string[] = [];
       if (leagueParam) {
-        leagues = [leagueParam.toUpperCase()];
       } else {
         leagues = Object.values(League);
       }
@@ -121,8 +122,9 @@ export class TeamService {
       }
 
       // Generate files once after all teams have been imported
-      await this.generateLeaguesTeamsAndColorsFiles();
-
+      if (process.env.NODE_ENV === 'development') {
+        await this.generateLeaguesTeamsAndColorsFiles();
+      }
       return allActivesTeams;
     } catch (error) {
       console.error(error);
@@ -179,10 +181,12 @@ export class TeamService {
     const res = await this.teamModel.updateOne(filter, updateTeamDto).exec();
 
     // regenerate the frontend/back mapping files after any update.
-    try {
-      await this.generateLeaguesTeamsAndColorsFiles();
-    } catch (err) {
-      console.error('Failed to regenerate league/team files:', err);
+    if (process.env.NODE_ENV === 'development') {
+      try {
+        await this.generateLeaguesTeamsAndColorsFiles();
+      } catch (err) {
+        console.error('Failed to regenerate league/team files:', err);
+      }
     }
 
     return res;

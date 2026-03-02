@@ -732,25 +732,6 @@ export class GameService {
 
       // Now try to update matching games in DB before returning
       const appliedUpdates: any[] = [];
-      const leaguesToUpdate = new Set<string>();
-
-      for (const score of results) {
-        if (score.league) {
-          leaguesToUpdate.add(score.league);
-        }
-        if (score.homeTeamRecord && score.homeTeamId) {
-          await this.teamService.updateRecord(
-            score.homeTeamId,
-            score.homeTeamRecord,
-          );
-        }
-        if (score.awayTeamRecord && score.awayTeamId) {
-          await this.teamService.updateRecord(
-            score.awayTeamId,
-            score.awayTeamRecord,
-          );
-        }
-      }
 
       for (const score of results) {
         try {
@@ -901,6 +882,18 @@ export class GameService {
                 .lean()
                 .exec();
               if (updated) {
+                if (score.homeTeamRecord && game.homeTeamId) {
+                  await this.teamService.updateRecord(
+                    game.homeTeamId,
+                    score.homeTeamRecord,
+                  );
+                }
+                if (score.awayTeamRecord && game.awayTeamId) {
+                  await this.teamService.updateRecord(
+                    game.awayTeamId,
+                    score.awayTeamRecord,
+                  );
+                }
                 (updated as any).homeTeamRecord = score.homeTeamRecord;
                 (updated as any).awayTeamRecord = score.awayTeamRecord;
                 appliedUpdates.push(updated);
@@ -920,9 +913,6 @@ export class GameService {
           'Skipping cascaded teams/leagues updates because a manual refresh is in progress.',
         );
       } else {
-        for (const league of leaguesToUpdate) {
-          await this.teamService.getTeams(league);
-        }
         for (const league of postponedGamesLeagues) {
           await this.getLeagueGames(league, true);
         }
