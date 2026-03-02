@@ -154,7 +154,7 @@ export class HockeyData {
         try {
           if (league === League.NHL) {
             const { id, value, color, backgroundColor } = team;
-            const leagueID = `${leagueName}-${id}`;
+            const leagueID = `${league}-${id}`;
             allGames[leagueID] = await this.getNHLTeamschedule(
               id,
               value,
@@ -165,7 +165,7 @@ export class HockeyData {
           }
           if (league === League.PWHL) {
             const { id, value, color, backgroundColor } = team;
-            const leagueID = `${leagueName}-${id}`;
+            const leagueID = `${league}-${id}`;
             allGames[leagueID] = await this.getPWHLTeamschedule(
               id,
               value,
