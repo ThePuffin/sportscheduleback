@@ -99,13 +99,6 @@ const leagueConfigs = {
     endSeason: '05',
     endPlayoffs: '06',
   },
-  [League.NCAAVB]: {
-    sport: 'volleyball',
-    league: 'womens-college-volleyball',
-    startSeason: '08',
-    endSeason: '12',
-    endPlayoffs: '12',
-  },
   [League.NCAAMH]: {
     sport: 'hockey',
     league: 'mens-college-hockey',
