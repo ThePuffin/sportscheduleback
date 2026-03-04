@@ -1,7 +1,4 @@
-export const ColorsTeamEnum: Record<
-  string,
-  { color: string; backgroundColor: string }
-> = {
+export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: string }> = {
   'MLB-ARI': {
     color: '#aa182c',
     backgroundColor: '#000000',
@@ -781,6 +778,10 @@ export const ColorsTeamEnum: Record<
   'NCAAB-TEX': {
     color: '#ffffff',
     backgroundColor: '#af5c37',
+  },
+  'NCAAB-TOL': {
+    color: '#ffcd00',
+    backgroundColor: '#0b2240',
   },
   'NCAAB-TTU': {
     color: '#da291c',
@@ -2030,7 +2031,6 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#000000',
   },
-
   'NCAAWH-AU': {
     color: '#ffffff',
     backgroundColor: '#000000',

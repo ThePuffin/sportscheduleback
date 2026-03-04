@@ -444,7 +444,7 @@ export const UniversityLogos: Record<string, string> = {
   'USC': 'https://a.espncdn.com/guid/631953ff-0e47-b5d9-f5ff-c7afbe96e363/logos/primary_logo_on_white_color.png',
   'USD': 'https://a.espncdn.com/guid/38bb4620-46c6-3ded-941b-48edc859323b/logos/primary_logo_on_white_color.png',
   'USF': 'https://a.espncdn.com/guid/93c039f4-ec12-03c3-5fa2-1076b9c2c98b/logos/primary_logo_on_white_color.png',
-  'USI': 'https://a.espncdn.com/guid/568fc52f-3e6d-3f97-a1b1-392bad84e3e0/logos/primary_logo_on_white_color.png',
+  'USI': 'https://a.espncdn.com/guid/aee9926c-8c44-3121-a916-6c0811e37c8a/logos/primary_logo_on_white_color.png',
   'USL': 'https://a.espncdn.com/guid/d27f23f4-1e1c-37a2-a919-f02aa79c732f/logos/primary_logo_on_white_color.png',
   'USM': 'https://a.espncdn.com/guid/bae9e7d3-5148-3a79-8dd3-e234b849c109/logos/primary_logo_on_white_color.png',
   'USU': 'https://a.espncdn.com/i/teamlogos/ncaa/500/328.png',
