@@ -9,6 +9,7 @@ import { League } from '../utils/enum';
 import {
   getESPNGameScore,
   getESPNScores,
+  getTeamsSchedule,
 } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
@@ -114,20 +115,23 @@ export class GameService {
     forceUpdate = false,
     skipCascade = false,
   ): Promise<any> {
-    if (this.isFetchingGames[league]) {
-      console.info(`getLeagueGames is already running for league ${league}.`);
+    const normalizedLeague = league.toUpperCase().trim();
+    if (this.isFetchingGames[normalizedLeague]) {
+      console.info(
+        `getLeagueGames is already running for league ${normalizedLeague}.`,
+      );
       return;
     }
 
     try {
-      this.isFetchingGames[league] = true;
+      this.isFetchingGames[normalizedLeague] = true;
       if (skipCascade) {
-        this.manualRefreshInProgress[league] = true;
+        this.manualRefreshInProgress[normalizedLeague] = true;
       }
 
       // If a manual refresh is in progress for a different league, skip this refresh
       const otherManualRefresh = Object.keys(this.manualRefreshInProgress).some(
-        (k) => this.manualRefreshInProgress[k] && k !== league,
+        (k) => this.manualRefreshInProgress[k] && k !== normalizedLeague,
       );
       if (otherManualRefresh) {
         console.info(
@@ -138,29 +142,84 @@ export class GameService {
 
       const now = new Date();
 
+      if (!forceUpdate) {
+        const lastRefresh =
+          await this.refreshTimestampService.getLastRefresh(normalizedLeague);
+        if (lastRefresh) {
+          const lastUpdate = lastRefresh.timestamp;
+          const halfHourAgo = new Date(now.getTime() - 30 * 60 * 1000);
+          if (lastUpdate > halfHourAgo) {
+            return; // Skip silently, this is normal behavior
+          }
+        }
+        const gamesForLeague = await this.gameModel
+          .find({ league: normalizedLeague, isActive: true })
+          .sort({ startTimeUTC: -1 })
+          .limit(10)
+          .lean()
+          .exec();
+        if (!needRefresh(normalizedLeague, { data: gamesForLeague })) {
+          return; // Skip silently, data is fresh
+        }
+      }
+
       if (forceUpdate) {
         const todayTimestamps =
-          await this.refreshTimestampService.getTodayManualTimestamps(league);
+          await this.refreshTimestampService.getTodayManualTimestamps(
+            normalizedLeague,
+          );
         if (todayTimestamps.length >= 2) {
           throw new HttpException(
-            `Refresh for league ${league} is limited to 2 times per day.`,
+            `Refresh for league ${normalizedLeague} is limited to 2 times per day.`,
             249,
           );
         }
       }
 
+      console.info(
+        `Data for ${normalizedLeague} is stale. Refreshing in background...`,
+      );
+
       // Add current timestamp
       await this.refreshTimestampService.addTimestamp(
-        league,
+        normalizedLeague,
         forceUpdate ? 'manual' : 'auto',
       );
 
-      // NOTE: The actual fetching logic seems to be missing from this method.
-      // It should be here, inside the try block.
+      // Fetch teams and logos for the league
+      const allTeams = await this.teamService.findAll();
+      const leagueTeams = allTeams.filter((t) => t.league === normalizedLeague);
+      const leagueLogos = await this.getTeamsLogo(leagueTeams);
+
+      let gamesObj = {};
+      if (normalizedLeague === League.PWHL) {
+        const hockeyData = new HockeyData();
+        gamesObj = await hockeyData.getHockeySchedule(
+          leagueTeams,
+          leagueLogos,
+          normalizedLeague,
+        );
+      } else {
+        gamesObj = await getTeamsSchedule(
+          leagueTeams,
+          normalizedLeague,
+          leagueLogos,
+        );
+      }
+
+      // Flatten the games object into an array
+      const games = Object.values(gamesObj).flat() as any[];
+
+      if (games && games.length > 0) {
+        for (const game of games) {
+          await this.create(game);
+        }
+      }
+      return games;
     } finally {
-      this.isFetchingGames[league] = false;
+      this.isFetchingGames[normalizedLeague] = false;
       if (skipCascade) {
-        this.manualRefreshInProgress[league] = false;
+        this.manualRefreshInProgress[normalizedLeague] = false;
       }
     }
   }
@@ -432,18 +491,11 @@ export class GameService {
             },
           );
 
-          if (filtredGames.length === 0) continue;
-
-          if (needRefresh(currentLeague, { data: filtredGames })) {
-            console.info(
-              `Data for ${currentLeague} is stale. Refreshing in background...`,
-            );
-            this.refreshChain = this.refreshChain.then(() =>
-              this.getLeagueGames(currentLeague, false).catch((err) =>
-                console.error(`Error refreshing ${currentLeague}`, err),
-              ),
-            );
-          }
+          this.refreshChain = this.refreshChain.then(() =>
+            this.getLeagueGames(currentLeague, false).catch((err) =>
+              console.error(`Error refreshing ${currentLeague}`, err),
+            ),
+          );
         }
       }
 
@@ -912,18 +964,11 @@ export class GameService {
             },
           );
 
-          if (filtredGames.length === 0) continue;
-
-          if (needRefresh(currentLeague, { data: filtredGames })) {
-            console.info(
-              `Data for ${currentLeague} is stale. Refreshing in background...`,
-            );
-            this.refreshChain = this.refreshChain.then(() =>
-              this.getLeagueGames(currentLeague, false).catch((err) =>
-                console.error(`Error refreshing ${currentLeague}`, err),
-              ),
-            );
-          }
+          this.refreshChain = this.refreshChain.then(() =>
+            this.getLeagueGames(currentLeague, false).catch((err) =>
+              console.error(`Error refreshing ${currentLeague}`, err),
+            ),
+          );
         }
       }
 

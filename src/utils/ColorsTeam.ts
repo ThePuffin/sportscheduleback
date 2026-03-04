@@ -579,6 +579,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#fdd023',
     backgroundColor: '#461d76',
   },
+  'NCAAB-LUC': {
+    color: '#9d1244',
+    backgroundColor: '#000000',
+  },
   'NCAAB-M-OH': {
     color: '#ffffff',
     backgroundColor: '#c41230',
