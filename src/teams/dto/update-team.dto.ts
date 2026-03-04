@@ -39,4 +39,22 @@ export class UpdateTeamDto {
 
   @ApiProperty()
   updateDate: string;
+
+  @ApiProperty({ required: false })
+  wins?: number;
+
+  @ApiProperty({ required: false })
+  losses?: number;
+
+  @ApiProperty({ required: false })
+  ties?: number;
+
+  @ApiProperty({ required: false })
+  otLosses?: number;
+
+  @ApiProperty({ required: false })
+  teamLogoDark?: string;
+
+  @ApiProperty({ required: false })
+  record?: string;
 }

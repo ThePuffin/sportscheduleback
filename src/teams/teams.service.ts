@@ -143,6 +143,40 @@ export class TeamService {
     }
   }
 
+  async updateTeamsList(teams: TeamType[]) {
+    const savedTeams = [];
+    for (const team of teams) {
+      if (
+        team.league === League.PWHL &&
+        team.uniqueId &&
+        !team.uniqueId.startsWith(`${League.PWHL}-`)
+      ) {
+        team.uniqueId = `${League.PWHL}-${team.abbrev || team.uniqueId}`;
+      }
+      if (team.record) {
+        const parts = team.record.split('-');
+        if (parts.length >= 2) {
+          team.wins = Number.parseInt(parts[0], 10);
+          team.losses = Number.parseInt(parts[1], 10);
+          if (parts[2]) {
+            const val = Number.parseInt(parts[2], 10);
+            if (team.league === League.NHL || team.league === League.PWHL) {
+              team.otLosses = val;
+            } else {
+              team.ties = val;
+            }
+          }
+        }
+      }
+      const saved = await this.create(team, true);
+      savedTeams.push(saved);
+    }
+    if (process.env.NODE_ENV === 'development') {
+      await this.generateLeaguesTeamsAndColorsFiles();
+    }
+    return savedTeams;
+  }
+
   async findAll(): Promise<any[]> {
     const allTeams = await this.teamModel
       .find()
@@ -218,6 +252,12 @@ export class TeamService {
       }
     }
     await this.teamModel.updateOne({ uniqueId }, { $set: updateData }).exec();
+  }
+
+  async updateRecords(updates: { uniqueId: string; record: string }[]) {
+    for (const { uniqueId, record } of updates) {
+      await this.updateRecord(uniqueId, record);
+    }
   }
 
   private addRecord(team: any) {

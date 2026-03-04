@@ -14,6 +14,10 @@ export interface TeamType {
   backgroundColor?: string;
   record?: string;
   teamLogoDark?: string;
+  wins?: number;
+  losses?: number;
+  ties?: number;
+  otLosses?: number;
 }
 
 export interface Props {

@@ -155,7 +155,7 @@ export class GameService {
         }
         const gamesForLeague = await this.gameModel
           .find({ league: normalizedLeague, isActive: true })
-          .sort({ startTimeUTC: -1 })
+          .sort({ startTimeUTC: 1 })
           .limit(10)
           .lean()
           .exec();
@@ -748,6 +748,7 @@ export class GameService {
 
       // Now try to update matching games in DB before returning
       const appliedUpdates: any[] = [];
+      const teamsToUpdate: { uniqueId: string; record: string }[] = [];
 
       for (const score of results) {
         try {
@@ -899,16 +900,16 @@ export class GameService {
                 .exec();
               if (updated) {
                 if (score.homeTeamRecord && game.homeTeamId) {
-                  await this.teamService.updateRecord(
-                    game.homeTeamId,
-                    score.homeTeamRecord,
-                  );
+                  teamsToUpdate.push({
+                    uniqueId: game.homeTeamId,
+                    record: score.homeTeamRecord,
+                  });
                 }
                 if (score.awayTeamRecord && game.awayTeamId) {
-                  await this.teamService.updateRecord(
-                    game.awayTeamId,
-                    score.awayTeamRecord,
-                  );
+                  teamsToUpdate.push({
+                    uniqueId: game.awayTeamId,
+                    record: score.awayTeamRecord,
+                  });
                 }
                 (updated as any).homeTeamRecord = score.homeTeamRecord;
                 (updated as any).awayTeamRecord = score.awayTeamRecord;
@@ -919,6 +920,11 @@ export class GameService {
         } catch (err) {
           // ignore update errors
         }
+      }
+
+      if (teamsToUpdate.length > 0) {
+        // console.log(teamsToUpdate);
+        await this.teamService.updateRecords(teamsToUpdate);
       }
 
       const anyManualRefresh = Object.values(this.manualRefreshInProgress).some(
