@@ -147,8 +147,8 @@ export class GameService {
           await this.refreshTimestampService.getLastRefresh(normalizedLeague);
         if (lastRefresh) {
           const lastUpdate = lastRefresh.timestamp;
-          const halfHourAgo = new Date(now.getTime() - 30 * 60 * 1000);
-          if (lastUpdate > halfHourAgo) {
+          const oneHoursAgo = new Date(now.getTime() - 1 * 60 * 60 * 1000);
+          if (lastUpdate > oneHoursAgo) {
             return; // Skip silently, this is normal behavior
           }
         }
@@ -212,6 +212,20 @@ export class GameService {
 
       if (games && games.length > 0) {
         for (const game of games) {
+          if (game.league === League.PWHL) {
+            if (game.homeTeamId && !game.homeTeamId.startsWith('PWHL-')) {
+              game.homeTeamId = `PWHL-${game.homeTeamId}`;
+            }
+            if (game.awayTeamId && !game.awayTeamId.startsWith('PWHL-')) {
+              game.awayTeamId = `PWHL-${game.awayTeamId}`;
+            }
+            if (
+              game.teamSelectedId &&
+              !game.teamSelectedId.startsWith('PWHL-')
+            ) {
+              game.teamSelectedId = `PWHL-${game.teamSelectedId}`;
+            }
+          }
           await this.create(game);
         }
       }
@@ -477,7 +491,7 @@ export class GameService {
       }
       return [];
     } else {
-      if (gameDate >= yesterdayString) {
+      if (gameDate === today) {
         const leaguesInGames = Array.from(new Set(games.map((g) => g.league)));
         for (const currentLeague of leaguesInGames) {
           const filtredGames = games.filter(
@@ -490,7 +504,7 @@ export class GameService {
               );
             },
           );
-
+          if (filtredGames.length === 0) continue;
           this.refreshChain = this.refreshChain.then(() =>
             this.getLeagueGames(currentLeague, false).catch((err) =>
               console.error(`Error refreshing ${currentLeague}`, err),
@@ -668,6 +682,20 @@ export class GameService {
             try {
               const scoresPWHL = await hockeyData.getPWHLScores(date);
               if (Array.isArray(scoresPWHL)) {
+                for (const score of scoresPWHL) {
+                  if (
+                    score.homeTeamId &&
+                    !score.homeTeamId.startsWith('PWHL-')
+                  ) {
+                    score.homeTeamId = `PWHL-${score.homeTeamId}`;
+                  }
+                  if (
+                    score.awayTeamId &&
+                    !score.awayTeamId.startsWith('PWHL-')
+                  ) {
+                    score.awayTeamId = `PWHL-${score.awayTeamId}`;
+                  }
+                }
                 results.push(...scoresPWHL);
               }
             } catch (error) {
@@ -948,7 +976,7 @@ export class GameService {
       }
       return {};
     } else {
-      if (gameDate >= yesterdayString) {
+      if (gameDate === today) {
         const leaguesInGames = Array.from(
           new Set(games.map((g) => g.league).filter(Boolean)),
         );
@@ -963,9 +991,9 @@ export class GameService {
               );
             },
           );
-
+          if (filtredGames.length === 0) continue;
           this.refreshChain = this.refreshChain.then(() =>
-            this.getLeagueGames(currentLeague, false).catch((err) =>
+            this.getLeagueGames(currentLeague, false, true).catch((err) =>
               console.error(`Error refreshing ${currentLeague}`, err),
             ),
           );

@@ -96,6 +96,15 @@ export class TeamService {
         let updateNumber = 0;
         for (const activeTeam of activeTeams) {
           activeTeam.updateDate = new Date().toISOString();
+          if (
+            activeTeam.league === League.PWHL &&
+            activeTeam.uniqueId &&
+            !activeTeam.uniqueId.startsWith(`${League.PWHL}-`)
+          ) {
+            activeTeam.uniqueId = `${League.PWHL}-${
+              activeTeam.abbrev || activeTeam.uniqueId
+            }`;
+          }
           // if ESPN didn't give us a logo, try our manual mapping before saving
           if (!activeTeam.teamLogo) {
             const parts = activeTeam.uniqueId?.split('-') || [];
@@ -109,7 +118,7 @@ export class TeamService {
           savedTeams.push(saved);
           updateNumber++;
           console.info(
-            'updated:',
+            ' team updated:',
             activeTeam?.label,
             '(',
             updateNumber,
