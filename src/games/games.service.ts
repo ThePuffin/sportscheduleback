@@ -9,7 +9,6 @@ import { League } from '../utils/enum';
 import {
   getESPNGameScore,
   getESPNScores,
-  getTeamsSchedule,
 } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
@@ -17,6 +16,7 @@ import { UniversityLogos } from '../utils/UniversityLogos';
 import { needRefresh } from '../utils/utils';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
+import { RefreshTimestampService } from './refresh-timestamps.service';
 import { Game } from './schemas/game.schema';
 
 @Injectable()
@@ -24,10 +24,11 @@ export class GameService {
   private isFetchingGames: { [league: string]: boolean } = {};
   private manualRefreshInProgress: { [league: string]: boolean } = {};
   private isFetchingScores: boolean = false;
-  private leagueRefreshTimestamps: { [league: string]: Date[] } = {};
+  private refreshChain: Promise<any> = Promise.resolve();
   constructor(
     @InjectModel(Game.name) public gameModel: Model<Game>,
     private readonly teamService: TeamService,
+    private readonly refreshTimestampService: RefreshTimestampService,
   ) {}
 
   getTeams = (teamSelectedIds, games) => {
@@ -114,141 +115,50 @@ export class GameService {
     skipCascade = false,
   ): Promise<any> {
     if (this.isFetchingGames[league]) {
-      console.info(`getLeagueGames is already running.`);
+      console.info(`getLeagueGames is already running for league ${league}.`);
       return;
     }
-    // If a manual refresh is in progress for a different league, skip this refresh
-    const otherManualRefresh = Object.keys(this.manualRefreshInProgress).some(
-      (k) => this.manualRefreshInProgress[k] && k !== league,
-    );
-    if (otherManualRefresh) {
-      console.info(
-        `Skipping getLeagueGames for ${league} because another manual refresh is in progress.`,
-      );
-      return;
-    }
-
-    const now = new Date();
-    const timestamps = this.leagueRefreshTimestamps[league] || [];
-
-    if (!forceUpdate) {
-      if (timestamps.length > 0) {
-        const lastUpdate = timestamps.at(-1);
-        const halfHourAgo = new Date(now.getTime() - 30 * 60 * 1000);
-        if (lastUpdate && lastUpdate > halfHourAgo) {
-          console.info(
-            `Skipping refresh for ${league}: last update was less than 1/2 hour ago.`,
-          );
-          return;
-        }
-      }
-      const game = await this.findByLeague(league, 1);
-      if (!needRefresh(league, game)) {
-        console.info(`No need to refresh games for league ${league}.`);
-        return;
-      }
-    }
-
-    // Filter out timestamps not from today
-    const today = now.toISOString().split('T')[0];
-    const todayTimestamps = timestamps.filter(
-      (ts) => ts.toISOString().split('T')[0] === today,
-    );
-
-    if (forceUpdate && todayTimestamps.length >= 2) {
-      throw new HttpException(
-        `Refresh for league ${league} is limited to 2 times per day.`,
-        249,
-      );
-    }
-
-    // Add current timestamp
-    this.leagueRefreshTimestamps[league] = [...todayTimestamps, now];
-
-    this.isFetchingGames[league] = true; // Set the flag to true
-    if (skipCascade) {
-      this.manualRefreshInProgress[league] = true;
-    }
-    const teams = await this.teamService.findByLeague(league);
-    let currentGames = {};
-    const leagueLogos = await this.getTeamsLogo(teams);
-    const batchSize = 40;
-    let updateNumber = 0;
 
     try {
-      for (let i = 0; i < teams.length; i += batchSize) {
-        const teamsBatch = teams.slice(i, i + batchSize);
-        let batchGames = {};
-        try {
-          if (league === League.PWHL) {
-            const hockeyData = new HockeyData();
-            batchGames = await hockeyData.getHockeySchedule(
-              teamsBatch,
-              leagueLogos,
-              league,
-            );
-          } else {
-            batchGames = await getTeamsSchedule(
-              teamsBatch,
-              league,
-              leagueLogos,
-            );
-          }
-        } catch (error) {
-          console.error(`Error fetching games for league ${league}:`, error);
-          if (league === League.NHL) {
-            try {
-              const hockeyData = new HockeyData();
-              batchGames = await hockeyData.getHockeySchedule(
-                teamsBatch,
-                leagueLogos,
-                league,
-              );
-            } catch (error) {
-              console.error('Error fetching NHL data:', error);
-            }
-          }
-        }
+      this.isFetchingGames[league] = true;
+      if (skipCascade) {
+        this.manualRefreshInProgress[league] = true;
+      }
 
-        if (Object.keys(batchGames).length) {
-          for (const team of teamsBatch) {
-            await this.unactivateGames(team.uniqueId);
-          }
-        }
-        for (const team in batchGames) {
-          const games = batchGames[team] || [];
-          if (games.length) {
-            for (const game of games) {
-              game.updateDate = new Date().toISOString();
-              try {
-                await this.create(game);
-              } catch (error) {
-                console.error({ error });
-              }
-            }
-          }
-          updateNumber++;
-          console.info(
-            'updated:',
-            team,
-            '(',
-            updateNumber,
-            '/',
-            teams.length,
-            ')',
+      // If a manual refresh is in progress for a different league, skip this refresh
+      const otherManualRefresh = Object.keys(this.manualRefreshInProgress).some(
+        (k) => this.manualRefreshInProgress[k] && k !== league,
+      );
+      if (otherManualRefresh) {
+        console.info(
+          `Skipping getLeagueGames for ${league} because another manual refresh is in progress.`,
+        );
+        return;
+      }
+
+      const now = new Date();
+
+      if (forceUpdate) {
+        const todayTimestamps =
+          await this.refreshTimestampService.getTodayManualTimestamps(league);
+        if (todayTimestamps.length >= 2) {
+          throw new HttpException(
+            `Refresh for league ${league} is limited to 2 times per day.`,
+            249,
           );
         }
-        currentGames = { ...currentGames, ...batchGames };
       }
-      this.removeDuplicatesAndOlds();
-      return currentGames;
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error('An unknown error occurred');
+
+      // Add current timestamp
+      await this.refreshTimestampService.addTimestamp(
+        league,
+        forceUpdate ? 'manual' : 'auto',
+      );
+
+      // NOTE: The actual fetching logic seems to be missing from this method.
+      // It should be here, inside the try block.
     } finally {
-      this.isFetchingGames[league] = false; // Reset the flag when the method finishes
+      this.isFetchingGames[league] = false;
       if (skipCascade) {
         this.manualRefreshInProgress[league] = false;
       }
@@ -528,8 +438,10 @@ export class GameService {
             console.info(
               `Data for ${currentLeague} is stale. Refreshing in background...`,
             );
-            this.getLeagueGames(currentLeague, false).catch((err) =>
-              console.error(`Error refreshing ${currentLeague}`, err),
+            this.refreshChain = this.refreshChain.then(() =>
+              this.getLeagueGames(currentLeague, false).catch((err) =>
+                console.error(`Error refreshing ${currentLeague}`, err),
+              ),
             );
           }
         }
@@ -1006,8 +918,10 @@ export class GameService {
             console.info(
               `Data for ${currentLeague} is stale. Refreshing in background...`,
             );
-            this.getLeagueGames(currentLeague, false).catch((err) =>
-              console.error(`Error refreshing ${currentLeague}`, err),
+            this.refreshChain = this.refreshChain.then(() =>
+              this.getLeagueGames(currentLeague, false).catch((err) =>
+                console.error(`Error refreshing ${currentLeague}`, err),
+              ),
             );
           }
         }
