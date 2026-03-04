@@ -26,6 +26,7 @@ export class GameService {
   private manualRefreshInProgress: { [league: string]: boolean } = {};
   private isFetchingScores: boolean = false;
   private refreshChain: Promise<any> = Promise.resolve();
+  private lastHourlyRefreshTrigger: Date | null = null;
   constructor(
     @InjectModel(Game.name) public gameModel: Model<Game>,
     private readonly teamService: TeamService,
@@ -977,26 +978,35 @@ export class GameService {
       return {};
     } else {
       if (gameDate === today) {
-        const leaguesInGames = Array.from(
-          new Set(games.map((g) => g.league).filter(Boolean)),
-        );
-        for (const currentLeague of leaguesInGames) {
-          const filtredGames = games.filter(
-            ({ isActive, awayTeamId, league }) => {
-              return (
-                isActive === true &&
-                awayTeamId !== undefined &&
-                awayTeamId !== '' &&
-                league?.toUpperCase() === currentLeague.toUpperCase()
-              );
-            },
+        const now = new Date();
+        // Cooldown of 5 minutes to avoid spamming refreshes on every call
+        if (
+          !this.lastHourlyRefreshTrigger ||
+          now.getTime() - this.lastHourlyRefreshTrigger.getTime() >
+            5 * 60 * 1000
+        ) {
+          this.lastHourlyRefreshTrigger = now;
+          const leaguesInGames = Array.from(
+            new Set(games.map((g) => g.league).filter(Boolean)),
           );
-          if (filtredGames.length === 0) continue;
-          this.refreshChain = this.refreshChain.then(() =>
-            this.getLeagueGames(currentLeague, false, true).catch((err) =>
-              console.error(`Error refreshing ${currentLeague}`, err),
-            ),
-          );
+          for (const currentLeague of leaguesInGames) {
+            const filtredGames = games.filter(
+              ({ isActive, awayTeamId, league }) => {
+                return (
+                  isActive === true &&
+                  awayTeamId !== undefined &&
+                  awayTeamId !== '' &&
+                  league?.toUpperCase() === currentLeague.toUpperCase()
+                );
+              },
+            );
+            if (filtredGames.length === 0) continue;
+            this.refreshChain = this.refreshChain.then(() =>
+              this.getLeagueGames(currentLeague, false, true).catch((err) =>
+                console.error(`Error refreshing ${currentLeague}`, err),
+              ),
+            );
+          }
         }
       }
 
