@@ -970,64 +970,127 @@ export class GameService {
       filter.gameDate = gameDate;
     }
 
-    const games = await this.gameModel
-      .find(filter)
-      .sort({ startTimeUTC: 1 })
-      .lean()
-      .exec();
+    const games = await this.gameModel.aggregate([
+      { $match: filter },
+      {
+        $match: {
+          homeTeamId: { $nin: [null, ''] },
+          teamSelectedId: { $nin: [null, ''] },
+          $expr: { $eq: ['$homeTeamId', '$teamSelectedId'] },
+        },
+      },
+      { $sort: { startTimeUTC: 1 } },
+      {
+        $lookup: {
+          from: 'teams',
+          localField: 'homeTeamId',
+          foreignField: 'uniqueId',
+          as: 'homeTeamData',
+        },
+      },
+      {
+        $lookup: {
+          from: 'teams',
+          localField: 'awayTeamId',
+          foreignField: 'uniqueId',
+          as: 'awayTeamData',
+        },
+      },
+      { $unwind: { path: '$homeTeamData', preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: '$awayTeamData', preserveNullAndEmptyArrays: true } },
+      {
+        $addFields: {
+          homeTeamRecord: '$homeTeamData.record',
+          awayTeamRecord: '$awayTeamData.record',
+          homeTeam: { $ifNull: ['$homeTeamData.label', '$homeTeam'] },
+          homeTeamShort: {
+            $ifNull: ['$homeTeamData.abbrev', '$homeTeamShort'],
+          },
+          homeTeamLogo: {
+            $ifNull: ['$homeTeamData.teamLogo', '$homeTeamLogo'],
+          },
+          homeTeamLogoDark: {
+            $ifNull: ['$homeTeamData.teamLogoDark', '$homeTeamLogoDark'],
+          },
+          homeTeamColor: '$homeTeamData.color',
+          homeTeamBackgroundColor: '$homeTeamData.backgroundColor',
+          awayTeam: { $ifNull: ['$awayTeamData.label', '$awayTeam'] },
+          awayTeamShort: {
+            $ifNull: ['$awayTeamData.abbrev', '$awayTeamShort'],
+          },
+          awayTeamLogo: {
+            $ifNull: ['$awayTeamData.teamLogo', '$awayTeamLogo'],
+          },
+          awayTeamLogoDark: {
+            $ifNull: ['$awayTeamData.teamLogoDark', '$awayTeamLogoDark'],
+          },
+          awayTeamColor: '$awayTeamData.color',
+          awayTeamBackgroundColor: '$awayTeamData.backgroundColor',
+        },
+      },
+      {
+        $project: {
+          homeTeamData: 0,
+          awayTeamData: 0,
+        },
+      },
+    ]);
 
     if (games.length === 0) {
-      const allGames = await this.findAll();
-      if (!allGames.length) {
+      // Optimized fallback for cold start (empty DB)
+      const gameCount = await this.gameModel.countDocuments({ isActive: true });
+      if (gameCount === 0) {
         this.getAllGames();
       }
       return {};
-    } else {
-      if (gameDate === today) {
-        const now = new Date();
-        // Cooldown of 5 minutes to avoid spamming refreshes on every call
-        if (
-          !this.lastHourlyRefreshTrigger ||
-          now.getTime() - this.lastHourlyRefreshTrigger.getTime() >
-            5 * 60 * 1000
-        ) {
-          this.lastHourlyRefreshTrigger = now;
-          const leaguesInGames = Array.from(
-            new Set(games.map((g) => g.league).filter(Boolean)),
-          );
-          for (const currentLeague of leaguesInGames) {
-            const filtredGames = games.filter(
-              ({ isActive, awayTeamId, league }) => {
-                return (
-                  isActive === true &&
-                  awayTeamId !== undefined &&
-                  awayTeamId !== '' &&
-                  league?.toUpperCase() === currentLeague.toUpperCase()
-                );
-              },
-            );
-            if (filtredGames.length === 0) continue;
-            this.refreshChain = this.refreshChain.then(() =>
-              this.getLeagueGames(currentLeague, false, true).catch((err) =>
-                console.error(`Error refreshing ${currentLeague}`, err),
-              ),
-            );
+    }
+
+    // Background refresh logic for "today"
+    if (gameDate === today) {
+      const now = new Date();
+      // Cooldown of 5 minutes to avoid spamming refreshes on every call
+      if (
+        !this.lastHourlyRefreshTrigger ||
+        now.getTime() - this.lastHourlyRefreshTrigger.getTime() > 5 * 60 * 1000
+      ) {
+        this.lastHourlyRefreshTrigger = now;
+        const leaguesInGames = Array.from(
+          new Set(games.map((g) => g.league).filter(Boolean)),
+        );
+        for (const currentLeague of leaguesInGames) {
+          if (!games.some((g) => g.league === currentLeague && g.awayTeamId)) {
+            continue;
           }
+          this.refreshChain = this.refreshChain.then(() =>
+            this.getLeagueGames(currentLeague, false, true).catch((err) =>
+              console.error(`Error refreshing ${currentLeague}`, err),
+            ),
+          );
         }
       }
+    }
 
-      const teams = await this.teamService.findAll();
-      const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
+    const gamesByTimeSlot: { [key: string]: any[] } = {};
+    games.forEach((game: any) => {
+      // Post-process for UniversityLogos fallback, as it's a JS object lookup
+      if (!game.homeTeamLogo) {
+        game.homeTeamLogo = UniversityLogos[game.homeTeamShort || ''] || '';
+      }
+      if (!game.homeTeamLogoDark) {
+        game.homeTeamLogoDark = UniversityLogos[game.homeTeamShort || ''] || '';
+      }
+      if (!game.awayTeamLogo) {
+        game.awayTeamLogo = UniversityLogos[game.awayTeamShort || ''] || '';
+      }
+      if (!game.awayTeamLogoDark) {
+        game.awayTeamLogoDark = UniversityLogos[game.awayTeamShort || ''] || '';
+      }
 
-      // avoid dupplicate games
-      const filteredGames = games.filter(({ homeTeamId, teamSelectedId }) => {
-        return homeTeamId === teamSelectedId;
-      });
-
-      const gamesByTimeSlot: { [key: string]: any[] } = {};
-      filteredGames.forEach((game: any) => {
-        const enrichedGame = this._enrichGameWithTeamData(game, teamsMap);
-        const date = new Date(enrichedGame.startTimeUTC);
+      const date = new Date(game.startTimeUTC);
+      if (date.toString() === 'Invalid Date') {
+        return; // Skip games with invalid date
+      }
+      try {
         const hours = date.getUTCHours().toString().padStart(2, '0');
         const minutes = date.getUTCMinutes();
         const minutesStr = minutes < 30 ? '00' : '30';
@@ -1036,10 +1099,12 @@ export class GameService {
         if (!gamesByTimeSlot[timeSlot]) {
           gamesByTimeSlot[timeSlot] = [];
         }
-        gamesByTimeSlot[timeSlot].push(enrichedGame);
-      });
+        gamesByTimeSlot[timeSlot].push(game);
+      } catch (e) {
+        console.error('Error processing game time slot', game, e);
+      }
+    });
 
-      return gamesByTimeSlot;
-    }
+    return gamesByTimeSlot;
   }
 }
