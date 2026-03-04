@@ -8,7 +8,6 @@ import { getESPNTeams } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
 import { UniversityLogos } from '../utils/UniversityLogos';
-import { randomNumber } from '../utils/utils';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
 import { Team } from './schemas/team.schema';
@@ -186,16 +185,6 @@ export class TeamService {
     if (!allTeams?.length) {
       const teams = await this.getTeams();
       return teams.map((team) => this.addRecord(team));
-    }
-    const teamIndex = randomNumber(allTeams.length - 1);
-    const randomTeam = allTeams[teamIndex];
-    const lastMonth = new Date();
-    lastMonth.setDate(lastMonth.getMonth() - 1);
-    if (new Date(randomTeam?.updateDate) < lastMonth) {
-      await this.getTeams();
-    }
-    if (process.env.NODE_ENV === 'development') {
-      await this.generateLeaguesTeamsAndColorsFiles();
     }
     return allTeams.map((team) => this.addRecord(team));
   }
