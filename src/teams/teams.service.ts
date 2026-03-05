@@ -210,8 +210,39 @@ export class TeamService {
   }
 
   async updateRecords(updates: { uniqueId: string; record: string }[]) {
+    const uniqueUpdates = new Map<string, string>();
     for (const { uniqueId, record } of updates) {
-      await this.updateRecord(uniqueId, record);
+      if (uniqueId && record) {
+        uniqueUpdates.set(uniqueId, record);
+      }
+    }
+
+    const bulkOps = [];
+    for (const [uniqueId, record] of uniqueUpdates) {
+      const parts = record.split('-');
+      const wins = Number.parseInt(parts[0], 10);
+      const losses = Number.parseInt(parts[1], 10);
+      const ties = parts[2] ? Number.parseInt(parts[2], 10) : null;
+
+      const updateData: any = { wins, losses };
+      if (ties !== null) {
+        const league = uniqueId.split('-')[0];
+        if (league === League.NHL || league === League.PWHL) {
+          updateData.otLosses = ties;
+        } else {
+          updateData.ties = ties;
+        }
+      }
+      bulkOps.push({
+        updateOne: {
+          filter: { uniqueId },
+          update: { $set: updateData },
+        },
+      });
+    }
+
+    if (bulkOps.length > 0) {
+      await this.teamModel.bulkWrite(bulkOps, { ordered: false });
     }
   }
 
