@@ -3,12 +3,33 @@ import { HydratedDocument } from 'mongoose';
 
 export type GameDocument = HydratedDocument<Game>;
 
-@Schema()
+@Schema({ _id: false })
+class GameDetails {
+  @Prop({ required: false })
+  period?: number;
+
+  @Prop({ required: false })
+  clock?: string;
+
+  @Prop({ required: false })
+  situation?: string;
+}
+
+export enum GameState {
+  SCHEDULED = 'SCHEDULED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  FINAL = 'FINAL',
+  POSTPONED = 'POSTPONED',
+  CANCELLED = 'CANCELLED',
+  TBD = 'TBD',
+}
+
+@Schema({ timestamps: { createdAt: 'createdAt', updatedAt: 'updateDate' } })
 export class Game {
-  @Prop()
+  @Prop({ unique: true, index: true })
   uniqueId: string;
 
-  @Prop()
+  @Prop({ index: true })
   awayTeamId: string;
 
   @Prop()
@@ -23,7 +44,7 @@ export class Game {
   @Prop()
   awayTeamLogoDark: string;
 
-  @Prop()
+  @Prop({ index: true })
   homeTeamId: string;
 
   @Prop()
@@ -50,10 +71,10 @@ export class Game {
   @Prop()
   arenaName: string;
 
-  @Prop()
+  @Prop({ index: true })
   gameDate: string;
 
-  @Prop()
+  @Prop({ index: true })
   teamSelectedId: string;
 
   @Prop()
@@ -65,7 +86,7 @@ export class Game {
   @Prop()
   selectedTeam: boolean;
 
-  @Prop()
+  @Prop({ index: true })
   league: string;
 
   @Prop()
@@ -90,6 +111,9 @@ export class Game {
   awayTeamColor: string;
 
   @Prop()
+  homeTeamRecord?: string;
+
+  @Prop()
   awayTeamBackgroundColor: string;
 
   @Prop()
@@ -98,7 +122,25 @@ export class Game {
   @Prop()
   homeTeamBackgroundColor: string;
 
-  @Prop({ default: new Date() })
+  @Prop()
+  awayTeamRecord?: string;
+
+  @Prop({
+    type: String,
+    enum: GameState,
+    default: GameState.SCHEDULED,
+    index: true,
+  })
+  status: GameState;
+
+  @Prop({ type: [String], default: [] })
+  broadcasts: string[];
+
+  @Prop({ type: GameDetails, required: false })
+  gameDetails?: GameDetails;
+
+  // These are handled by the timestamps option in @Schema
+  createdAt?: Date;
   updateDate: string;
 }
 

@@ -923,7 +923,6 @@ export class GameService {
       }
 
       if (teamsToUpdate.length > 0) {
-        // console.log(teamsToUpdate);
         await this.teamService.updateRecords(teamsToUpdate);
       }
 
@@ -970,73 +969,23 @@ export class GameService {
       filter.gameDate = gameDate;
     }
 
-    const games = await this.gameModel.aggregate([
-      { $match: filter },
-      {
-        $match: {
-          homeTeamId: { $nin: [null, ''] },
-          teamSelectedId: { $nin: [null, ''] },
-          $expr: { $eq: ['$homeTeamId', '$teamSelectedId'] },
+    // Optimization: Run DB queries in parallel
+    const [rawGames, teams] = await Promise.all([
+      this.gameModel.aggregate([
+        {
+          $match: {
+            ...filter,
+            homeTeamId: { $nin: [null, ''] },
+            teamSelectedId: { $nin: [null, ''] },
+            $expr: { $eq: ['$homeTeamId', '$teamSelectedId'] },
+          },
         },
-      },
-      { $sort: { startTimeUTC: 1 } },
-      {
-        $lookup: {
-          from: 'teams',
-          localField: 'homeTeamId',
-          foreignField: 'uniqueId',
-          as: 'homeTeamData',
-        },
-      },
-      {
-        $lookup: {
-          from: 'teams',
-          localField: 'awayTeamId',
-          foreignField: 'uniqueId',
-          as: 'awayTeamData',
-        },
-      },
-      { $unwind: { path: '$homeTeamData', preserveNullAndEmptyArrays: true } },
-      { $unwind: { path: '$awayTeamData', preserveNullAndEmptyArrays: true } },
-      {
-        $addFields: {
-          homeTeamRecord: '$homeTeamData.record',
-          awayTeamRecord: '$awayTeamData.record',
-          homeTeam: { $ifNull: ['$homeTeamData.label', '$homeTeam'] },
-          homeTeamShort: {
-            $ifNull: ['$homeTeamData.abbrev', '$homeTeamShort'],
-          },
-          homeTeamLogo: {
-            $ifNull: ['$homeTeamData.teamLogo', '$homeTeamLogo'],
-          },
-          homeTeamLogoDark: {
-            $ifNull: ['$homeTeamData.teamLogoDark', '$homeTeamLogoDark'],
-          },
-          homeTeamColor: '$homeTeamData.color',
-          homeTeamBackgroundColor: '$homeTeamData.backgroundColor',
-          awayTeam: { $ifNull: ['$awayTeamData.label', '$awayTeam'] },
-          awayTeamShort: {
-            $ifNull: ['$awayTeamData.abbrev', '$awayTeamShort'],
-          },
-          awayTeamLogo: {
-            $ifNull: ['$awayTeamData.teamLogo', '$awayTeamLogo'],
-          },
-          awayTeamLogoDark: {
-            $ifNull: ['$awayTeamData.teamLogoDark', '$awayTeamLogoDark'],
-          },
-          awayTeamColor: '$awayTeamData.color',
-          awayTeamBackgroundColor: '$awayTeamData.backgroundColor',
-        },
-      },
-      {
-        $project: {
-          homeTeamData: 0,
-          awayTeamData: 0,
-        },
-      },
+        { $sort: { startTimeUTC: 1 } },
+      ]),
+      this.teamService.findAll(),
     ]);
 
-    if (games.length === 0) {
+    if (rawGames.length === 0) {
       // Optimized fallback for cold start (empty DB)
       const gameCount = await this.gameModel.countDocuments({ isActive: true });
       if (gameCount === 0) {
@@ -1044,6 +993,12 @@ export class GameService {
       }
       return {};
     }
+
+    const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
+
+    const games = rawGames.map((game: any) =>
+      this._enrichGameWithTeamData(game, teamsMap),
+    );
 
     // Background refresh logic for "today"
     if (gameDate === today) {
@@ -1071,40 +1026,21 @@ export class GameService {
     }
 
     const gamesByTimeSlot: { [key: string]: any[] } = {};
-    games.forEach((game: any) => {
-      // Post-process for UniversityLogos fallback, as it's a JS object lookup
-      if (!game.homeTeamLogo) {
-        game.homeTeamLogo = UniversityLogos[game.homeTeamShort || ''] || '';
-      }
-      if (!game.homeTeamLogoDark) {
-        game.homeTeamLogoDark = UniversityLogos[game.homeTeamShort || ''] || '';
-      }
-      if (!game.awayTeamLogo) {
-        game.awayTeamLogo = UniversityLogos[game.awayTeamShort || ''] || '';
-      }
-      if (!game.awayTeamLogoDark) {
-        game.awayTeamLogoDark = UniversityLogos[game.awayTeamShort || ''] || '';
-      }
-
+    for (const game of games) {
       const date = new Date(game.startTimeUTC);
-      if (date.toString() === 'Invalid Date') {
-        return; // Skip games with invalid date
+      if (Number.isNaN(date.getTime())) {
+        continue;
       }
-      try {
-        const hours = date.getUTCHours().toString().padStart(2, '0');
-        const minutes = date.getUTCMinutes();
-        const minutesStr = minutes < 30 ? '00' : '30';
-        const timeSlot = `${hours}:${minutesStr}`;
+      const hours = date.getUTCHours().toString().padStart(2, '0');
+      const minutes = date.getUTCMinutes();
+      const minutesStr = minutes < 30 ? '00' : '30';
+      const timeSlot = `${hours}:${minutesStr}`;
 
-        if (!gamesByTimeSlot[timeSlot]) {
-          gamesByTimeSlot[timeSlot] = [];
-        }
-        gamesByTimeSlot[timeSlot].push(game);
-      } catch (e) {
-        console.error('Error processing game time slot', game, e);
+      if (!gamesByTimeSlot[timeSlot]) {
+        gamesByTimeSlot[timeSlot] = [];
       }
-    });
-
+      gamesByTimeSlot[timeSlot].push(game);
+    }
     return gamesByTimeSlot;
   }
 }
