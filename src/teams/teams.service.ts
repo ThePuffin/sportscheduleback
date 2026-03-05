@@ -67,6 +67,7 @@ export class TeamService {
       const allActivesTeams: any[] = [];
       let leagues: string[] = [];
       if (leagueParam) {
+        leagues = [leagueParam.toUpperCase()];
       } else {
         leagues = Object.values(League);
       }
@@ -141,41 +142,6 @@ export class TeamService {
       this.isFetchingTeams[leagueKey] = false;
     }
   }
-
-  async updateTeamsList(teams: TeamType[]) {
-    const savedTeams = [];
-    for (const team of teams) {
-      if (
-        team.league === League.PWHL &&
-        team.uniqueId &&
-        !team.uniqueId.startsWith(`${League.PWHL}-`)
-      ) {
-        team.uniqueId = `${League.PWHL}-${team.abbrev || team.uniqueId}`;
-      }
-      if (team.record) {
-        const parts = team.record.split('-');
-        if (parts.length >= 2) {
-          team.wins = Number.parseInt(parts[0], 10);
-          team.losses = Number.parseInt(parts[1], 10);
-          if (parts[2]) {
-            const val = Number.parseInt(parts[2], 10);
-            if (team.league === League.NHL || team.league === League.PWHL) {
-              team.otLosses = val;
-            } else {
-              team.ties = val;
-            }
-          }
-        }
-      }
-      const saved = await this.create(team, true);
-      savedTeams.push(saved);
-    }
-    if (process.env.NODE_ENV === 'development') {
-      await this.generateLeaguesTeamsAndColorsFiles();
-    }
-    return savedTeams;
-  }
-
   async findAll(): Promise<any[]> {
     const allTeams = await this.teamModel
       .find()
