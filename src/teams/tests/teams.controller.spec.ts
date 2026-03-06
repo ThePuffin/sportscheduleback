@@ -1,9 +1,9 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { TeamType } from '../utils/interface/team';
-import { UpdateTeamDto } from './dto/update-team.dto';
-import { TeamsController } from './teams.controller';
-import { TeamService } from './teams.service';
+import { TeamType } from '../../utils/interface/team';
+import { UpdateTeamDto } from '../dto/update-team.dto';
+import { TeamsController } from '../teams.controller';
+import { TeamService } from '../teams.service';
 
 // 1. Test data simulating what the database might return.
 const mockTeams: TeamType[] = [

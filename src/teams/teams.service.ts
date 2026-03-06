@@ -72,62 +72,11 @@ export class TeamService {
         leagues = Object.values(League);
       }
       for (const league of leagues) {
-        const activeTeams: TeamType[] = [];
-        let teams: TeamType[] = [];
-        try {
-          if (league === League.PWHL) {
-            const hockeyData = new HockeyData();
-            teams = await hockeyData.getPWHLTeams();
-          } else {
-            teams = await getESPNTeams(league);
-          }
-        } catch (error) {
-          console.error(`Error fetching teams for league ${league}:`, error);
-          if (league === League.NHL) {
-            const hockeyData = new HockeyData();
-            teams = await hockeyData.getNHLTeams();
-          }
-        }
+        const teams = await this.fetchLeagueTeams(league);
         if (teams.length) {
-          activeTeams.push(...teams);
+          const savedTeams = await this.processAndSaveTeams(teams);
+          allActivesTeams.push(...savedTeams);
         }
-
-        const savedTeams = [];
-        let updateNumber = 0;
-        for (const activeTeam of activeTeams) {
-          activeTeam.updateDate = new Date().toISOString();
-          if (
-            activeTeam.league === League.PWHL &&
-            activeTeam.uniqueId &&
-            !activeTeam.uniqueId.startsWith(`${League.PWHL}-`)
-          ) {
-            activeTeam.uniqueId = `${League.PWHL}-${
-              activeTeam.abbrev || activeTeam.uniqueId
-            }`;
-          }
-          // if ESPN didn't give us a logo, try our manual mapping before saving
-          if (!activeTeam.teamLogo) {
-            const parts = activeTeam.uniqueId?.split('-') || [];
-            const abbrev = parts[1] || activeTeam.abbrev || '';
-            if (abbrev && UniversityLogos[abbrev]) {
-              activeTeam.teamLogo = UniversityLogos[abbrev];
-            }
-          }
-          // Skip file generation during batch import for performance
-          const saved = await this.create(activeTeam, true);
-          savedTeams.push(saved);
-          updateNumber++;
-          console.info(
-            ' team updated:',
-            activeTeam?.label,
-            '(',
-            updateNumber,
-            '/',
-            activeTeams.length,
-            ')',
-          );
-        }
-        allActivesTeams.push(...savedTeams);
       }
 
       // Generate files once after all teams have been imported
@@ -141,6 +90,60 @@ export class TeamService {
     } finally {
       this.isFetchingTeams[leagueKey] = false;
     }
+  }
+  private async fetchLeagueTeams(league: string): Promise<TeamType[]> {
+    try {
+      if (league === League.PWHL) {
+        const hockeyData = new HockeyData();
+        return await hockeyData.getPWHLTeams();
+      }
+      return await getESPNTeams(league);
+    } catch (error) {
+      console.error(`Error fetching teams for league ${league}:`, error);
+      if (league === League.NHL) {
+        const hockeyData = new HockeyData();
+        return await hockeyData.getNHLTeams();
+      }
+      return [];
+    }
+  }
+  private async processAndSaveTeams(
+    teamsToProcess: TeamType[],
+  ): Promise<any[]> {
+    const savedTeams = [];
+    let updateNumber = 0;
+    for (const team of teamsToProcess) {
+      team.updateDate = new Date().toISOString();
+      if (
+        team.league === League.PWHL &&
+        team.uniqueId &&
+        !team.uniqueId.startsWith(`${League.PWHL}-`)
+      ) {
+        team.uniqueId = `${League.PWHL}-${team.abbrev || team.uniqueId}`;
+      }
+      // if ESPN didn't give us a logo, try our manual mapping before saving
+      if (!team.teamLogo) {
+        const parts = team.uniqueId?.split('-') || [];
+        const abbrev = parts[1] || team.abbrev || '';
+        if (abbrev && UniversityLogos[abbrev]) {
+          team.teamLogo = UniversityLogos[abbrev];
+        }
+      }
+      // Skip file generation during batch import for performance
+      const saved = await this.create(team, true);
+      savedTeams.push(saved);
+      updateNumber++;
+      console.info(
+        ' team updated:',
+        team?.label,
+        '(',
+        updateNumber,
+        '/',
+        teamsToProcess.length,
+        ')',
+      );
+    }
+    return savedTeams;
   }
   async findAll(): Promise<any[]> {
     const allTeams = await this.teamModel
@@ -159,7 +162,7 @@ export class TeamService {
     const allTeams = await this.teamModel.find().exec();
     const leagues = allTeams.map((team) => team.league);
     const uniqueLeagues = Array.from(new Set(leagues));
-    return uniqueLeagues.sort();
+    return uniqueLeagues.sort((a, b) => a.localeCompare(b));
   }
 
   async findOne(uniqueId: string) {
