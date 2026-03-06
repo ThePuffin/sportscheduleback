@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { DeleteResult } from 'mongodb';
 import { Model } from 'mongoose';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -263,7 +264,7 @@ export class TeamService {
     return deleted;
   }
 
-  async removeByLeague(league: string): Promise<any> {
+  async removeByLeague(league: string): Promise<DeleteResult> {
     const filter = { league: league };
     console.log(`Removing teams with league: ${league}`);
     const deleted = await this.teamModel.deleteMany(filter).exec();
@@ -271,12 +272,8 @@ export class TeamService {
     return deleted;
   }
 
-  async removeAll() {
-    await this.teamModel.deleteMany({});
-    const teams = await this.teamModel.find().exec();
-    for (const team of teams) {
-      await this.remove(team.uniqueId);
-    }
+  async removeAll(): Promise<DeleteResult> {
+    return this.teamModel.deleteMany({}).exec();
   }
 
   private async generateLeaguesTeamsAndColorsFiles() {

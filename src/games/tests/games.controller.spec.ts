@@ -4,7 +4,7 @@ import { UpdateGameDto } from '../dto/update-game.dto';
 import { GamesController } from '../games.controller';
 import { GameService } from '../games.service';
 
-// --- Données de test (Mocks) ---
+// --- Test data (Mocks) ---
 const mockGame = {
   uniqueId: '2024-NHL-123',
   homeTeam: 'Boston Bruins',
@@ -16,7 +16,7 @@ const mockCreateDto: CreateGameDto = {
 } as CreateGameDto;
 const mockUpdateDto = { homeTeamScore: 3 } as UpdateGameDto;
 
-// --- Simulation du Service ---
+// --- Service Simulation ---
 const mockGameService = {
   findAll: jest.fn().mockResolvedValue(mockGames),
   findByTeam: jest.fn().mockResolvedValue({ '2024-10-10': [mockGame] }),
@@ -42,9 +42,10 @@ const mockGameService = {
 describe('GamesController', () => {
   let controller: GamesController;
   let service: GameService;
+  let module: TestingModule;
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       controllers: [GamesController],
       providers: [
         {
@@ -58,23 +59,24 @@ describe('GamesController', () => {
     service = module.get<GameService>(GameService);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await module.close();
     jest.clearAllMocks();
   });
 
-  it('devrait être défini', () => {
+  it('should be defined', () => {
     expect(controller).toBeDefined();
   });
 
   describe('findAll', () => {
-    it('devrait retourner un tableau de matchs', async () => {
+    it('should return an array of games', async () => {
       expect(await controller.findAll()).toEqual(mockGames);
       expect(service.findAll).toHaveBeenCalled();
     });
   });
 
   describe('findByTeam', () => {
-    it('devrait retourner les matchs pour une équipe donnée', async () => {
+    it('should return games for a given team', async () => {
       const teamId = 'NHL-BOS';
       await controller.findByTeam(teamId);
       expect(service.findByTeam).toHaveBeenCalledWith(teamId);
@@ -82,7 +84,7 @@ describe('GamesController', () => {
   });
 
   describe('filterGames', () => {
-    it('devrait appeler le service avec les bons paramètres de filtre', async () => {
+    it('should call the service with the correct filter parameters', async () => {
       const query = {
         startDate: '2024-10-01',
         endDate: '2024-10-31',
@@ -98,14 +100,14 @@ describe('GamesController', () => {
   });
 
   describe('getDateRange', () => {
-    it("devrait retourner l'intervalle de dates", async () => {
+    it('should return the date range', async () => {
       await controller.getDateRange();
       expect(service.getDateRange).toHaveBeenCalled();
     });
   });
 
   describe('findByDate', () => {
-    it('devrait retourner les matchs pour une date donnée', async () => {
+    it('should return games for a given date', async () => {
       const date = '2024-10-10';
       await controller.findByDate(date);
       expect(service.findByDate).toHaveBeenCalledWith(date);
@@ -113,7 +115,7 @@ describe('GamesController', () => {
   });
 
   describe('findByDateHour', () => {
-    it('devrait retourner les matchs groupés par heure pour une date', async () => {
+    it('should return games grouped by hour for a date', async () => {
       const date = '2024-10-10';
       await controller.findByDateHour(date);
       expect(service.findByDateHour).toHaveBeenCalledWith(date);
@@ -121,13 +123,13 @@ describe('GamesController', () => {
   });
 
   describe('findByLeague', () => {
-    it('devrait retourner les matchs pour une ligue', async () => {
+    it('should return games for a league', async () => {
       const league = 'NHL';
       await controller.findByLeague(league);
       expect(service.findByLeague).toHaveBeenCalledWith(league, undefined);
     });
 
-    it('devrait retourner les matchs pour une ligue avec une limite', async () => {
+    it('should return games for a league with a limit', async () => {
       const league = 'NHL';
       const maxResults = 5;
       await controller.findByLeague(league, maxResults);
@@ -136,7 +138,7 @@ describe('GamesController', () => {
   });
 
   describe('findOne', () => {
-    it('devrait retourner un seul match', async () => {
+    it('should return a single game', async () => {
       const uniqueId = '2024-NHL-123';
       await controller.findOne(uniqueId);
       expect(service.findOne).toHaveBeenCalledWith(uniqueId);
@@ -144,21 +146,21 @@ describe('GamesController', () => {
   });
 
   describe('create', () => {
-    it('devrait appeler le service pour créer un match', async () => {
+    it('should call the service to create a game', async () => {
       await controller.create(mockCreateDto);
       expect(service.create).toHaveBeenCalledWith(mockCreateDto);
     });
   });
 
   describe('refresh', () => {
-    it('devrait rafraîchir tous les matchs', async () => {
+    it('should refresh all games', async () => {
       await controller.refresh();
       expect(service.getAllGames).toHaveBeenCalled();
     });
   });
 
   describe('refreshByLeague', () => {
-    it('devrait rafraîchir les matchs pour une ligue', async () => {
+    it('should refresh games for a league', async () => {
       const league = 'NHL';
       await controller.refreshByLeague(league);
       expect(service.getLeagueGames).toHaveBeenCalledWith(league, true, true);
@@ -166,14 +168,14 @@ describe('GamesController', () => {
   });
 
   describe('fetchScores', () => {
-    it('devrait récupérer les scores des matchs', async () => {
+    it('should fetch game scores', async () => {
       await controller.fetchScores();
       expect(service.fetchGamesScores).toHaveBeenCalled();
     });
   });
 
   describe('update', () => {
-    it('devrait mettre à jour un match', async () => {
+    it('should update a game', async () => {
       const uniqueId = '2024-NHL-123';
       await controller.update(uniqueId, mockUpdateDto);
       expect(service.update).toHaveBeenCalledWith(uniqueId, mockUpdateDto);
@@ -181,7 +183,7 @@ describe('GamesController', () => {
   });
 
   describe('removeLeague', () => {
-    it('devrait supprimer les matchs pour une ligue', async () => {
+    it('should remove games for a league', async () => {
       const league = 'NHL';
       await controller.removeLeague(league);
       expect(service.removeLeague).toHaveBeenCalledWith(league);
@@ -189,21 +191,21 @@ describe('GamesController', () => {
   });
 
   describe('removeAll', () => {
-    it('devrait supprimer tous les matchs', async () => {
+    it('should remove all games', async () => {
       await controller.removeAll();
       expect(service.removeAll).toHaveBeenCalled();
     });
   });
 
   describe('removeDuplicate', () => {
-    it('devrait supprimer les doublons et les anciens matchs', async () => {
+    it('should remove duplicates and old games', async () => {
       await controller.removeDuplicate();
       expect(service.removeDuplicatesAndOlds).toHaveBeenCalled();
     });
   });
 
   describe('remove', () => {
-    it('devrait supprimer un seul match', async () => {
+    it('should remove a single game', async () => {
       const uniqueId = '2024-NHL-123';
       await controller.remove(uniqueId);
       expect(service.remove).toHaveBeenCalledWith(uniqueId);
