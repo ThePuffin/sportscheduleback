@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TeamType } from '../utils/interface/team';
 import { UpdateTeamDto } from './dto/update-team.dto';
@@ -112,6 +113,18 @@ describe('TeamsController', () => {
       expect(await controller.findOne(uniqueId)).toBeNull();
       expect(service.findOne).toHaveBeenCalledWith(uniqueId);
     });
+
+    it('should propagate exceptions from the service', async () => {
+      const uniqueId = 'ERROR-ID';
+      const error = new NotFoundException(`Team with ID ${uniqueId} not found`);
+      // We override the mock for this specific test case to throw an error
+      (service.findOne as jest.Mock).mockRejectedValue(error);
+
+      // We expect the controller's method to reject with the same error
+      await expect(controller.findOne(uniqueId)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
   });
 
   describe('update', () => {
@@ -124,5 +137,41 @@ describe('TeamsController', () => {
     });
   });
 
+  describe('refresh', () => {
+    it('should call the getTeams service method without a league parameter', async () => {
+      expect(await controller.refresh()).toEqual({ success: true });
+      expect(service.getTeams).toHaveBeenCalledWith(undefined);
+    });
 
+    it('should call the getTeams service method with a league parameter', async () => {
+      const leagueParam = 'NHL';
+      expect(await controller.refresh(leagueParam)).toEqual({ success: true });
+      expect(service.getTeams).toHaveBeenCalledWith(leagueParam);
+    });
+  });
+
+  describe('removeAll', () => {
+    it('should remove all teams and return the result', async () => {
+      expect(await controller.removeAll()).toEqual({ deletedCount: 2 });
+      expect(service.removeAll).toHaveBeenCalled();
+    });
+  });
+
+  describe('removeByLeague', () => {
+    it('should remove all teams for a given league and return the result', async () => {
+      const league = 'NHL';
+      expect(await controller.removeByLeague(league)).toEqual({
+        deletedCount: 1,
+      });
+      expect(service.removeByLeague).toHaveBeenCalledWith(league);
+    });
+  });
+
+  describe('remove', () => {
+    it('should remove a single team by uniqueId and return the deleted team', async () => {
+      const uniqueId = 'NHL-BOS';
+      expect(await controller.remove(uniqueId)).toEqual(mockTeam);
+      expect(service.remove).toHaveBeenCalledWith(uniqueId);
+    });
+  });
 });
