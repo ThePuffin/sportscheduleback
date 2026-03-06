@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { CronModule } from './cronJob/cronJob.module';
-import { MongooseModule } from '@nestjs/mongoose';
-import { TeamModule } from './teams/teams.module';
 import { GameModule } from './games/games.module';
+import { TeamModule } from './teams/teams.module';
 
 const databaseUri =
   process?.env?.DATABASE_URI || 'mongodb://localhost:27017/sportSchedule';
