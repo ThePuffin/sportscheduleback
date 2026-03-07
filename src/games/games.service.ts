@@ -26,7 +26,6 @@ export class GameService {
   private manualRefreshInProgress: { [league: string]: boolean } = {};
   private isFetchingScores: boolean = false;
   private refreshChain: Promise<any> = Promise.resolve();
-  private lastHourlyRefreshTrigger: Date | null = null;
   constructor(
     @InjectModel(Game.name) public gameModel: Model<Game>,
     private readonly teamService: TeamService,
@@ -155,7 +154,7 @@ export class GameService {
         }
         const gamesForLeague = await this.gameModel
           .find({ league: normalizedLeague, isActive: true })
-          .sort({ startTimeUTC: 1 })
+          .sort({ startTimeUTC: -1 })
           .limit(10)
           .lean()
           .exec();
@@ -213,20 +212,6 @@ export class GameService {
 
       if (games && games.length > 0) {
         for (const game of games) {
-          if (game.league === League.PWHL) {
-            if (game.homeTeamId && !game.homeTeamId.startsWith('PWHL-')) {
-              game.homeTeamId = `PWHL-${game.homeTeamId}`;
-            }
-            if (game.awayTeamId && !game.awayTeamId.startsWith('PWHL-')) {
-              game.awayTeamId = `PWHL-${game.awayTeamId}`;
-            }
-            if (
-              game.teamSelectedId &&
-              !game.teamSelectedId.startsWith('PWHL-')
-            ) {
-              game.teamSelectedId = `PWHL-${game.teamSelectedId}`;
-            }
-          }
           await this.create(game);
         }
       }
@@ -492,7 +477,7 @@ export class GameService {
       }
       return [];
     } else {
-      if (gameDate === today) {
+      if (gameDate >= yesterdayString) {
         const leaguesInGames = Array.from(new Set(games.map((g) => g.league)));
         for (const currentLeague of leaguesInGames) {
           const filtredGames = games.filter(
@@ -505,7 +490,7 @@ export class GameService {
               );
             },
           );
-          if (filtredGames.length === 0) continue;
+
           this.refreshChain = this.refreshChain.then(() =>
             this.getLeagueGames(currentLeague, false).catch((err) =>
               console.error(`Error refreshing ${currentLeague}`, err),
@@ -683,20 +668,6 @@ export class GameService {
             try {
               const scoresPWHL = await hockeyData.getPWHLScores(date);
               if (Array.isArray(scoresPWHL)) {
-                for (const score of scoresPWHL) {
-                  if (
-                    score.homeTeamId &&
-                    !score.homeTeamId.startsWith('PWHL-')
-                  ) {
-                    score.homeTeamId = `PWHL-${score.homeTeamId}`;
-                  }
-                  if (
-                    score.awayTeamId &&
-                    !score.awayTeamId.startsWith('PWHL-')
-                  ) {
-                    score.awayTeamId = `PWHL-${score.awayTeamId}`;
-                  }
-                }
                 results.push(...scoresPWHL);
               }
             } catch (error) {
@@ -748,7 +719,6 @@ export class GameService {
 
       // Now try to update matching games in DB before returning
       const appliedUpdates: any[] = [];
-      const teamsToUpdate: { uniqueId: string; record: string }[] = [];
 
       for (const score of results) {
         try {
@@ -900,16 +870,16 @@ export class GameService {
                 .exec();
               if (updated) {
                 if (score.homeTeamRecord && game.homeTeamId) {
-                  teamsToUpdate.push({
-                    uniqueId: game.homeTeamId,
-                    record: score.homeTeamRecord,
-                  });
+                  await this.teamService.updateRecord(
+                    game.homeTeamId,
+                    score.homeTeamRecord,
+                  );
                 }
                 if (score.awayTeamRecord && game.awayTeamId) {
-                  teamsToUpdate.push({
-                    uniqueId: game.awayTeamId,
-                    record: score.awayTeamRecord,
-                  });
+                  await this.teamService.updateRecord(
+                    game.awayTeamId,
+                    score.awayTeamRecord,
+                  );
                 }
                 (updated as any).homeTeamRecord = score.homeTeamRecord;
                 (updated as any).awayTeamRecord = score.awayTeamRecord;
@@ -920,10 +890,6 @@ export class GameService {
         } catch (err) {
           // ignore update errors
         }
-      }
-
-      if (teamsToUpdate.length > 0) {
-        await this.teamService.updateRecords(teamsToUpdate);
       }
 
       const anyManualRefresh = Object.values(this.manualRefreshInProgress).some(
@@ -969,53 +935,35 @@ export class GameService {
       filter.gameDate = gameDate;
     }
 
-    // Optimization: Run DB queries in parallel
-    const [rawGames, teams] = await Promise.all([
-      this.gameModel.aggregate([
-        {
-          $match: {
-            ...filter,
-            homeTeamId: { $nin: [null, ''] },
-            teamSelectedId: { $nin: [null, ''] },
-            $expr: { $eq: ['$homeTeamId', '$teamSelectedId'] },
-          },
-        },
-        { $sort: { startTimeUTC: 1 } },
-      ]),
-      this.teamService.findAll(),
-    ]);
+    const games = await this.gameModel
+      .find(filter)
+      .sort({ startTimeUTC: 1 })
+      .lean()
+      .exec();
 
-    if (rawGames.length === 0) {
-      // Optimized fallback for cold start (empty DB)
-      const gameCount = await this.gameModel.countDocuments({ isActive: true });
-      if (gameCount === 0) {
+    if (games.length === 0) {
+      const allGames = await this.findAll();
+      if (!allGames.length) {
         this.getAllGames();
       }
       return {};
-    }
-
-    const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
-
-    const games = rawGames.map((game: any) =>
-      this._enrichGameWithTeamData(game, teamsMap),
-    );
-
-    // Background refresh logic for "today"
-    if (gameDate === today) {
-      const now = new Date();
-      // Cooldown of 5 minutes to avoid spamming refreshes on every call
-      if (
-        !this.lastHourlyRefreshTrigger ||
-        now.getTime() - this.lastHourlyRefreshTrigger.getTime() > 5 * 60 * 1000
-      ) {
-        this.lastHourlyRefreshTrigger = now;
+    } else {
+      if (gameDate === today) {
         const leaguesInGames = Array.from(
           new Set(games.map((g) => g.league).filter(Boolean)),
         );
         for (const currentLeague of leaguesInGames) {
-          if (!games.some((g) => g.league === currentLeague && g.awayTeamId)) {
-            continue;
-          }
+          const filtredGames = games.filter(
+            ({ isActive, awayTeamId, league }) => {
+              return (
+                isActive === true &&
+                awayTeamId !== undefined &&
+                awayTeamId !== '' &&
+                league?.toUpperCase() === currentLeague.toUpperCase()
+              );
+            },
+          );
+          if (filtredGames.length === 0) continue;
           this.refreshChain = this.refreshChain.then(() =>
             this.getLeagueGames(currentLeague, false, true).catch((err) =>
               console.error(`Error refreshing ${currentLeague}`, err),
@@ -1023,24 +971,31 @@ export class GameService {
           );
         }
       }
-    }
 
-    const gamesByTimeSlot: { [key: string]: any[] } = {};
-    for (const game of games) {
-      const date = new Date(game.startTimeUTC);
-      if (Number.isNaN(date.getTime())) {
-        continue;
-      }
-      const hours = date.getUTCHours().toString().padStart(2, '0');
-      const minutes = date.getUTCMinutes();
-      const minutesStr = minutes < 30 ? '00' : '30';
-      const timeSlot = `${hours}:${minutesStr}`;
+      const teams = await this.teamService.findAll();
+      const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
-      if (!gamesByTimeSlot[timeSlot]) {
-        gamesByTimeSlot[timeSlot] = [];
-      }
-      gamesByTimeSlot[timeSlot].push(game);
+      // avoid dupplicate games
+      const filteredGames = games.filter(({ homeTeamId, teamSelectedId }) => {
+        return homeTeamId === teamSelectedId;
+      });
+
+      const gamesByTimeSlot: { [key: string]: any[] } = {};
+      filteredGames.forEach((game: any) => {
+        const enrichedGame = this._enrichGameWithTeamData(game, teamsMap);
+        const date = new Date(enrichedGame.startTimeUTC);
+        const hours = date.getUTCHours().toString().padStart(2, '0');
+        const minutes = date.getUTCMinutes();
+        const minutesStr = minutes < 30 ? '00' : '30';
+        const timeSlot = `${hours}:${minutesStr}`;
+
+        if (!gamesByTimeSlot[timeSlot]) {
+          gamesByTimeSlot[timeSlot] = [];
+        }
+        gamesByTimeSlot[timeSlot].push(enrichedGame);
+      });
+
+      return gamesByTimeSlot;
     }
-    return gamesByTimeSlot;
   }
 }

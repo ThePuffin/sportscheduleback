@@ -9,6 +9,7 @@ import { getESPNTeams } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
 import { UniversityLogos } from '../utils/UniversityLogos';
+import { randomNumber } from '../utils/utils';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
 import { Team } from './schemas/team.schema';
@@ -73,11 +74,53 @@ export class TeamService {
         leagues = Object.values(League);
       }
       for (const league of leagues) {
-        const teams = await this.fetchLeagueTeams(league);
-        if (teams.length) {
-          const savedTeams = await this.processAndSaveTeams(teams);
-          allActivesTeams.push(...savedTeams);
+        const activeTeams: TeamType[] = [];
+        let teams: TeamType[] = [];
+        try {
+          if (league === League.PWHL) {
+            const hockeyData = new HockeyData();
+            teams = await hockeyData.getPWHLTeams();
+          } else {
+            teams = await getESPNTeams(league);
+          }
+        } catch (error) {
+          console.error(`Error fetching teams for league ${league}:`, error);
+          if (league === League.NHL) {
+            const hockeyData = new HockeyData();
+            teams = await hockeyData.getNHLTeams();
+          }
         }
+        if (teams.length) {
+          activeTeams.push(...teams);
+        }
+
+        const savedTeams = [];
+        let updateNumber = 0;
+        for (const activeTeam of activeTeams) {
+          activeTeam.updateDate = new Date().toISOString();
+          // if ESPN didn't give us a logo, try our manual mapping before saving
+          if (!activeTeam.teamLogo) {
+            const parts = activeTeam.uniqueId?.split('-') || [];
+            const abbrev = parts[1] || activeTeam.abbrev || '';
+            if (abbrev && UniversityLogos[abbrev]) {
+              activeTeam.teamLogo = UniversityLogos[abbrev];
+            }
+          }
+          // Skip file generation during batch import for performance
+          const saved = await this.create(activeTeam, true);
+          savedTeams.push(saved);
+          updateNumber++;
+          console.info(
+            'updated:',
+            activeTeam?.label,
+            '(',
+            updateNumber,
+            '/',
+            activeTeams.length,
+            ')',
+          );
+        }
+        allActivesTeams.push(...savedTeams);
       }
 
       // Generate files once after all teams have been imported
@@ -92,60 +135,13 @@ export class TeamService {
       this.isFetchingTeams[leagueKey] = false;
     }
   }
-  private async fetchLeagueTeams(league: string): Promise<TeamType[]> {
-    try {
-      if (league === League.PWHL) {
-        const hockeyData = new HockeyData();
-        return await hockeyData.getPWHLTeams();
-      }
-      return await getESPNTeams(league);
-    } catch (error) {
-      console.error(`Error fetching teams for league ${league}:`, error);
-      if (league === League.NHL) {
-        const hockeyData = new HockeyData();
-        return await hockeyData.getNHLTeams();
-      }
-      return [];
+
+  async updateRecords(updates: { uniqueId: string; record: string }[]) {
+    for (const { uniqueId, record } of updates) {
+      await this.updateRecord(uniqueId, record);
     }
   }
-  private async processAndSaveTeams(
-    teamsToProcess: TeamType[],
-  ): Promise<any[]> {
-    const savedTeams = [];
-    let updateNumber = 0;
-    for (const team of teamsToProcess) {
-      team.updateDate = new Date().toISOString();
-      if (
-        team.league === League.PWHL &&
-        team.uniqueId &&
-        !team.uniqueId.startsWith(`${League.PWHL}-`)
-      ) {
-        team.uniqueId = `${League.PWHL}-${team.abbrev || team.uniqueId}`;
-      }
-      // if ESPN didn't give us a logo, try our manual mapping before saving
-      if (!team.teamLogo) {
-        const parts = team.uniqueId?.split('-') || [];
-        const abbrev = parts[1] || team.abbrev || '';
-        if (abbrev && UniversityLogos[abbrev]) {
-          team.teamLogo = UniversityLogos[abbrev];
-        }
-      }
-      // Skip file generation during batch import for performance
-      const saved = await this.create(team, true);
-      savedTeams.push(saved);
-      updateNumber++;
-      console.info(
-        ' team updated:',
-        team?.label,
-        '(',
-        updateNumber,
-        '/',
-        teamsToProcess.length,
-        ')',
-      );
-    }
-    return savedTeams;
-  }
+
   async findAll(): Promise<any[]> {
     const allTeams = await this.teamModel
       .find()
@@ -155,6 +151,16 @@ export class TeamService {
     if (!allTeams?.length) {
       const teams = await this.getTeams();
       return teams.map((team) => this.addRecord(team));
+    }
+    const teamIndex = randomNumber(allTeams.length - 1);
+    const randomTeam = allTeams[teamIndex];
+    const lastMonth = new Date();
+    lastMonth.setDate(lastMonth.getMonth() - 1);
+    if (new Date(randomTeam?.updateDate) < lastMonth) {
+      await this.getTeams();
+    }
+    if (process.env.NODE_ENV === 'development') {
+      await this.generateLeaguesTeamsAndColorsFiles();
     }
     return allTeams.map((team) => this.addRecord(team));
   }
@@ -211,43 +217,6 @@ export class TeamService {
       }
     }
     await this.teamModel.updateOne({ uniqueId }, { $set: updateData }).exec();
-  }
-
-  async updateRecords(updates: { uniqueId: string; record: string }[]) {
-    const uniqueUpdates = new Map<string, string>();
-    for (const { uniqueId, record } of updates) {
-      if (uniqueId && record) {
-        uniqueUpdates.set(uniqueId, record);
-      }
-    }
-
-    const bulkOps = [];
-    for (const [uniqueId, record] of uniqueUpdates) {
-      const parts = record.split('-');
-      const wins = Number.parseInt(parts[0], 10);
-      const losses = Number.parseInt(parts[1], 10);
-      const ties = parts[2] ? Number.parseInt(parts[2], 10) : null;
-
-      const updateData: any = { wins, losses };
-      if (ties !== null) {
-        const league = uniqueId.split('-')[0];
-        if (league === League.NHL || league === League.PWHL) {
-          updateData.otLosses = ties;
-        } else {
-          updateData.ties = ties;
-        }
-      }
-      bulkOps.push({
-        updateOne: {
-          filter: { uniqueId },
-          update: { $set: updateData },
-        },
-      });
-    }
-
-    if (bulkOps.length > 0) {
-      await this.teamModel.bulkWrite(bulkOps, { ordered: false });
-    }
   }
 
   private addRecord(team: any) {
