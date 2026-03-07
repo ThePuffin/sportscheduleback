@@ -921,12 +921,22 @@ export class GameService {
     }
   }
 
-  async findByDateHour(gameDate: string) {
+  async findByDateHour(gameDate: string, leagues?: string) {
     const today = readableDate(new Date());
     const yesterdayDate = new Date();
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
     const yesterdayString = readableDate(yesterdayDate);
     const filter: any = { isActive: true };
+
+    if (leagues) {
+      const leaguesList = leagues
+        .split(/[ ,+]+/)
+        .filter((l) => l.trim().length > 0)
+        .map((l) => l.trim().toUpperCase());
+      if (leaguesList.length > 0) {
+        filter.league = { $in: leaguesList };
+      }
+    }
 
     if (gameDate === today) {
       const threeHoursAgo = new Date(addHours(new Date(), -3));
@@ -947,7 +957,6 @@ export class GameService {
       .sort({ startTimeUTC: 1 })
       .lean()
       .exec();
-
     if (games.length === 0) {
       const allGames = await this.findAll();
       if (!allGames.length) {
@@ -955,30 +964,31 @@ export class GameService {
       }
       return {};
     } else {
-      // if (gameDate === today) {
-      //   const leaguesInGames = Array.from(
-      //     new Set(games.map((g) => g.league).filter(Boolean)),
-      //   );
-      //   /* avoid multiple refresh triggered by findByDateHour when multiple games without scores for the same league are returned, we refresh once per league and not per game */
-      //   for (const currentLeague of leaguesInGames) {
-      //     const filtredGames = games.filter(
-      //       ({ isActive, awayTeamId, league }) => {
-      //         return (
-      //           isActive === true &&
-      //           awayTeamId !== undefined &&
-      //           awayTeamId !== '' &&
-      //           league?.toUpperCase() === currentLeague.toUpperCase()
-      //         );
-      //       },
-      //     );
-      //     if (filtredGames.length === 0) continue;
-      //     this.refreshChain = this.refreshChain.then(() =>
-      //       this.getLeagueGames(currentLeague, false, true).catch((err) =>
-      //         console.error(`Error refreshing ${currentLeague}`, err),
-      //       ),
-      //     );
-      //   }
-      // }
+      if (gameDate === today) {
+        const leaguesInGames = Array.from(
+          new Set(games.map((g) => g.league).filter(Boolean)),
+        );
+
+        for (const currentLeague of leaguesInGames) {
+          const filtredGames = games.filter(
+            ({ isActive, awayTeamId, league }) => {
+              return (
+                isActive === true &&
+                awayTeamId !== undefined &&
+                awayTeamId !== '' &&
+                league?.toUpperCase() === currentLeague.toUpperCase()
+              );
+            },
+          );
+
+          if (filtredGames.length === 0) continue;
+          this.refreshChain = this.refreshChain.then(() =>
+            this.getLeagueGames(currentLeague, false, true).catch((err) =>
+              console.error(`Error refreshing ${currentLeague}`, err),
+            ),
+          );
+        }
+      }
 
       const teams = await this.teamService.findAll();
       const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));

@@ -495,6 +495,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#ffffff',
     backgroundColor: '#522398',
   },
+  'NCAAB-GMU': {
+    color: '#ecb010',
+    backgroundColor: '#016600',
+  },
   'NCAAB-GONZ': {
     color: '#c8102e',
     backgroundColor: '#041e42',
@@ -4846,6 +4850,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   'WNCAAB-STET': {
     color: '#56854e',
     backgroundColor: '#0a5640',
+  },
+  'WNCAAB-SYR': {
+    color: '#ff431b',
+    backgroundColor: '#000e54',
   },
   'WNCAAB-TA&M': {
     color: '#ffffff',
