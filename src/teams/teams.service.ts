@@ -142,9 +142,13 @@ export class TeamService {
     }
   }
 
-  async findAll(): Promise<any[]> {
+  async findAll(leagues?: string[]): Promise<any[]> {
+    const filter: any = {};
+    if (leagues && leagues.length > 0) {
+      filter.league = { $in: leagues };
+    }
     const allTeams = await this.teamModel
-      .find()
+      .find(filter)
       .sort({ label: 1 })
       .lean()
       .exec();

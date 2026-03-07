@@ -1,57 +1,43 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { Document } from 'mongoose';
 
-export type GameDocument = HydratedDocument<Game>;
-
-@Schema({ _id: false })
-class GameDetails {
-  @Prop({ required: false })
-  period?: number;
-
-  @Prop({ required: false })
-  clock?: string;
-
-  @Prop({ required: false })
-  situation?: string;
-}
-
-export enum GameState {
-  SCHEDULED = 'SCHEDULED',
-  IN_PROGRESS = 'IN_PROGRESS',
-  FINAL = 'FINAL',
-  POSTPONED = 'POSTPONED',
-  CANCELLED = 'CANCELLED',
-  TBD = 'TBD',
-}
-
-@Schema({ timestamps: { createdAt: 'createdAt', updatedAt: 'updateDate' } })
-export class Game {
-  @Prop({ unique: true, index: true })
+@Schema({ timestamps: true })
+export class Game extends Document {
+  @Prop({ required: true, unique: true, index: true })
   uniqueId: string;
 
   @Prop({ index: true })
-  awayTeamId: string;
-
-  @Prop()
-  awayTeamShort: string;
-
-  @Prop()
-  awayTeam: string;
-
-  @Prop()
-  awayTeamLogo: string;
-
-  @Prop()
-  awayTeamLogoDark: string;
+  league: string;
 
   @Prop({ index: true })
+  gameDate: string;
+
+  @Prop({ index: true })
+  startTimeUTC: string;
+
+  @Prop({ default: true })
+  isActive: boolean;
+
+  @Prop()
   homeTeamId: string;
 
   @Prop()
-  homeTeamShort: string;
+  awayTeamId: string;
+
+  @Prop({ index: true })
+  teamSelectedId: string;
+
+  @Prop()
+  homeTeamScore: number;
+
+  @Prop()
+  awayTeamScore: number;
 
   @Prop()
   homeTeam: string;
+
+  @Prop()
+  homeTeamShort: string;
 
   @Prop()
   homeTeamLogo: string;
@@ -59,23 +45,38 @@ export class Game {
   @Prop()
   homeTeamLogoDark: string;
 
-  @Prop({ required: false, default: null })
-  homeTeamScore: number | null;
-
-  @Prop({ required: false, default: null })
-  awayTeamScore: number | null;
+  @Prop()
+  homeTeamRecord: string;
 
   @Prop()
-  divisionName: string;
+  awayTeam: string;
+
+  @Prop()
+  awayTeamShort: string;
+
+  @Prop()
+  awayTeamLogo: string;
+
+  @Prop()
+  awayTeamLogoDark: string;
+
+  @Prop()
+  awayTeamRecord: string;
 
   @Prop()
   arenaName: string;
 
-  @Prop({ index: true })
-  gameDate: string;
+  @Prop()
+  placeName: string;
 
-  @Prop({ index: true })
-  teamSelectedId: string;
+  @Prop()
+  venueTimezone: string;
+
+  @Prop()
+  updateDate: string;
+
+  @Prop()
+  divisionName: string;
 
   @Prop()
   urlLive: string;
@@ -86,62 +87,23 @@ export class Game {
   @Prop()
   selectedTeam: boolean;
 
-  @Prop({ index: true })
-  league: string;
-
-  @Prop()
-  venueTimezone: string;
-
-  @Prop()
-  isActive: boolean;
-
-  @Prop()
-  startTimeUTC: string;
-
-  @Prop()
-  placeName: string;
-
   @Prop()
   color: string;
 
   @Prop()
   backgroundColor: string;
 
-  @Prop()
-  awayTeamColor: string;
-
-  @Prop()
-  homeTeamRecord?: string;
-
-  @Prop()
-  awayTeamBackgroundColor: string;
-
-  @Prop()
-  homeTeamColor: string;
-
-  @Prop()
-  homeTeamBackgroundColor: string;
-
-  @Prop()
-  awayTeamRecord?: string;
-
-  @Prop({
-    type: String,
-    enum: GameState,
-    default: GameState.SCHEDULED,
-    index: true,
-  })
-  status: GameState;
-
-  @Prop({ type: [String], default: [] })
-  broadcasts: string[];
-
-  @Prop({ type: GameDetails, required: false })
-  gameDetails?: GameDetails;
-
-  // These are handled by the timestamps option in @Schema
-  createdAt?: Date;
-  updateDate: string;
+  // ... vous pouvez ajouter d'autres propriétés de vos DTOs ici
 }
 
 export const GameSchema = SchemaFactory.createForClass(Game);
+
+// Index composite pour optimiser les requêtes dans `findByDateHour` et autres fonctions de filtrage.
+// Cet index aide MongoDB à filtrer efficacement par `isActive`, `gameDate`, et `league`,
+// puis à utiliser le même index pour trier par `startTimeUTC`, évitant des tris en mémoire très lents.
+GameSchema.index({
+  isActive: 1,
+  gameDate: 1,
+  league: 1,
+  startTimeUTC: 1,
+});

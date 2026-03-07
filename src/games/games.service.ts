@@ -232,7 +232,6 @@ export class GameService {
   }
 
   async getAllGames(): Promise<Game[]> {
-    let currentGames = {};
     let teams = await this.teamService.findAll();
     if (!teams.length) {
       console.info('No teams found in DB. Fetching teams...');
@@ -241,10 +240,7 @@ export class GameService {
     const leagues = Array.from(new Set(teams.map((team) => team.league)));
 
     for (const league of leagues) {
-      currentGames = {
-        ...currentGames,
-        ...(await this.getLeagueGames(league, false)),
-      };
+      await this.getLeagueGames(league, false);
     }
     return this.findAll();
   }
@@ -321,7 +317,7 @@ export class GameService {
           );
         });
         if (games.length) {
-          await this.getLeagueGames(league, true);
+          await this.getLeagueGames(league, false);
         }
       }
       return this.filterGames({ teamSelectedIds: teamSelectedId });
@@ -888,8 +884,8 @@ export class GameService {
                     score.awayTeamRecord,
                   );
                 }
-                (updated as any).homeTeamRecord = score.homeTeamRecord;
-                (updated as any).awayTeamRecord = score.awayTeamRecord;
+                updated.homeTeamRecord = score.homeTeamRecord;
+                updated.awayTeamRecord = score.awayTeamRecord;
                 appliedUpdates.push(updated);
               }
             }
@@ -927,9 +923,10 @@ export class GameService {
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
     const yesterdayString = readableDate(yesterdayDate);
     const filter: any = { isActive: true };
+    let leaguesList: string[] = [];
 
     if (leagues) {
-      const leaguesList = leagues
+      leaguesList = leagues
         .split(/[ ,+]+/)
         .filter((l) => l.trim().length > 0)
         .map((l) => l.trim().toUpperCase());
@@ -990,7 +987,9 @@ export class GameService {
         }
       }
 
-      const teams = await this.teamService.findAll();
+      const teams = await this.teamService.findAll(
+        leaguesList.length > 0 ? leaguesList : undefined,
+      );
       const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
       // avoid dupplicate games
