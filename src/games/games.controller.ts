@@ -8,7 +8,9 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { GameService } from './games.service';
@@ -71,6 +73,7 @@ export class GamesController {
     return this.GameService.findOne(uniqueId);
   }
 
+  @UseGuards(ApiKeyGuard)
   @Post()
   async create(@Body() createGameDto: CreateGameDto) {
     this.GameService.create(createGameDto);
@@ -91,6 +94,7 @@ export class GamesController {
     return this.GameService.fetchGamesScores();
   }
 
+  @UseGuards(ApiKeyGuard)
   @Patch(':uniqueId')
   update(
     @Param('uniqueId') uniqueId: string,
@@ -99,21 +103,25 @@ export class GamesController {
     return this.GameService.update(uniqueId, updateGameDto);
   }
 
+  @UseGuards(ApiKeyGuard)
   @Delete('/league/:league')
   removeLeague(@Param('league') league: string) {
     return this.GameService.removeLeague(league);
   }
 
+  @UseGuards(ApiKeyGuard)
   @Delete('all')
   removeAll() {
     return this.GameService.removeAll();
   }
 
+  @UseGuards(ApiKeyGuard)
   @Delete('duplicate')
   removeDuplicate() {
     return this.GameService.removeDuplicatesAndOlds();
   }
 
+  @UseGuards(ApiKeyGuard)
   @Delete(':uniqueId')
   remove(@Param('uniqueId') uniqueId: string) {
     return this.GameService.remove(uniqueId);

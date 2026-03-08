@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ApiKeyGuard } from '../../auth/api-key.guard';
 import { CreateGameDto } from '../dto/create-game.dto';
 import { UpdateGameDto } from '../dto/update-game.dto';
 import { GamesController } from '../games.controller';
@@ -53,7 +54,10 @@ describe('GamesController', () => {
           useValue: mockGameService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(ApiKeyGuard)
+      .useValue({ canActivate: jest.fn(() => true) })
+      .compile();
 
     controller = module.get<GamesController>(GamesController);
     service = module.get<GameService>(GameService);

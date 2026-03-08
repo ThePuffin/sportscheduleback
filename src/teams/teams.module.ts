@@ -1,15 +1,18 @@
 import { Module } from '@nestjs/common';
-import { TeamService } from './teams.service';
+import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
-import { TeamsController } from './teams.controller';
+import { ApiKeyGuard } from '../auth/api-key.guard';
 import { Team, TeamSchema } from './schemas/team.schema';
+import { TeamsController } from './teams.controller';
+import { TeamService } from './teams.service';
 
 @Module({
   imports: [
+    ConfigModule,
     MongooseModule.forFeature([{ name: Team.name, schema: TeamSchema }]),
   ],
   controllers: [TeamsController],
-  providers: [TeamService],
+  providers: [TeamService, ApiKeyGuard],
   exports: [TeamService],
 })
 export class TeamModule {}

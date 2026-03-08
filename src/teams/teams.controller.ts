@@ -7,7 +7,9 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { ApiKeyGuard } from '../auth/api-key.guard';
 import { TeamType } from '../utils/interface/team';
 import { UpdateTeamDto } from './dto/update-team.dto';
 import { TeamService } from './teams.service';
@@ -41,6 +43,7 @@ export class TeamsController {
     return this.TeamService.getTeams(leagueParam);
   }
 
+  @UseGuards(ApiKeyGuard)
   @Patch(':uniqueId')
   update(
     @Param('uniqueId') uniqueId: string,
@@ -49,16 +52,19 @@ export class TeamsController {
     return this.TeamService.update(uniqueId, updateTeamDto);
   }
 
+  @UseGuards(ApiKeyGuard)
   @Delete('all')
   removeAll() {
     return this.TeamService.removeAll();
   }
 
+  @UseGuards(ApiKeyGuard)
   @Delete('/league/:league')
   removeByLeague(@Param('league') league: string) {
     return this.TeamService.removeByLeague(league);
   }
 
+  @UseGuards(ApiKeyGuard)
   @Delete(':uniqueId')
   remove(@Param('uniqueId') uniqueId: string) {
     return this.TeamService.remove(uniqueId);

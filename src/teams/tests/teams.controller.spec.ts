@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ApiKeyGuard } from '../../auth/api-key.guard';
 import { TeamType } from '../../utils/interface/team';
 import { UpdateTeamDto } from '../dto/update-team.dto';
 import { TeamsController } from '../teams.controller';
@@ -59,7 +60,10 @@ describe('TeamsController', () => {
           useValue: mockTeamService, // We replace the real service with our mock
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(ApiKeyGuard)
+      .useValue({ canActivate: jest.fn(() => true) })
+      .compile();
 
     controller = module.get<TeamsController>(TeamsController);
     service = module.get<TeamService>(TeamService); // We can also retrieve the mock if needed
