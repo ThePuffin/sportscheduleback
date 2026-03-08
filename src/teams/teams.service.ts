@@ -9,7 +9,6 @@ import { getESPNTeams } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
 import { UniversityLogos } from '../utils/UniversityLogos';
-import { randomNumber } from '../utils/utils';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
 import { Team } from './schemas/team.schema';
@@ -156,13 +155,28 @@ export class TeamService {
       const teams = await this.getTeams();
       return teams.map((team) => this.addRecord(team));
     }
-    const teamIndex = randomNumber(allTeams.length - 1);
-    const randomTeam = allTeams[teamIndex];
+
     const lastMonth = new Date();
-    lastMonth.setDate(lastMonth.getMonth() - 1);
-    if (new Date(randomTeam?.updateDate) < lastMonth) {
-      await this.getTeams();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+
+    const leaguesToCheck = new Set(allTeams.map((t) => t.league));
+    for (const league of leaguesToCheck) {
+      const teamsInLeague = allTeams.filter((t) => t.league === league);
+      const mostRecentUpdate = teamsInLeague.reduce((max, team) => {
+        const d = new Date(team.updateDate || 0);
+        return new Date(Math.max(d.getTime(), max.getTime()));
+      }, new Date(0));
+
+      if (mostRecentUpdate < lastMonth) {
+        console.info(
+          `Teams in ${league} are older than 1 month. Refreshing in background...`,
+        );
+        this.getTeams(league).catch((err) =>
+          console.error(`Error refreshing ${league}:`, err),
+        );
+      }
     }
+
     if (process.env.NODE_ENV === 'development') {
       await this.generateLeaguesTeamsAndColorsFiles();
     }
@@ -211,7 +225,11 @@ export class TeamService {
     const losses = Number.parseInt(parts[1], 10);
     const ties = parts[2] ? Number.parseInt(parts[2], 10) : null;
 
-    const updateData: any = { wins, losses };
+    const updateData: any = {
+      wins,
+      losses,
+      updateDate: new Date().toISOString(),
+    };
     if (ties !== null) {
       const league = uniqueId.split('-')[0];
       if (league === League.NHL || league === League.PWHL) {

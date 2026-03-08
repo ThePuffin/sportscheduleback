@@ -194,8 +194,7 @@ export class GameService {
       );
 
       // Fetch teams and logos for the league
-      const allTeams = await this.teamService.findAll();
-      const leagueTeams = allTeams.filter((t) => t.league === normalizedLeague);
+      const leagueTeams = await this.teamService.findAll([normalizedLeague]);
       const leagueLogos = await this.getTeamsLogo(leagueTeams);
 
       let gamesObj = {};
@@ -219,6 +218,7 @@ export class GameService {
 
       if (games && games.length > 0) {
         for (const game of games) {
+          game.updateDate = new Date().toISOString();
           await this.create(game);
         }
       }
@@ -408,7 +408,16 @@ export class GameService {
       .lean()
       .exec();
 
-    const teams = await this.teamService.findAll();
+    const leaguesInGames = Array.from(
+      new Set((filtredGames as any[]).map((g) => g.league).filter(Boolean)),
+    );
+    const teams = await this.teamService.findAll(
+      league
+        ? [league]
+        : leaguesInGames.length > 0
+          ? leaguesInGames
+          : undefined,
+    );
     const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
     const games = Array.isArray(filtredGames)
@@ -514,8 +523,10 @@ export class GameService {
       }
       return [];
     } else {
+      const leaguesInGames = Array.from(
+        new Set(games.map((g) => g.league).filter(Boolean)),
+      );
       if (gameDate >= yesterdayString) {
-        const leaguesInGames = Array.from(new Set(games.map((g) => g.league)));
         for (const currentLeague of leaguesInGames) {
           const filtredGames = games.filter(
             ({ isActive, awayTeamId, league }) => {
@@ -536,7 +547,9 @@ export class GameService {
         }
       }
 
-      const teams = await this.teamService.findAll();
+      const teams = await this.teamService.findAll(
+        leaguesInGames.length > 0 ? leaguesInGames : undefined,
+      );
       const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
       // avoid dupplicate games
@@ -1033,8 +1046,16 @@ export class GameService {
         }
       }
 
+      const leaguesInGames = Array.from(
+        new Set(games.map((g) => g.league).filter(Boolean)),
+      );
+
       const teams = await this.teamService.findAll(
-        leaguesList.length > 0 ? leaguesList : undefined,
+        leaguesList.length > 0
+          ? leaguesList
+          : leaguesInGames.length > 0
+            ? leaguesInGames
+            : undefined,
       );
       const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
