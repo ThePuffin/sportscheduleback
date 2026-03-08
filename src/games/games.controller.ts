@@ -60,8 +60,12 @@ export class GamesController {
   findByDateHour(
     @Param('gameDate') gameDate: string,
     @Query('leagues') leagues?: string,
+    @Query('maxResults', new ParseIntPipe({ optional: true }))
+    maxResults?: number,
+    @Query('skip', new ParseIntPipe({ optional: true }))
+    skip?: number,
   ) {
-    return this.GameService.findByDateHour(gameDate, leagues);
+    return this.GameService.findByDateHour(gameDate, leagues, maxResults, skip);
   }
 
   @Get('/league/:league')

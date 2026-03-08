@@ -951,7 +951,12 @@ export class GameService {
     }
   }
 
-  async findByDateHour(gameDate: string, leagues?: string) {
+  async findByDateHour(
+    gameDate: string,
+    leagues?: string,
+    maxResults?: number,
+    skip?: number,
+  ) {
     const today = readableDate(new Date());
     const yesterdayDate = new Date();
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
@@ -983,15 +988,22 @@ export class GameService {
       filter.gameDate = gameDate;
     }
 
-    const games = await this.gameModel
-      .find(filter)
-      .sort({ startTimeUTC: 1 })
-      .lean()
-      .exec();
+    const query = this.gameModel.find(filter).sort({ startTimeUTC: 1 });
+
+    if (skip !== undefined) {
+      query.skip(skip);
+    }
+    if (maxResults !== undefined) {
+      query.limit(maxResults);
+    }
+
+    const games = await query.lean().exec();
     if (games.length === 0) {
-      const allGames = await this.findAll();
-      if (!allGames.length) {
-        this.getAllGames();
+      if (!skip) {
+        const allGames = await this.findAll();
+        if (!allGames.length) {
+          this.getAllGames();
+        }
       }
       return {};
     } else {

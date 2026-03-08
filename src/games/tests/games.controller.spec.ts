@@ -126,14 +126,37 @@ describe('GamesController', () => {
     it('should return games grouped by hour for a date', async () => {
       const date = '2024-10-10';
       await controller.findByDateHour(date, undefined);
-      expect(service.findByDateHour).toHaveBeenCalledWith(date, undefined);
+      expect(service.findByDateHour).toHaveBeenCalledWith(
+        date,
+        undefined,
+        undefined,
+        undefined,
+      );
     });
 
     it('should call findByDateHour with leagues query parameter', async () => {
       const date = '2024-10-10';
       const leagues = 'NHL,NBA';
       await controller.findByDateHour(date, leagues);
-      expect(service.findByDateHour).toHaveBeenCalledWith(date, leagues);
+      expect(service.findByDateHour).toHaveBeenCalledWith(
+        date,
+        leagues,
+        undefined,
+        undefined,
+      );
+    });
+
+    it('should call findByDateHour with pagination parameters', async () => {
+      const date = '2024-10-10';
+      const maxResults = 15;
+      const skip = 15;
+      await controller.findByDateHour(date, undefined, maxResults, skip);
+      expect(service.findByDateHour).toHaveBeenCalledWith(
+        date,
+        undefined,
+        maxResults,
+        skip,
+      );
     });
   });
 
