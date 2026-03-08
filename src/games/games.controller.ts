@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseBoolPipe,
   ParseIntPipe,
   Patch,
   Post,
@@ -24,8 +25,12 @@ export class GamesController {
     return this.GameService.findAll();
   }
   @Get('/team/:teamSelectedId')
-  findByTeam(@Param('teamSelectedId') teamSelectedId: string) {
-    return this.GameService.findByTeam(teamSelectedId);
+  findByTeam(
+    @Param('teamSelectedId') teamSelectedId: string,
+    @Query('startDate') startDate?: string,
+    @Query('clean', new ParseBoolPipe({ optional: true })) clean?: boolean,
+  ) {
+    return this.GameService.findByTeam(teamSelectedId, startDate, clean);
   }
 
   @Get('/filter')
@@ -64,8 +69,19 @@ export class GamesController {
     @Param('league') league: string,
     @Query('maxResults', new ParseIntPipe({ optional: true }))
     maxResults?: number,
+    @Query('skip', new ParseIntPipe({ optional: true }))
+    skip?: number,
+    @Query('startDate') startDate?: string,
+    @Query('isHome', new ParseBoolPipe({ optional: true }))
+    isHome?: boolean,
   ) {
-    return this.GameService.findByLeague(league, maxResults);
+    return this.GameService.findByLeague(
+      league,
+      maxResults,
+      skip,
+      startDate,
+      isHome,
+    );
   }
 
   @Get(':uniqueId')

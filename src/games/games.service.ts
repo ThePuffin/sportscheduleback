@@ -288,8 +288,17 @@ export class GameService {
     return { minDate: null, maxDate: null };
   }
 
-  async findByTeam(teamSelectedId: string, needRefreshData = true) {
-    const games = await this.filterGames({ teamSelectedIds: teamSelectedId });
+  async findByTeam(
+    teamSelectedId: string,
+    startDate?: string,
+    clean?: boolean,
+    needRefreshData = true,
+  ) {
+    const games = await this.filterGames({
+      teamSelectedIds: teamSelectedId,
+      startDate,
+      clean,
+    });
     for (const date in games) {
       games[date] = games[date].filter((game) => {
         return (
@@ -320,14 +329,31 @@ export class GameService {
           await this.getLeagueGames(league, false);
         }
       }
-      return this.filterGames({ teamSelectedIds: teamSelectedId });
+      return this.filterGames({
+        teamSelectedIds: teamSelectedId,
+        startDate,
+        clean,
+      });
     }
 
     return games;
   }
 
-  async findByLeague(league: string, maxResults?: number) {
-    return this.filterGames({ league: league, maxResults, selectedTeam: true });
+  async findByLeague(
+    league: string,
+    maxResults?: number,
+    skip?: number,
+    startDate?: string,
+    isHome?: boolean,
+  ) {
+    return this.filterGames({
+      league: league,
+      maxResults,
+      skip,
+      startDate,
+      isHome,
+      selectedTeam: true,
+    });
   }
 
   async filterGames({
@@ -336,7 +362,10 @@ export class GameService {
     teamSelectedIds = undefined,
     league = undefined,
     maxResults = undefined,
+    skip = undefined,
     selectedTeam = undefined,
+    isHome = undefined,
+    clean = undefined,
   }) {
     const filter: any = { isActive: true };
 
@@ -367,9 +396,14 @@ export class GameService {
       filter.teamSelectedId = { $in: teamSelected };
     }
 
+    if (isHome) {
+      filter.$expr = { $eq: ['$teamSelectedId', '$homeTeamId'] };
+    }
+
     const filtredGames = await this.gameModel
       .find(filter)
       .sort({ startTimeUTC: 1 })
+      .skip(skip ? Number.parseInt(skip, 10) : 0)
       .limit(maxResults ? Number.parseInt(maxResults, 10) : 0)
       .lean()
       .exec();
@@ -400,7 +434,7 @@ export class GameService {
             game.teamSelectedId === teamSelectedId &&
             game.isActive === true,
         );
-        if (!gameOfDay.length && !league) {
+        if (!gameOfDay.length && !league && !clean) {
           gamesOfDay.push({
             _id: new mongoose.Types.ObjectId().toString(),
             uniqueId: teamSelectedId + currentDate,

@@ -2227,7 +2227,15 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#ffffff',
     backgroundColor: '#000000',
   },
+  'NCCABB-129704': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
   'NCCABB-129755': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-129761': {
     color: '#ffffff',
     backgroundColor: '#000000',
   },
@@ -4627,6 +4635,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#ffffff',
     backgroundColor: '#00539b',
   },
+  'WNCAAB-FAIR': {
+    color: '#ebebeb',
+    backgroundColor: '#000000',
+  },
   'WNCAAB-FAMU': {
     color: '#F89728',
     backgroundColor: '#00843d',
@@ -4738,6 +4750,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   'WNCAAB-MIZ': {
     color: '#f1b82d',
     backgroundColor: '#000000',
+  },
+  'WNCAAB-MRMK': {
+    color: '#e8c535',
+    backgroundColor: '#2f4f93',
   },
   'WNCAAB-MSST': {
     color: '#c1c6c8',

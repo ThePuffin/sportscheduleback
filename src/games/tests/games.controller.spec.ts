@@ -83,7 +83,11 @@ describe('GamesController', () => {
     it('should return games for a given team', async () => {
       const teamId = 'NHL-BOS';
       await controller.findByTeam(teamId);
-      expect(service.findByTeam).toHaveBeenCalledWith(teamId);
+      expect(service.findByTeam).toHaveBeenCalledWith(
+        teamId,
+        undefined,
+        undefined,
+      );
     });
   });
 
@@ -137,14 +141,40 @@ describe('GamesController', () => {
     it('should return games for a league', async () => {
       const league = 'NHL';
       await controller.findByLeague(league);
-      expect(service.findByLeague).toHaveBeenCalledWith(league, undefined);
+      expect(service.findByLeague).toHaveBeenCalledWith(
+        league,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      );
     });
 
     it('should return games for a league with a limit', async () => {
       const league = 'NHL';
       const maxResults = 5;
       await controller.findByLeague(league, maxResults);
-      expect(service.findByLeague).toHaveBeenCalledWith(league, maxResults);
+      expect(service.findByLeague).toHaveBeenCalledWith(
+        league,
+        maxResults,
+        undefined,
+        undefined,
+        undefined,
+      );
+    });
+
+    it('should return games for a league with a limit and skip', async () => {
+      const league = 'NHL';
+      const maxResults = 5;
+      const skip = 10;
+      await controller.findByLeague(league, maxResults, skip);
+      expect(service.findByLeague).toHaveBeenCalledWith(
+        league,
+        maxResults,
+        skip,
+        undefined,
+        undefined,
+      );
     });
   });
 

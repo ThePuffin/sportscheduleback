@@ -1,5 +1,7 @@
 export const UniversityLogos: Record<string, string> = {
+  '129704': '',
   '129755': '',
+  '129761': '',
   'AAMU': 'https://a.espncdn.com/guid/eacc1d19-eee0-3f6b-af3d-f680e6c5d262/logos/primary_logo_on_white_color.png',
   'ACU': 'https://a.espncdn.com/guid/36a3ae1d-ef81-3a3b-b4ee-c15e5cc5a8e1/logos/primary_logo_on_white_color.png',
   'AF': 'https://a.espncdn.com/guid/aa0817e7-7e54-3842-be74-9f59bd945a61/logos/primary_logo_on_white_color.png',
