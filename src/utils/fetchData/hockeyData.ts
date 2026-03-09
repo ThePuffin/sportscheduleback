@@ -234,7 +234,14 @@ export class HockeyData {
         const seasonsJson = await seasonsResponse.json();
         const seasons = seasonsJson?.SiteKit?.Seasons;
         if (Array.isArray(seasons) && seasons.length > 0) {
-          seasonId = seasons.at(-1).season_id;
+          const regularSeason = [...seasons]
+            .reverse()
+            .find((s) => s.season_name.includes('Regular Season'));
+          if (regularSeason) {
+            seasonId = regularSeason.season_id;
+          } else {
+            seasonId = seasons.at(-1).season_id;
+          }
         }
       }
 
@@ -252,11 +259,21 @@ export class HockeyData {
       standingsList.forEach((team) => {
         const code = team.team_code;
         if (code) {
-          const wins = Number.parseInt(team.wins, 10) || 0;
+          let wins = Number.parseInt(team.wins, 10) || 0;
           const losses = Number.parseInt(team.losses, 10) || 0;
+          const otWins = Number.parseInt(team.ot_wins, 10) || 0;
+          const shootoutWins = Number.parseInt(team.shootout_wins, 10) || 0;
           const otLosses =
             (Number.parseInt(team.ot_losses, 10) || 0) +
             (Number.parseInt(team.shootout_losses, 10) || 0);
+          const gamesPlayed = Number.parseInt(team.games_played, 10) || 0;
+
+          // The API is inconsistent. For some teams, 'wins' is total wins, for others it's regulation wins.
+          // We check if the sum of wins, losses, and otLosses equals gamesPlayed.
+          // If it doesn't, we assume 'wins' is regulation wins and add OT/SO wins to it.
+          if (gamesPlayed > 0 && wins + losses + otLosses !== gamesPlayed) {
+            wins += otWins + shootoutWins;
+          }
           records[code] = `${wins}-${losses}-${otLosses}`;
         }
       });
@@ -423,30 +440,34 @@ export class HockeyData {
   getPWHLScores = async (date: string) => {
     try {
       const standings = await this.getPWHLStandings();
+      // Use the scoreboard endpoint which is more appropriate for daily scores
       const fetchedGames = await fetch(
-        `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
+        `${pwhlAPI}?feed=widgetkit&key=446521baf8c38984&client_code=pwhl&view=scoreboard&fmt=json&date=${date}`,
       );
       const response = await fetchedGames.json();
-      const allGames: PWHLGameAPI[] = response.SiteKit.Schedule;
+      // The data is under SiteKit.Scoreboard
+      const allGames: any[] = response.SiteKit.Scoreboard;
 
-      return allGames
-        .filter((game) => game.date_played === date)
-        .map((game) => ({
-          homeTeamScore: Number(game.home_goal_count),
-          awayTeamScore: Number(game.visiting_goal_count),
-          homeTeamShort: game.home_team_code,
-          awayTeamShort: game.visiting_team_code,
-          homeTeamId: `${League.PWHL}-${game.home_team_code}`,
-          awayTeamId: `${League.PWHL}-${game.visiting_team_code}`,
-          isFinal: game.final === '1',
-          homeTeamRecord: standings[game.home_team_code] || '',
-          awayTeamRecord: standings[game.visiting_team_code] || '',
-          status: game.game_status,
-          startTimeUTC: new Date(game.GameDateISO8601).toISOString(),
-          uniqueId: game.id,
-          gameDate: date,
-          league: League.PWHL,
-        }));
+      if (!allGames || !Array.isArray(allGames)) {
+        return [];
+      }
+
+      return allGames.map((game) => ({
+        homeTeamScore: Number(game.home_score),
+        awayTeamScore: Number(game.visiting_score),
+        homeTeamShort: game.home_team_code,
+        awayTeamShort: game.visiting_team_code,
+        homeTeamId: `${League.PWHL}-${game.home_team_code}`,
+        awayTeamId: `${League.PWHL}-${game.visiting_team_code}`,
+        isFinal: game.game_status === 'Final',
+        homeTeamRecord: standings[game.home_team_code] || '',
+        awayTeamRecord: standings[game.visiting_team_code] || '',
+        status: game.game_status,
+        startTimeUTC: new Date(game.GameDateISO8601).toISOString(),
+        uniqueId: game.game_id,
+        gameDate: date,
+        league: League.PWHL,
+      }));
     } catch (error) {
       console.error('Error fetching PWHL scores:', error);
       return [];

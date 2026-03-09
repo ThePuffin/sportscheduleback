@@ -528,7 +528,7 @@ export class GameService {
       );
       if (gameDate >= yesterdayString) {
         for (const currentLeague of leaguesInGames) {
-          const filtredGames = games.filter(
+          const filteredGamesForLeague = games.filter(
             ({ isActive, awayTeamId, league }) => {
               return (
                 isActive === true &&
@@ -538,6 +538,13 @@ export class GameService {
               );
             },
           );
+
+          if (filteredGamesForLeague.length === 0) {
+            continue;
+          }
+          if (!needRefresh(currentLeague, { data: filteredGamesForLeague })) {
+            continue;
+          }
 
           this.refreshChain = this.refreshChain.then(() =>
             this.getLeagueGames(currentLeague, false).catch((err) =>
@@ -1026,18 +1033,20 @@ export class GameService {
         );
 
         for (const currentLeague of leaguesInGames) {
-          const filtredGames = games.filter(
+          const filteredGamesForLeague = games.filter(
             ({ isActive, awayTeamId, league }) => {
               return (
                 isActive === true &&
                 awayTeamId !== undefined &&
                 awayTeamId !== '' &&
-                league?.toUpperCase() === currentLeague.toUpperCase()
+                league?.toUpperCase() === currentLeague?.toUpperCase()
               );
             },
           );
 
-          if (filtredGames.length === 0) continue;
+          if (!needRefresh(currentLeague, { data: filteredGamesForLeague })) {
+            continue;
+          }
           this.refreshChain = this.refreshChain.then(() =>
             this.getLeagueGames(currentLeague, false, true).catch((err) =>
               console.error(`Error refreshing ${currentLeague}`, err),
