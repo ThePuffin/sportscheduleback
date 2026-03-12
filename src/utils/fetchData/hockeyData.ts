@@ -440,34 +440,30 @@ export class HockeyData {
   getPWHLScores = async (date: string) => {
     try {
       const standings = await this.getPWHLStandings();
-      // Use the scoreboard endpoint which is more appropriate for daily scores
       const fetchedGames = await fetch(
-        `${pwhlAPI}?feed=widgetkit&key=446521baf8c38984&client_code=pwhl&view=scoreboard&fmt=json&date=${date}`,
+        `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
       );
       const response = await fetchedGames.json();
-      // The data is under SiteKit.Scoreboard
-      const allGames: any[] = response.SiteKit.Scoreboard;
+      const allGames: PWHLGameAPI[] = response.SiteKit.Schedule;
 
-      if (!allGames || !Array.isArray(allGames)) {
-        return [];
-      }
-
-      return allGames.map((game) => ({
-        homeTeamScore: Number(game.home_score),
-        awayTeamScore: Number(game.visiting_score),
-        homeTeamShort: game.home_team_code,
-        awayTeamShort: game.visiting_team_code,
-        homeTeamId: `${League.PWHL}-${game.home_team_code}`,
-        awayTeamId: `${League.PWHL}-${game.visiting_team_code}`,
-        isFinal: game.game_status === 'Final',
-        homeTeamRecord: standings[game.home_team_code] || '',
-        awayTeamRecord: standings[game.visiting_team_code] || '',
-        status: game.game_status,
-        startTimeUTC: new Date(game.GameDateISO8601).toISOString(),
-        uniqueId: game.game_id,
-        gameDate: date,
-        league: League.PWHL,
-      }));
+      return allGames
+        .filter((game) => game.date_played === date)
+        .map((game) => ({
+          homeTeamScore: Number(game.home_goal_count),
+          awayTeamScore: Number(game.visiting_goal_count),
+          homeTeamShort: game.home_team_code,
+          awayTeamShort: game.visiting_team_code,
+          homeTeamId: `${League.PWHL}-${game.home_team_code}`,
+          awayTeamId: `${League.PWHL}-${game.visiting_team_code}`,
+          isFinal: game.final === '1',
+          homeTeamRecord: standings[game.home_team_code] || '',
+          awayTeamRecord: standings[game.visiting_team_code] || '',
+          status: game.game_status,
+          startTimeUTC: new Date(game.GameDateISO8601).toISOString(),
+          uniqueId: game.id,
+          gameDate: date,
+          league: League.PWHL,
+        }));
     } catch (error) {
       console.error('Error fetching PWHL scores:', error);
       return [];
