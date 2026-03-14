@@ -152,16 +152,33 @@ export class GameService {
             return; // Skip silently, this is normal behavior
           }
         }
-        const gamesForLeague = await this.gameModel
+
+        const nextWeek = new Date();
+        nextWeek.setDate(nextWeek.getDate() + 7);
+
+        let gamesForLeague = await this.gameModel
           .find({
             league: normalizedLeague,
             isActive: true,
-            gameDate: readableDate(now),
+            gameDate: {
+              $gte: readableDate(now),
+              $lte: readableDate(nextWeek),
+            },
           })
           .sort({ startTimeUTC: -1 })
           .limit(2)
           .lean()
           .exec();
+
+        if (gamesForLeague.length === 0) {
+          gamesForLeague = await this.gameModel
+            .find({ league: normalizedLeague, isActive: true })
+            .sort({ startTimeUTC: -1 })
+            .limit(2)
+            .lean()
+            .exec();
+        }
+
         if (
           gamesForLeague.length > 0 &&
           !needRefresh(normalizedLeague, { data: gamesForLeague })
