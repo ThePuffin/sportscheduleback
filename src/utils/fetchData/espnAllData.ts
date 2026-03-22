@@ -798,7 +798,7 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
     if (homeScore === null && awayScore === null) return null;
 
     const status = competition.status?.type || competition.status;
-    const displayClock = competition.status?.displayClock || '';
+    const displayClock = competition.status?.displayClock;
 
     const isFinal =
       status?.completed === true ||
@@ -806,7 +806,21 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
       (typeof status?.name === 'string' &&
         /final|completed|post/i.test(status.name)) ||
       (typeof displayClock === 'string' &&
+        displayClock !== '' &&
         /final|completed/i.test(displayClock));
+
+    let gameStatus =
+      status?.shortDetail || status?.detail || status?.description;
+
+    if (
+      (!gameStatus || gameStatus === 'In Progress') &&
+      status?.state === 'in' &&
+      !isFinal
+    ) {
+      if (displayClock) {
+        gameStatus = `${displayClock}${competition.status?.period ? ' - ' + competition.status.period : ''}`;
+      }
+    }
 
     return {
       uniqueId: gameId,
@@ -814,7 +828,10 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
       homeTeamScore: homeScore,
       awayTeamScore: awayScore,
       isFinal,
-      status: status?.name || displayClock || '',
+      status: status,
+      gameStatus: gameStatus || status?.name,
+      gameClock: displayClock || '',
+      gamePeriod: competition.status?.period,
       startTimeUTC: competition.date,
     };
   } catch (error) {

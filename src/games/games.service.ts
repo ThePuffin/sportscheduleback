@@ -1000,44 +1000,58 @@ export class GameService {
       .exec();
     if (!games || games.length === 0) return [];
 
-    const tasks = new Map<string, Set<string>>();
-    games.forEach((game) => {
-      if (game.league && game.gameDate) {
-        if (!tasks.has(game.league)) {
-          tasks.set(game.league, new Set());
-        }
-        tasks.get(game.league).add(game.gameDate);
-      }
-    });
-
     const allScores: any[] = [];
+    const espnGames = [];
+    const pwhlGames = [];
 
-    for (const [league, dates] of tasks) {
+    for (const game of games) {
+      if (game.league === League.PWHL) {
+        pwhlGames.push(game);
+      } else {
+        espnGames.push(game);
+      }
+    }
+
+    if (pwhlGames.length > 0) {
+      const dates = new Set<string>();
+      pwhlGames.forEach((g) => {
+        if (g.gameDate) dates.add(g.gameDate);
+      });
+      const hockeyData = new HockeyData();
       for (const date of dates) {
-        if (league === League.PWHL) {
-          const hockeyData = new HockeyData();
-          try {
-            const scores = await hockeyData.getPWHLScores(date);
-            if (Array.isArray(scores)) {
-              allScores.push(...scores);
-            }
-          } catch (error) {
-            console.error(`Error fetching PWHL scores for ${date}:`, error);
+        try {
+          const scores = await hockeyData.getPWHLScores(date);
+          if (Array.isArray(scores)) {
+            allScores.push(...scores);
           }
-        } else {
+        } catch (error) {
+          console.error(`Error fetching PWHL scores for ${date}:`, error);
+        }
+      }
+    }
+
+    if (espnGames.length > 0) {
+      const promises = espnGames.map(async (game) => {
+        const parts = game.uniqueId.split('-');
+        const eventId = parts[parts.length - 1];
+        if (/^\d+$/.test(eventId)) {
           try {
-            const espnScores = await getESPNScores(league, date);
-            if (Array.isArray(espnScores)) {
-              allScores.push(...espnScores);
-            }
+            return await getESPNGameScore(game.league, eventId);
           } catch (error) {
             console.error(
-              `Error fetching ESPN scores for ${league} on ${date}:`,
+              `Error fetching ESPN score for ${game.uniqueId}:`,
               error,
             );
+            return null;
           }
         }
-      }
+        return null;
+      });
+
+      const results = await Promise.all(promises);
+      results.forEach((res) => {
+        if (res) allScores.push(res);
+      });
     }
 
     const updatedGames = [];
@@ -1066,7 +1080,19 @@ export class GameService {
 
         game.gameClock = matchedScore.gameClock;
         game.gamePeriod = matchedScore.gamePeriod;
-        game.gameStatus = matchedScore.gameStatus || matchedScore.status;
+
+        let statusText = matchedScore.gameStatus;
+        if (!statusText && matchedScore.status) {
+          if (typeof matchedScore.status === 'object') {
+            statusText =
+              matchedScore.status.type?.shortDetail ||
+              matchedScore.status.type?.detail ||
+              matchedScore.status.type?.description;
+          } else if (typeof matchedScore.status === 'string') {
+            statusText = matchedScore.status;
+          }
+        }
+        game.gameStatus = statusText;
 
         updatedGames.push(game);
       } else {
