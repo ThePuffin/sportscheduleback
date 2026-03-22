@@ -939,7 +939,10 @@ export class GameService {
                     updateDate: new Date().toISOString(),
                     gameClock: score.gameClock,
                     gamePeriod: score.gamePeriod,
-                    gameStatus: score.gameStatus,
+                    gameStatus:
+                      score.gameStatus === 'SCHEDULED'
+                        ? 'FINISHED'
+                        : score.gameStatus,
                   },
                   { new: true },
                 )
