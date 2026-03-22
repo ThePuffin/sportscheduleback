@@ -114,6 +114,11 @@ export class GamesController {
     return this.GameService.fetchGamesScores();
   }
 
+  @Post('/live')
+  async fetchLiveScores(@Body('gameIds') gameIds: string[]) {
+    return this.GameService.fetchLiveScores(gameIds);
+  }
+
   @UseGuards(ApiKeyGuard)
   @Patch(':uniqueId')
   update(

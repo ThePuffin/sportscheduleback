@@ -937,6 +937,9 @@ export class GameService {
                     awayTeamScore: score.awayTeamScore,
                     isActive: true,
                     updateDate: new Date().toISOString(),
+                    gameClock: score.gameClock,
+                    gamePeriod: score.gamePeriod,
+                    gameStatus: score.gameStatus,
                   },
                   { new: true },
                 )
@@ -986,6 +989,89 @@ export class GameService {
     } finally {
       this.isFetchingScores = false;
     }
+  }
+
+  async fetchLiveScores(gameIds: string[]): Promise<any[]> {
+    const games = await this.gameModel
+      .find({ uniqueId: { $in: gameIds } })
+      .exec();
+    if (!games || games.length === 0) return [];
+
+    const tasks = new Map<string, Set<string>>();
+    games.forEach((game) => {
+      if (game.league && game.gameDate) {
+        if (!tasks.has(game.league)) {
+          tasks.set(game.league, new Set());
+        }
+        tasks.get(game.league).add(game.gameDate);
+      }
+    });
+
+    const allScores: any[] = [];
+
+    for (const [league, dates] of tasks) {
+      for (const date of dates) {
+        if (league === League.PWHL) {
+          const hockeyData = new HockeyData();
+          try {
+            const scores = await hockeyData.getPWHLScores(date);
+            if (Array.isArray(scores)) {
+              allScores.push(...scores);
+            }
+          } catch (error) {
+            console.error(`Error fetching PWHL scores for ${date}:`, error);
+          }
+        } else {
+          try {
+            const espnScores = await getESPNScores(league, date);
+            if (Array.isArray(espnScores)) {
+              allScores.push(...espnScores);
+            }
+          } catch (error) {
+            console.error(
+              `Error fetching ESPN scores for ${league} on ${date}:`,
+              error,
+            );
+          }
+        }
+      }
+    }
+
+    const updatedGames = [];
+
+    for (const game of games) {
+      let matchedScore = allScores.find((s) => s.uniqueId === game.uniqueId);
+
+      if (!matchedScore) {
+        matchedScore = allScores.find(
+          (s) =>
+            s.uniqueId &&
+            game.uniqueId.endsWith(s.uniqueId) &&
+            s.league === game.league,
+        );
+      }
+
+      if (matchedScore) {
+        game.homeTeamScore = matchedScore.homeTeamScore;
+        game.awayTeamScore = matchedScore.awayTeamScore;
+        game.isActive =
+          matchedScore.isActive !== undefined
+            ? matchedScore.isActive
+            : game.isActive;
+
+        game.updateDate = new Date().toISOString();
+
+        game.gameClock = matchedScore.gameClock;
+        game.gamePeriod = matchedScore.gamePeriod;
+        game.gameStatus = matchedScore.gameStatus || matchedScore.status;
+
+        updatedGames.push(game);
+      } else {
+        updatedGames.push(game);
+      }
+    }
+
+    return updatedGames;
   }
 
   async findByDateHour(

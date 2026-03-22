@@ -93,14 +93,18 @@ export class Game extends Document {
   @Prop()
   backgroundColor: string;
 
-  // ... vous pouvez ajouter d'autres propriétés de vos DTOs ici
+  @Prop()
+  gameStatus: string;
+
+  @Prop()
+  gameClock: string;
+
+  @Prop()
+  gamePeriod: number;
 }
 
 export const GameSchema = SchemaFactory.createForClass(Game);
 
-// Index composite pour optimiser les requêtes dans `findByDateHour` et autres fonctions de filtrage.
-// Cet index aide MongoDB à filtrer efficacement par `isActive`, `gameDate`, et `league`,
-// puis à utiliser le même index pour trier par `startTimeUTC`, évitant des tris en mémoire très lents.
 GameSchema.index({
   isActive: 1,
   gameDate: 1,

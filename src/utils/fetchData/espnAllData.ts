@@ -678,6 +678,10 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
                   homeTeamRecord,
                   awayTeamRecord,
                   status: statusDetail?.name || displayClockDetail || '',
+                  gameClock: displayClockDetail,
+                  gamePeriod: comp.status?.period,
+                  gameStatus:
+                    statusDetail?.shortDetail || statusDetail?.description,
                 };
               } catch (e) {
                 console.error(`Error fetching summary for event ${ev.id}:`, e);
