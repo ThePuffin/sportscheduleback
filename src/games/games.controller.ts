@@ -101,7 +101,7 @@ export class GamesController {
 
   @Post('refresh/all')
   async refresh() {
-    return this.GameService.getAllGames();
+    return this.GameService.getAllGames(true);
   }
 
   @Post('/refresh/:league')

@@ -219,7 +219,7 @@ describe('GamesController', () => {
   describe('refresh', () => {
     it('should refresh all games', async () => {
       await controller.refresh();
-      expect(service.getAllGames).toHaveBeenCalled();
+      expect(service.getAllGames).toHaveBeenCalledWith(true);
     });
   });
 

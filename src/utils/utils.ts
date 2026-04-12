@@ -147,7 +147,7 @@ export const getLeagueConfig = (leagueName: string) => {
     if (year % 4 === 2) {
       // The Winter Olympics last approximately 3 weeks in February (Month index 1)
       if (month <= 2) {
-        // Actif de Janvier à Mars pour couvrir prépa + tournoi
+        // Active from January to March to cover preparation + tournament
         return {
           sport: 'hockey',
           league: leagueId,

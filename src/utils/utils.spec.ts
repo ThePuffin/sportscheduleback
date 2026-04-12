@@ -6,7 +6,7 @@ import {
   isInThePeriod,
   needRefresh,
   randomNumber,
-} from './utils'; // Adaptez le chemin
+} from './utils'; // Adapt path
 
 describe('Utility Functions', () => {
   describe('randomNumber', () => {
@@ -33,11 +33,11 @@ describe('Utility Functions', () => {
 
   describe('getLuminance', () => {
     it('should calculate luminance correctly for hex colors', () => {
-      // Blanc: (0.2126 * 255) + (0.7152 * 255) + (0.0722 * 255) = 255
+      // White: (0.2126 * 255) + (0.7152 * 255) + (0.0722 * 255) = 255
       expect(getLuminance('#FFFFFF')).toBeCloseTo(255);
-      // Noir: 0
+      // Black: 0
       expect(getLuminance('#000000')).toBe(0);
-      // Un gris spécifique
+      // A specific gray
       expect(getLuminance('#808080')).toBeGreaterThan(0);
     });
 
@@ -75,18 +75,18 @@ describe('Utility Functions', () => {
     });
 
     it('should return 3 days refresh during NHL regular season (Oct to April)', () => {
-      // On simule le 15 Novembre 2025
+      // Simulate November 15, 2025
       jest.setSystemTime(new Date('2025-11-15'));
 
       const mockGames = {
-        '2025-11-15': [{ updateDate: '2025-11-13' }], // 2 jours d'écart
+        '2025-11-15': [{ updateDate: '2025-11-13' }], // 2 days difference
       };
 
-      // En saison régulière NHL, refresh = 3 jours.
-      // 2 jours < 3 jours => false
+      // In NHL regular season, refresh = 3 days.
+      // 2 days < 3 days => false
       expect(needRefresh(League.NHL, mockGames)).toBe(false);
 
-      // 4 jours d'écart => true
+      // 4 days difference => true
       const oldGames = {
         '2025-11-15': [{ updateDate: '2025-11-10' }],
       };
@@ -94,27 +94,27 @@ describe('Utility Functions', () => {
     });
 
     it('should return 1 day refresh during Playoffs (MLS example)', () => {
-      // MLS EndSeason: 10, EndPlayoffs: 12. On simule le 15 Novembre.
+      // MLS EndSeason: 10, EndPlayoffs: 12. Simulating November 15.
       jest.setSystemTime(new Date('2025-11-15'));
 
       const mockGames = {
-        '2025-11-15': [{ updateDate: '2025-11-14' }], // ~1.5 jour d'écart
+        '2025-11-15': [{ updateDate: '2025-11-14' }], // ~1.5 day difference
       };
 
-      // En playoffs, refresh = 1 jour.
+      // In playoffs, refresh = 1 day.
       expect(needRefresh(League.MLS, mockGames)).toBe(true);
     });
 
     it('should handle Olympic years correctly (Winter 2026)', () => {
-      // Février 2026 (Année % 4 === 2)
+      // February 2026 (Year % 4 === 2)
       jest.setSystemTime(new Date('2026-02-10'));
 
       const mockGames = {
         '2026-02-10': [{ updateDate: '2026-02-07' }],
       };
 
-      // C'est la saison olympique, refresh attendu à 3 jours.
-      // 3 jour d'écart => true
+      // Olympic season, expected refresh at 3 days.
+      // 3 day difference => true
       expect(needRefresh(League['OLYMPICS-MEN'], mockGames)).toBe(true);
     });
 
@@ -176,14 +176,14 @@ describe('Utility Functions', () => {
     });
 
     it('should return off-season refresh (7 days) when no Olympics are active', () => {
-      // Juin 2025 (Pas d'Olympiques)
+      // June 2025 (No Olympics)
       jest.setSystemTime(new Date('2025-06-10'));
 
       const mockGames = {
-        '2025-06-10': [{ updateDate: '2025-06-05' }], // 5 jours d'écart
+        '2025-06-10': [{ updateDate: '2025-06-05' }], // 5 days difference
       };
 
-      // Hors saison = 7 jours. 5 < 7 => false
+      // Off-season = 7 days. 5 < 7 => false
       expect(needRefresh(League['OLYMPICS-MEN'], mockGames)).toBe(false);
     });
 

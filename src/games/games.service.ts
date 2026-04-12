@@ -89,6 +89,22 @@ export class GameService {
     if (uniqueId) {
       const existingGame = await this.findOne(uniqueId);
       if (existingGame) {
+        const now = new Date();
+        const existingStartTime = existingGame.startTimeUTC
+          ? new Date(existingGame.startTimeUTC)
+          : null;
+        const dtoStartTime = gameDto.startTimeUTC
+          ? new Date(gameDto.startTimeUTC)
+          : null;
+        const isExistingGamePast =
+          existingStartTime && existingStartTime.getTime() < now.getTime();
+        const isDtoGamePast =
+          dtoStartTime && dtoStartTime.getTime() < now.getTime();
+
+        if (isExistingGamePast || isDtoGamePast) {
+          return existingGame;
+        }
+
         if (
           gameDto.homeTeamScore === null &&
           existingGame.homeTeamScore != null
@@ -248,7 +264,7 @@ export class GameService {
     }
   }
 
-  async getAllGames(): Promise<Game[]> {
+  async getAllGames(forceUpdate = false): Promise<Game[]> {
     let teams = await this.teamService.findAll();
     if (!teams.length) {
       console.info('No teams found in DB. Fetching teams...');
@@ -257,7 +273,7 @@ export class GameService {
     const leagues = Array.from(new Set(teams.map((team) => team.league)));
 
     for (const league of leagues) {
-      await this.getLeagueGames(league, false);
+      await this.getLeagueGames(league, forceUpdate, false);
     }
     return this.findAll();
   }
@@ -607,16 +623,20 @@ export class GameService {
 
   async removeDuplicatesAndOlds() {
     console.info('Removing duplicates and old games...');
-    const games = await this.gameModel.find().exec();
+
     const tenMonthsAgo = new Date();
     tenMonthsAgo.setMonth(tenMonthsAgo.getMonth() - 10);
-    const oldGames = games.filter(({ startTimeUTC }) => {
-      const isOld = new Date(startTimeUTC) < tenMonthsAgo;
-      return isOld;
+
+    // 1. Delete games older than 10 months directly in DB for efficiency
+    const deleteResult = await this.gameModel.deleteMany({
+      startTimeUTC: { $lt: tenMonthsAgo.toISOString() },
     });
-    for (const oldGame of oldGames) {
-      await this.remove(oldGame.uniqueId);
-    }
+    console.info(
+      `Deleted ${deleteResult.deletedCount} games older than 10 months.`,
+    );
+
+    // 2. Handle duplicates among remaining active games
+    const games = await this.gameModel.find({ isActive: true }).exec();
     const duplicates = [];
     const gameMap = new Map();
 
@@ -625,15 +645,9 @@ export class GameService {
       if (gameMap.has(key)) {
         const existing = gameMap.get(key);
         const existingHasScore =
-          existing.homeTeamScore !== null &&
-          existing.homeTeamScore !== undefined &&
-          existing.awayTeamScore !== null &&
-          existing.awayTeamScore !== undefined;
+          existing.homeTeamScore != null && existing.awayTeamScore != null;
         const currentHasScore =
-          game.homeTeamScore !== null &&
-          game.homeTeamScore !== undefined &&
-          game.awayTeamScore !== null &&
-          game.awayTeamScore !== undefined;
+          game.homeTeamScore != null && game.awayTeamScore != null;
 
         if (currentHasScore && !existingHasScore) {
           duplicates.push(existing);
@@ -649,6 +663,7 @@ export class GameService {
     for (const duplicate of duplicates) {
       await this.remove(duplicate.uniqueId);
     }
+
     console.info('End of removing duplicates and old games...');
   }
 
@@ -705,18 +720,9 @@ export class GameService {
     try {
       const gamesWithoutScores = await this.fetchGamesWithoutScores();
 
-      const now = new Date();
-      const seventyTwoHoursAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000);
-      const gamesToDelete = gamesWithoutScores.filter(
-        (game) => new Date(game.startTimeUTC) < seventyTwoHoursAgo,
-      );
-      const gamesToProcess = gamesWithoutScores.filter(
-        (game) => new Date(game.startTimeUTC) >= seventyTwoHoursAgo,
-      );
-
-      for (const game of gamesToDelete) {
-        await this.remove(game.uniqueId);
-      }
+      // Process all games missing scores instead of deleting older ones.
+      // This allows historical score recovery for "oldies".
+      const gamesToProcess = gamesWithoutScores;
 
       const postponedGamesLeagues = new Set<string>();
       // number of games without scores is available in `gamesWithoutScores.length`
@@ -815,7 +821,6 @@ export class GameService {
               .findOne({
                 uniqueId: score.uniqueId,
                 league: score.league,
-                $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
               })
               .exec();
           }
@@ -829,7 +834,6 @@ export class GameService {
                 .findOne({
                   uniqueId: { $regex: regex },
                   league: score.league,
-                  $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
                 })
                 .exec();
             } catch (e) {
@@ -860,8 +864,6 @@ export class GameService {
                   awayTeamId: candidateAwayId,
                   gameDate,
                   league: score.league,
-                  isActive: true,
-                  $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
                 })
                 .exec();
             }
@@ -884,9 +886,6 @@ export class GameService {
                   homeTeamShort: score.homeTeamShort,
                   awayTeamShort: score.awayTeamShort,
                   gameDate,
-                  league: score.league,
-                  isActive: true,
-                  $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
                 })
                 .exec();
             } catch (e) {
@@ -912,7 +911,6 @@ export class GameService {
                 awayTeamId: score.awayTeamId,
                 isActive: true,
                 league: score.league,
-                $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
               })
               .exec();
           }
@@ -923,11 +921,17 @@ export class GameService {
               continue;
             }
 
+            const resolvedStatus = this._resolveStatus(score);
+
             const needsUpdate =
               game.homeTeamScore === null ||
               game.homeTeamScore === undefined ||
               game.awayTeamScore === null ||
-              game.awayTeamScore === undefined;
+              game.awayTeamScore === undefined ||
+              game.homeTeamScore !== score.homeTeamScore ||
+              game.awayTeamScore !== score.awayTeamScore ||
+              (resolvedStatus === 'FINISHED' && game.status !== 'FINISHED');
+
             if (needsUpdate) {
               const updated = await this.gameModel
                 .findOneAndUpdate(
@@ -939,10 +943,8 @@ export class GameService {
                     updateDate: new Date().toISOString(),
                     gameClock: score.gameClock,
                     gamePeriod: score.gamePeriod,
-                    status:
-                      score.gameStatus === 'SCHEDULED'
-                        ? 'FINISHED'
-                        : score.gameStatus,
+                    status: resolvedStatus,
+                    gameStatus: resolvedStatus,
                   },
                   { new: true },
                 )
@@ -1072,27 +1074,20 @@ export class GameService {
         game.homeTeamScore = matchedScore.homeTeamScore;
         game.awayTeamScore = matchedScore.awayTeamScore;
         game.isActive =
-          matchedScore.isActive !== undefined
-            ? matchedScore.isActive
-            : game.isActive;
+          matchedScore.isActive === undefined
+            ? game.isActive
+            : matchedScore.isActive;
 
         game.updateDate = new Date().toISOString();
 
         game.gameClock = matchedScore.gameClock;
         game.gamePeriod = matchedScore.gamePeriod;
 
-        let statusText = matchedScore.gameStatus;
-        if (!statusText && matchedScore.status) {
-          if (typeof matchedScore.status === 'object') {
-            statusText =
-              matchedScore.status.type?.shortDetail ||
-              matchedScore.status.type?.detail ||
-              matchedScore.status.type?.description;
-          } else if (typeof matchedScore.status === 'string') {
-            statusText = matchedScore.status;
-          }
+        // Only update gameStatus from API data, don't resolve to FINISHED
+        // FINISHED status is only assigned in fetchGamesScores()
+        if (matchedScore.gameStatus) {
+          game.gameStatus = matchedScore.gameStatus;
         }
-        game.status = statusText;
 
         updatedGames.push(game);
       } else {
@@ -1222,5 +1217,75 @@ export class GameService {
 
       return gamesByTimeSlot;
     }
+  }
+
+  private _resolveStatus(score: any): string {
+    // Priority 1: Check if game is truly finished
+    if (score.isFinal) {
+      return 'FINISHED';
+    }
+
+    // Priority 2: If API provides explicit game status (like "1st", "Top", "Bot", etc.), use it
+    if (score.gameStatus) {
+      const gameStatus = score.gameStatus.toUpperCase();
+      // Game status indicators that mean the game is in progress
+      if (
+        [
+          'TOP',
+          'BOT',
+          'MID',
+          'END',
+          '1ST',
+          '2ND',
+          '3RD',
+          '4TH',
+          'OT',
+          'HALF',
+          'IN SO',
+          'IN PROGRESS',
+        ].some((s) => gameStatus.includes(s))
+      ) {
+        return score.gameStatus; // Return as-is for live game indicators
+      }
+      // Game status indicators that mean the game is finished
+      if (gameStatus.includes('FINAL') || gameStatus.includes('ENDED')) {
+        return 'FINISHED';
+      }
+      // For other explicit statuses, use them as-is
+      return score.gameStatus;
+    }
+
+    // Priority 3: Check API state field
+    if (score.status && typeof score.status === 'object') {
+      const state = score.status.state || score.status.type?.state;
+      if (state === 'post') {
+        return 'FINISHED';
+      } else if (state === 'in') {
+        return 'IN_PROGRESS';
+      } else if (state === 'pre') {
+        // Check if postponed
+        if (
+          score.status?.type?.name === 'STATUS_POSTPONED' ||
+          score.status?.type?.detail?.includes('TBD')
+        ) {
+          return 'POSTPONED';
+        }
+        return 'SCHEDULED';
+      }
+    } else if (typeof score.status === 'string') {
+      const status = score.status.toUpperCase();
+      if (status === 'POSTPONED') {
+        return 'POSTPONED';
+      }
+      return score.status;
+    }
+
+    // Priority 4: If we have scores but no explicit finish, it's ongoing
+    if (score.homeTeamScore != null && score.awayTeamScore != null) {
+      return 'IN_PROGRESS';
+    }
+
+    // Default: Scheduled
+    return 'SCHEDULED';
   }
 }
