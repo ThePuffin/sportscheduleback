@@ -721,8 +721,11 @@ export class GameService {
     // match started at least 2 hours ago and score is null or missing
     const gamesWithoutScores = await this.gameModel
       .find({
+        startTimeUTC: { $lte: twoHoursAgo.toISOString() },
         $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
       })
+      .sort({ startTimeUTC: -1 })
+      .limit(250)
       .exec();
     return gamesWithoutScores;
   }
@@ -734,6 +737,9 @@ export class GameService {
     }
     this.isFetchingScores = true;
     try {
+      console.info(
+        '[fetchGamesScores] Démarrage du cycle de récupération des scores...',
+      );
       const gamesWithoutScores = await this.fetchGamesWithoutScores();
 
       const now = new Date();
@@ -743,6 +749,10 @@ export class GameService {
       );
       const gamesToProcess = gamesWithoutScores.filter(
         (game) => new Date(game.startTimeUTC) >= oneDayAgo,
+      );
+
+      console.info(
+        `[fetchGamesScores] ${gamesWithoutScores.length} matchs sans score trouvés. Traitement de ${gamesToProcess.length} matchs récents.`,
       );
 
       for (const game of gamesToDelete) {
@@ -770,14 +780,24 @@ export class GameService {
 
       for (const [league, dates] of tasks) {
         for (const date of dates) {
+          console.info(
+            `[fetchGamesScores] Récupération des scores pour ${league} à la date du ${date}...`,
+          );
           if (league === League.PWHL) {
             const hockeyData = new HockeyData();
             try {
               const scoresPWHL = await hockeyData.getPWHLScores(date);
               if (Array.isArray(scoresPWHL)) {
+                console.info(
+                  `[fetchGamesScores] PWHL : ${scoresPWHL.length} scores reçus.`,
+                );
                 results.push(...scoresPWHL);
               }
             } catch (error) {
+              console.error(
+                `[fetchGamesScores] Erreur lors de la récupération PWHL pour ${date}:`,
+                error,
+              );
               // ignore fetch errors for PWHL
             }
           } else {
@@ -786,6 +806,9 @@ export class GameService {
               if (Array.isArray(espnScores) && espnScores.length) {
                 results.push(...espnScores);
               }
+              console.info(
+                `[fetchGamesScores] ${league} : ${espnScores?.length ?? 0} scores reçus.`,
+              );
             } catch (err) {
               console.error(
                 `Error fetching scores for ${league} on ${date}:`,
@@ -812,6 +835,9 @@ export class GameService {
               possibleId,
             );
             if (individualScore?.isFinal) {
+              console.info(
+                `[fetchGamesScores] Fallback : score individuel récupéré pour ${game.uniqueId}`,
+              );
               results.push(individualScore);
               fetchedEventIds.add(possibleId);
             }
@@ -826,6 +852,9 @@ export class GameService {
 
       // Now try to update matching games in DB before returning
       const appliedUpdates: any[] = [];
+      console.info(
+        `[fetchGamesScores] Total des scores récupérés : ${results.length}. Application des mises à jour en base...`,
+      );
 
       for (const score of results) {
         try {
@@ -1005,6 +1034,9 @@ export class GameService {
         }
       }
 
+      console.info(
+        `[fetchGamesScores] Cycle terminé. ${appliedUpdates.length} mises à jour appliquées.`,
+      );
       const anyManualRefresh = Object.values(this.manualRefreshInProgress).some(
         (v) => v,
       );
