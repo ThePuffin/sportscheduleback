@@ -737,9 +737,18 @@ export class GameService {
     try {
       const gamesWithoutScores = await this.fetchGamesWithoutScores();
 
-      // Process all games missing scores instead of deleting older ones.
-      // This allows historical score recovery for "oldies".
-      const gamesToProcess = gamesWithoutScores;
+      const now = new Date();
+      const seventyTwoHoursAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000);
+      const gamesToDelete = gamesWithoutScores.filter(
+        (game) => new Date(game.startTimeUTC) < seventyTwoHoursAgo,
+      );
+      const gamesToProcess = gamesWithoutScores.filter(
+        (game) => new Date(game.startTimeUTC) >= seventyTwoHoursAgo,
+      );
+
+      for (const game of gamesToDelete) {
+        await this.remove(game.uniqueId);
+      }
 
       const postponedGamesLeagues = new Set<string>();
       // number of games without scores is available in `gamesWithoutScores.length`
@@ -838,6 +847,7 @@ export class GameService {
               .findOne({
                 uniqueId: score.uniqueId,
                 league: score.league,
+                $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
               })
               .exec();
           }
@@ -851,6 +861,7 @@ export class GameService {
                 .findOne({
                   uniqueId: { $regex: regex },
                   league: score.league,
+                  $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
                 })
                 .exec();
             } catch (e) {
@@ -881,6 +892,8 @@ export class GameService {
                   awayTeamId: candidateAwayId,
                   gameDate,
                   league: score.league,
+                  isActive: true,
+                  $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
                 })
                 .exec();
             }
@@ -903,6 +916,9 @@ export class GameService {
                   homeTeamShort: score.homeTeamShort,
                   awayTeamShort: score.awayTeamShort,
                   gameDate,
+                  league: score.league,
+                  isActive: true,
+                  $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
                 })
                 .exec();
             } catch (e) {
@@ -928,6 +944,7 @@ export class GameService {
                 awayTeamId: score.awayTeamId,
                 isActive: true,
                 league: score.league,
+                $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
               })
               .exec();
           }
@@ -938,17 +955,11 @@ export class GameService {
               continue;
             }
 
-            const resolvedStatus = this._resolveStatus(score);
-
             const needsUpdate =
               game.homeTeamScore === null ||
               game.homeTeamScore === undefined ||
               game.awayTeamScore === null ||
-              game.awayTeamScore === undefined ||
-              game.homeTeamScore !== score.homeTeamScore ||
-              game.awayTeamScore !== score.awayTeamScore ||
-              (resolvedStatus === 'FINISHED' && game.status !== 'FINISHED');
-
+              game.awayTeamScore === undefined;
             if (needsUpdate) {
               const updated = await this.gameModel
                 .findOneAndUpdate(
@@ -960,8 +971,10 @@ export class GameService {
                     updateDate: new Date().toISOString(),
                     gameClock: score.gameClock,
                     gamePeriod: score.gamePeriod,
-                    status: resolvedStatus,
-                    gameStatus: resolvedStatus,
+                    gameStatus:
+                      score.gameStatus === 'SCHEDULED'
+                        ? 'FINISHED'
+                        : score.gameStatus,
                   },
                   { new: true },
                 )
