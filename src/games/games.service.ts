@@ -327,7 +327,7 @@ export class GameService {
     clean?: boolean,
     needRefreshData = true,
   ) {
-    const games = await this.filterGames({
+    let games = await this.filterGames({
       teamSelectedIds: teamSelectedId,
       startDate,
       clean,
@@ -347,8 +347,8 @@ export class GameService {
     const keys = Object.keys(games);
     if (
       needRefreshData &&
-      keys.length === 1 &&
-      !games[keys[0]]?.[0]?.awayTeamShort
+      (keys.length === 0 ||
+        (keys.length === 1 && !games[keys[0]]?.[0]?.awayTeamShort))
     ) {
       const league = teamSelectedId.split('-')[0];
       if (league) {
@@ -362,11 +362,20 @@ export class GameService {
           await this.getLeagueGames(league, false);
         }
       }
-      return this.filterGames({
+      const refreshedGames = await this.filterGames({
         teamSelectedIds: teamSelectedId,
         startDate,
         clean,
       });
+
+      // Ensure we filter scores from the refreshed data as well
+      for (const date in refreshedGames) {
+        refreshedGames[date] = refreshedGames[date].filter(
+          (game) => game.homeTeamScore == null,
+        );
+        if (refreshedGames[date].length === 0) delete refreshedGames[date];
+      }
+      return refreshedGames;
     }
 
     return games;
@@ -406,16 +415,11 @@ export class GameService {
       filter.selectedTeam = selectedTeam;
     }
 
-    if (startDate) {
-      filter.gameDate = { $gte: startDate };
-    } else {
-      startDate = readableDate(new Date());
-    }
+    const effectiveStartDate = startDate || readableDate(new Date());
+    filter.gameDate = { $gte: effectiveStartDate };
 
     if (endDate) {
-      filter.gameDate = { ...filter.gameDate, $lte: endDate };
-    } else {
-      endDate = readableDate(new Date());
+      filter.gameDate.$lte = endDate;
     }
 
     if (league) {
@@ -460,11 +464,22 @@ export class GameService {
       : [];
     const gamesByDay = {};
     const uniqueTeamSelectedIds = this.getTeams(teamSelectedIds, games);
-    const dates = games.map((game) => new Date(game.gameDate));
-    let minDate = new Date(Math.min(...dates.map((date) => date.getTime())));
-    let maxDate = new Date(Math.max(...dates.map((date) => date.getTime())));
-    minDate = new Date(startDate) > minDate ? minDate : new Date(startDate);
-    maxDate = new Date(endDate) < maxDate ? maxDate : new Date(endDate);
+
+    // Use actual query results to define boundaries if dates aren't provided
+    const resultDates = games.map((game) => new Date(game.gameDate).getTime());
+    let minDate =
+      resultDates.length > 0
+        ? new Date(Math.min(...resultDates))
+        : new Date(startDate);
+    let maxDate =
+      resultDates.length > 0
+        ? new Date(Math.max(...resultDates))
+        : new Date(endDate || startDate);
+
+    // Ensure input boundaries are respected
+    if (startDate && new Date(startDate) < minDate)
+      minDate = new Date(startDate);
+    if (endDate && new Date(endDate) > maxDate) maxDate = new Date(endDate);
 
     for (let date = minDate; date <= maxDate; ) {
       const currentDate = readableDate(date);
@@ -513,7 +528,9 @@ export class GameService {
           gamesOfDay.push(...gameOfDay);
         }
       });
-      if ((league && gamesOfDay.length) || !league) {
+
+      // Only add the date key if there are games, or if we explicitly want placeholders (not clean)
+      if (gamesOfDay.length > 0 || (!clean && !league)) {
         gamesByDay[currentDate] = gamesOfDay;
       }
       date = new Date(date.setDate(date.getDate() + 1));
@@ -602,7 +619,7 @@ export class GameService {
     }
   }
 
-  update(uniqueId: string, updateGameDto: UpdateGameDto) {
+  async update(uniqueId: string, updateGameDto: UpdateGameDto) {
     const filter = { uniqueId: uniqueId };
     return this.gameModel.updateOne(filter, updateGameDto);
   }
