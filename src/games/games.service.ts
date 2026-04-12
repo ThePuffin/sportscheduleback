@@ -724,8 +724,8 @@ export class GameService {
         startTimeUTC: { $lte: twoHoursAgo.toISOString() },
         $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
       })
-      .sort({ startTimeUTC: -1 })
-      .limit(250)
+      .sort({ startTimeUTC: -1 }) // Most recent first
+      .limit(250) // Limited to 250 as requested
       .exec();
     return gamesWithoutScores;
   }
@@ -737,27 +737,32 @@ export class GameService {
     }
     this.isFetchingScores = true;
     try {
-      console.info(
-        '[fetchGamesScores] Démarrage du cycle de récupération des scores...',
-      );
+      console.info('[fetchGamesScores] Starting score recovery cycle...');
       const gamesWithoutScores = await this.fetchGamesWithoutScores();
 
       const now = new Date();
-      const oneDayAgo = new Date(now.getTime() - 36 * 60 * 60 * 1000);
-      const gamesToDelete = gamesWithoutScores.filter(
-        (game) => new Date(game.startTimeUTC) < oneDayAgo,
-      );
-      const gamesToProcess = gamesWithoutScores.filter(
-        (game) => new Date(game.startTimeUTC) >= oneDayAgo,
-      );
+      const threshold = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+
+      // Separate games to delete and games to process based on the same date calculation
+      const gamesToDelete = [];
+      const gamesToProcess = gamesWithoutScores;
+
+      for (const game of gamesWithoutScores) {
+        if (new Date(game.startTimeUTC) < threshold) {
+          gamesToDelete.push(game);
+        } else {
+          gamesToProcess.push(game);
+        }
+      }
 
       console.info(
-        `[fetchGamesScores] ${gamesWithoutScores.length} matchs sans score trouvés. Traitement de ${gamesToProcess.length} matchs récents.`,
+        `[fetchGamesScores] ${gamesWithoutScores.length} games without scores found. Processing...`,
       );
 
       for (const game of gamesToDelete) {
         if (Object.values(CollegeLeague).includes(game.league as any)) {
-          await this.remove(game.uniqueId);
+          //TODO: uncomment this line after testing to avoid deleting too many games during development
+          // await this.remove(game.uniqueId);
         }
       }
 
@@ -781,7 +786,7 @@ export class GameService {
       for (const [league, dates] of tasks) {
         for (const date of dates) {
           console.info(
-            `[fetchGamesScores] Récupération des scores pour ${league} à la date du ${date}...`,
+            `[fetchGamesScores] Fetching scores for ${league} on ${date}...`,
           );
           if (league === League.PWHL) {
             const hockeyData = new HockeyData();
@@ -789,7 +794,7 @@ export class GameService {
               const scoresPWHL = await hockeyData.getPWHLScores(date);
               if (Array.isArray(scoresPWHL)) {
                 console.info(
-                  `[fetchGamesScores] PWHL : ${scoresPWHL.length} scores reçus.`,
+                  `[fetchGamesScores] PWHL: ${scoresPWHL.length} scores received.`,
                 );
                 results.push(...scoresPWHL);
               }
@@ -807,7 +812,7 @@ export class GameService {
                 results.push(...espnScores);
               }
               console.info(
-                `[fetchGamesScores] ${league} : ${espnScores?.length ?? 0} scores reçus.`,
+                `[fetchGamesScores] ${league}: ${espnScores?.length ?? 0} scores received.`,
               );
             } catch (err) {
               console.error(
@@ -836,7 +841,7 @@ export class GameService {
             );
             if (individualScore?.isFinal) {
               console.info(
-                `[fetchGamesScores] Fallback : score individuel récupéré pour ${game.uniqueId}`,
+                `[fetchGamesScores] Fallback: individual score retrieved for ${game.uniqueId}`,
               );
               results.push(individualScore);
               fetchedEventIds.add(possibleId);
@@ -853,7 +858,7 @@ export class GameService {
       // Now try to update matching games in DB before returning
       const appliedUpdates: any[] = [];
       console.info(
-        `[fetchGamesScores] Total des scores récupérés : ${results.length}. Application des mises à jour en base...`,
+        `[fetchGamesScores] Total scores retrieved: ${results.length}. Applying updates to database...`,
       );
 
       for (const score of results) {
@@ -1035,7 +1040,7 @@ export class GameService {
       }
 
       console.info(
-        `[fetchGamesScores] Cycle terminé. ${appliedUpdates.length} mises à jour appliquées.`,
+        `[fetchGamesScores] Cycle completed. ${appliedUpdates.length} updates applied.`,
       );
       const anyManualRefresh = Object.values(this.manualRefreshInProgress).some(
         (v) => v,
