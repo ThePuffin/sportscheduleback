@@ -5,7 +5,7 @@ import * as mongoose from 'mongoose';
 import { Model } from 'mongoose';
 import { TeamService } from '../teams/teams.service';
 import { addHours, readableDate } from '../utils/date';
-import { League } from '../utils/enum';
+import { CollegeLeague, League } from '../utils/enum';
 import {
   getESPNGameScore,
   getESPNScores,
@@ -738,16 +738,18 @@ export class GameService {
       const gamesWithoutScores = await this.fetchGamesWithoutScores();
 
       const now = new Date();
-      const seventyTwoHoursAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000);
+      const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
       const gamesToDelete = gamesWithoutScores.filter(
-        (game) => new Date(game.startTimeUTC) < seventyTwoHoursAgo,
+        (game) => new Date(game.startTimeUTC) < twoDaysAgo,
       );
       const gamesToProcess = gamesWithoutScores.filter(
-        (game) => new Date(game.startTimeUTC) >= seventyTwoHoursAgo,
+        (game) => new Date(game.startTimeUTC) >= twoDaysAgo,
       );
 
       for (const game of gamesToDelete) {
-        await this.remove(game.uniqueId);
+        if (Object.values(CollegeLeague).includes(game.league as any)) {
+          await this.remove(game.uniqueId);
+        }
       }
 
       const postponedGamesLeagues = new Set<string>();
