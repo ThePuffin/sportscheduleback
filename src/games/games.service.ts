@@ -721,7 +721,6 @@ export class GameService {
     // match started at least 2 hours ago and score is null or missing
     const gamesWithoutScores = await this.gameModel
       .find({
-        startTimeUTC: { $lte: twoHoursAgo.toISOString() },
         $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
       })
       .exec();
@@ -738,12 +737,12 @@ export class GameService {
       const gamesWithoutScores = await this.fetchGamesWithoutScores();
 
       const now = new Date();
-      const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+      const oneDayAgo = new Date(now.getTime() - 36 * 60 * 60 * 1000);
       const gamesToDelete = gamesWithoutScores.filter(
-        (game) => new Date(game.startTimeUTC) < twoDaysAgo,
+        (game) => new Date(game.startTimeUTC) < oneDayAgo,
       );
       const gamesToProcess = gamesWithoutScores.filter(
-        (game) => new Date(game.startTimeUTC) >= twoDaysAgo,
+        (game) => new Date(game.startTimeUTC) >= oneDayAgo,
       );
 
       for (const game of gamesToDelete) {
@@ -1040,7 +1039,6 @@ export class GameService {
 
     for (const game of games) {
       if (game.league === League.PWHL) {
-        pwhlGames.push(game);
       } else {
         espnGames.push(game);
       }

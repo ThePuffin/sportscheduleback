@@ -332,8 +332,11 @@ export class HockeyData {
         } = game;
 
         const now = new Date();
+        const nineMonthsAgo = new Date(
+          now.getTime() - 9 * 30 * 24 * 60 * 60 * 1000,
+        );
         const isActive = true;
-        if (new Date(GameDateISO8601) < now) return;
+        if (new Date(GameDateISO8601) < nineMonthsAgo) return;
 
         const awayTeamName = visiting_team_name.includes(visiting_team_city)
           ? visiting_team_name
@@ -397,8 +400,11 @@ export class HockeyData {
       } = game;
 
       const now = new Date();
+      const nineMonthsAgo = new Date(
+        now.getTime() - 9 * 30 * 24 * 60 * 60 * 1000,
+      );
       const isActive = true;
-      if (new Date(startTimeUTC) < now) return;
+      if (new Date(startTimeUTC) < nineMonthsAgo) return;
       const awayTeamName = `${awayTeam.placeName.default} ${awayTeam.commonName.default}`;
       const homeTeamName = `${homeTeam.placeName.default} ${homeTeam.commonName.default}`;
 

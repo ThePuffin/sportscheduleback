@@ -448,7 +448,8 @@ const getEachTeamSchedule = async ({
         games = events?.[0] ? events : [];
 
         const now = new Date();
-        const gamesFilter = games.filter(({ date }) => new Date(date) >= now);
+        const nineMonthsAgo = new Date(now.getTime() - 9 * 30 * 24 * 60 * 60 * 1000);
+        const gamesFilter = games.filter(({ date }) => new Date(date) >= nineMonthsAgo);
         if (gamesFilter.length === 0) {
           const link = leaguesData[leagueName].fetchTeam + '/' + id;
           const fetchedTeams = await fetch(link);
@@ -468,10 +469,11 @@ const getEachTeamSchedule = async ({
     } else {
       let number = 0;
       const now = new Date();
+      const nineMonthsAgo = new Date(now.getTime() - 9 * 30 * 24 * 60 * 60 * 1000);
       gamesData = games.map((game) => {
         const { date, competitions, id, links } = game;
 
-        if (new Date(date) < now && !leagueName.includes('OLYMPICS')) return;
+        if (new Date(date) < nineMonthsAgo && !leagueName.includes('OLYMPICS')) return;
         const { venue, competitors } = competitions[0];
         const venueTimezone = 'America/Los_Angeles';
         const currentDate = new Date(
