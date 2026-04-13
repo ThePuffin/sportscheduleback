@@ -741,15 +741,17 @@ export class GameService {
       const gamesWithoutScores = await this.fetchGamesWithoutScores();
 
       const now = new Date();
-      const threshold = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+      const threshold = new Date(now.getTime() - 72 * 60 * 60 * 1000);
 
       // Separate games to delete and games to process based on the same date calculation
       const gamesToDelete = [];
-      const gamesToProcess = gamesWithoutScores;
+      const gamesToProcess = [];
 
       for (const game of gamesWithoutScores) {
-        if (new Date(game.startTimeUTC) < threshold) {
-          gamesToDelete.push(game);
+        if (Object.values(CollegeLeague).includes(game.league as any)) {
+          if (new Date(game.startTimeUTC) < threshold) {
+            gamesToDelete.push(game);
+          }
         } else {
           gamesToProcess.push(game);
         }
@@ -761,13 +763,11 @@ export class GameService {
 
       for (const game of gamesToDelete) {
         if (Object.values(CollegeLeague).includes(game.league as any)) {
-          //TODO: uncomment this line after testing to avoid deleting too many games during development
-          // await this.remove(game.uniqueId);
+          await this.remove(game.uniqueId);
         }
       }
 
       const postponedGamesLeagues = new Set<string>();
-      // number of games without scores is available in `gamesWithoutScores.length`
 
       // Group needed updates by League AND Date
       const tasks = new Map<string, Set<string>>();
