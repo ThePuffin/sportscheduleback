@@ -1006,10 +1006,7 @@ export class GameService {
                     updateDate: new Date().toISOString(),
                     gameClock: score.gameClock,
                     gamePeriod: score.gamePeriod,
-                    gameStatus:
-                      score.gameStatus === 'SCHEDULED'
-                        ? 'FINISHED'
-                        : score.gameStatus,
+                    gameStatus: this._resolveStatus(score),
                   },
                   { new: true },
                 )
@@ -1150,11 +1147,7 @@ export class GameService {
         game.gameClock = matchedScore.gameClock;
         game.gamePeriod = matchedScore.gamePeriod;
 
-        // Only update gameStatus from API data, don't resolve to FINISHED
-        // FINISHED status is only assigned in fetchGamesScores()
-        if (matchedScore.gameStatus) {
-          game.gameStatus = matchedScore.gameStatus;
-        }
+        game.gameStatus = this._resolveStatus(matchedScore);
 
         updatedGames.push(game);
       } else {
