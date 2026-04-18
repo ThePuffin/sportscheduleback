@@ -534,6 +534,7 @@ const getEachTeamSchedule = async ({
           selectedTeam: homeAbbrev === abbrev,
           show: homeAbbrev === abbrev,
           startTimeUTC: new Date(date).toISOString(),
+          gameStatus: null,
           teamSelectedId: value,
           isActive,
           uniqueId: id ? `${value}-${id}` : `${value}-${gameDate}-${number}`,

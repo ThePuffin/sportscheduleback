@@ -332,7 +332,7 @@ export class HockeyData {
         } = game;
 
         const now = new Date();
-      
+
         const isActive = true;
         if (new Date(GameDateISO8601) < now) return;
 
@@ -360,6 +360,7 @@ export class HockeyData {
           homeTeamLogoDark: leagueLogos[home_team_code],
           homeTeamShort: home_team_code,
           homeTeamScore: null,
+          gameStatus: null,
           awayTeamScore: null,
           league: leagueName,
           placeName: capitalize(venue_location),
@@ -398,7 +399,7 @@ export class HockeyData {
       } = game;
 
       const now = new Date();
-   
+
       const isActive = true;
       if (new Date(startTimeUTC) < now) return;
       const awayTeamName = `${awayTeam.placeName.default} ${awayTeam.commonName.default}`;
@@ -421,6 +422,7 @@ export class HockeyData {
         homeTeamShort: homeTeam.abbrev,
         homeTeamScore: null,
         awayTeamScore: null,
+        gameStatus: null,
         league: leagueName,
         placeName: capitalize(homeTeam.placeName.default),
         selectedTeam: homeTeam.abbrev === id,

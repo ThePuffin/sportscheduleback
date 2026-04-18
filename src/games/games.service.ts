@@ -729,6 +729,20 @@ export class GameService {
     return gamesWithoutScores;
   }
 
+  async fetchGamesNotStartedWithScores(): Promise<Game[]> {
+    const now = new Date();
+
+    return await this.gameModel
+      .find({
+        startTimeUTC: { $gt: now.toISOString() },
+        $and: [
+          { homeTeamScore: { $exists: true, $ne: null } },
+          { awayTeamScore: { $exists: true, $ne: null } },
+        ],
+      })
+      .exec();
+  }
+
   async fetchGamesScores(): Promise<any[]> {
     if (this.isFetchingScores) {
       console.info('fetchGamesScores is already running.');
@@ -1024,6 +1038,7 @@ export class GameService {
         }
       }
 
+      await this.fixScoreIssue();
       await this.removeOldGamesWithoutScore();
 
       return appliedUpdates.length ? appliedUpdates : results;
@@ -1035,8 +1050,23 @@ export class GameService {
     }
   }
 
+  private async fixScoreIssue() {
+    const wrongScores = await this.fetchGamesNotStartedWithScores();
+    for (const game of wrongScores) {
+      console.info(
+        `[fixScoreIssue] Removing score for game ${game.uniqueId} that has scores but hasn't started yet...`,
+      );
+      await this.gameModel.updateOne(
+        { uniqueId: game.uniqueId },
+        {
+          $set: { homeTeamScore: null, awayTeamScore: null, gameStatus: null },
+        },
+      );
+    }
+  }
+
   private async removeOldGamesWithoutScore() {
-    const gamesToDelete = await this.fetchGamesWithoutScores(72);
+    let gamesToDelete = await this.fetchGamesWithoutScores(72);
 
     console.info(
       `[fetchGamesScores] ${gamesToDelete.length} games without scores found. Processing...`,
