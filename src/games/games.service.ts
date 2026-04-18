@@ -5,7 +5,7 @@ import * as mongoose from 'mongoose';
 import { Model } from 'mongoose';
 import { TeamService } from '../teams/teams.service';
 import { addHours, readableDate } from '../utils/date';
-import { CollegeLeague, League } from '../utils/enum';
+import { League } from '../utils/enum';
 import {
   getESPNGameScore,
   getESPNScores,
@@ -714,18 +714,17 @@ export class GameService {
     }
   }
 
-  async fetchGamesWithoutScores(): Promise<Game[]> {
-    const twoHoursAgo = new Date();
-    twoHoursAgo.setHours(twoHoursAgo.getHours() - 2);
+  async fetchGamesWithoutScores(hours = 2): Promise<Game[]> {
+    const hoursAgo = new Date();
+    hoursAgo.setHours(hoursAgo.getHours() - hours);
 
     // match started at least 2 hours ago and score is null or missing
     const gamesWithoutScores = await this.gameModel
       .find({
-        startTimeUTC: { $lte: twoHoursAgo.toISOString() },
+        startTimeUTC: { $lte: hoursAgo.toISOString() },
         $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
       })
       .sort({ startTimeUTC: -1 }) // Most recent first
-      .limit(250) // Limited to 250 as requested
       .exec();
     return gamesWithoutScores;
   }
@@ -738,34 +737,7 @@ export class GameService {
     this.isFetchingScores = true;
     try {
       console.info('[fetchGamesScores] Starting score recovery cycle...');
-      const gamesWithoutScores = await this.fetchGamesWithoutScores();
-
-      const now = new Date();
-      const threshold = new Date(now.getTime() - 72 * 60 * 60 * 1000);
-
-      // Separate games to delete and games to process based on the same date calculation
-      const gamesToDelete = [];
-      const gamesToProcess = [];
-
-      for (const game of gamesWithoutScores) {
-        if (Object.values(CollegeLeague).includes(game.league as any)) {
-          if (new Date(game.startTimeUTC) < threshold) {
-            gamesToDelete.push(game);
-          }
-        } else {
-          gamesToProcess.push(game);
-        }
-      }
-
-      console.info(
-        `[fetchGamesScores] ${gamesWithoutScores.length} games without scores found. Processing...`,
-      );
-
-      for (const game of gamesToDelete) {
-        if (Object.values(CollegeLeague).includes(game.league as any)) {
-          await this.remove(game.uniqueId);
-        }
-      }
+      const gamesToProcess = await this.fetchGamesWithoutScores(2);
 
       const postponedGamesLeagues = new Set<string>();
 
@@ -1052,12 +1024,29 @@ export class GameService {
         }
       }
 
+      await this.removeOldGamesWithoutScore();
+
       return appliedUpdates.length ? appliedUpdates : results;
     } catch (error) {
       console.error('Error fetching games scores:', error);
       return [];
     } finally {
       this.isFetchingScores = false;
+    }
+  }
+
+  private async removeOldGamesWithoutScore() {
+    const gamesToDelete = await this.fetchGamesWithoutScores(72);
+
+    console.info(
+      `[fetchGamesScores] ${gamesToDelete.length} games without scores found. Processing...`,
+    );
+
+    for (const game of gamesToDelete) {
+      console.info(
+        `[fetchGamesScores] Removing game ${game.uniqueId} without score and started more than 72h ago...`,
+      );
+      await this.remove(game.uniqueId);
     }
   }
 
