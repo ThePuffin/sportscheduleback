@@ -237,12 +237,14 @@ export class GameService {
           leagueTeams,
           leagueLogos,
           normalizedLeague,
+          forceUpdate,
         );
       } else {
         gamesObj = await getTeamsSchedule(
           leagueTeams,
           normalizedLeague,
           leagueLogos,
+          forceUpdate
         );
       }
 

@@ -146,7 +146,12 @@ export class HockeyData {
     }
   }
 
-  getHockeySchedule = async (activeTeams, leagueLogos, league) => {
+  getHockeySchedule = async (
+    activeTeams,
+    leagueLogos,
+    league,
+    forceUpdate = false,
+  ) => {
     const allGames = {};
 
     await Promise.all(
@@ -172,6 +177,7 @@ export class HockeyData {
               leagueLogos,
               color,
               backgroundColor,
+              forceUpdate,
             );
           }
         } catch (error) {
@@ -308,6 +314,7 @@ export class HockeyData {
     leagueLogos: { string },
     color: string | undefined,
     backgroundColor: string | undefined,
+    forceUpdate = false,
   ) => {
     const leagueName = League.PWHL;
 
@@ -328,13 +335,26 @@ export class HockeyData {
           date_played,
           GameDateISO8601,
           timezone,
+          home_goal_count,
+          visiting_goal_count,
           venue_location,
         } = game;
-
+        const homeGoalCount = home_goal_count;
+        const visitingGoalCount = visiting_goal_count;
+        let status = null;
+        if (
+          homeGoalCount !== '0' &&
+          homeGoalCount !== '' &&
+          visitingGoalCount !== '0' &&
+          visitingGoalCount !== ''
+        ) {
+          status = 'FINISHED';
+        }
         const now = new Date();
-
+        const tenMonthAgo = new Date(now.getTime() - 300 * 24 * 60 * 60 * 1000);
+        const untilDate = forceUpdate ? tenMonthAgo : now;
         const isActive = true;
-        if (new Date(GameDateISO8601) < now) return;
+        if (new Date(GameDateISO8601) < untilDate) return;
 
         const awayTeamName = visiting_team_name.includes(visiting_team_city)
           ? visiting_team_name
@@ -359,9 +379,10 @@ export class HockeyData {
           homeTeamLogo: leagueLogos[home_team_code],
           homeTeamLogoDark: leagueLogos[home_team_code],
           homeTeamShort: home_team_code,
-          homeTeamScore: null,
-          gameStatus: null,
-          awayTeamScore: null,
+          homeTeamScore: status === 'FINISHED' ? Number(home_goal_count) : null,
+          awayTeamScore:
+            status === 'FINISHED' ? Number(visiting_goal_count) : null,
+          gameStatus: status,
           league: leagueName,
           placeName: capitalize(venue_location),
           selectedTeam: home_team_code === id,
