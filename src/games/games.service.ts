@@ -244,7 +244,7 @@ export class GameService {
           leagueTeams,
           normalizedLeague,
           leagueLogos,
-          forceUpdate
+          forceUpdate,
         );
       }
 
@@ -1094,26 +1094,21 @@ export class GameService {
 
     for (const game of games) {
       if (game.league === League.PWHL) {
+        pwhlGames.push(game);
       } else {
         espnGames.push(game);
       }
     }
 
     if (pwhlGames.length > 0) {
-      const dates = new Set<string>();
-      pwhlGames.forEach((g) => {
-        if (g.gameDate) dates.add(g.gameDate);
-      });
       const hockeyData = new HockeyData();
-      for (const date of dates) {
-        try {
-          const scores = await hockeyData.getPWHLScores(date);
-          if (Array.isArray(scores)) {
-            allScores.push(...scores);
-          }
-        } catch (error) {
-          console.error(`Error fetching PWHL scores for ${date}:`, error);
+      try {
+        const scores = await hockeyData.getPWHLRealTimeData();
+        if (Array.isArray(scores)) {
+          allScores.push(...scores);
         }
+      } catch (error) {
+        console.error(`Error fetching PWHL live scores:`, error);
       }
     }
 

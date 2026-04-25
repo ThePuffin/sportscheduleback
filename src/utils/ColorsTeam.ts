@@ -1227,6 +1227,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#000000',
     backgroundColor: '#000000',
   },
+  'NCAAF-GRNL': {
+    color: '#000000',
+    backgroundColor: '#000000',
+  },
   'NCAAF-GT': {
     color: '#ffffff',
     backgroundColor: '#b3a369',
@@ -1238,6 +1242,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   'NCAAF-GWEB': {
     color: '#909090',
     backgroundColor: '#c12535',
+  },
+  'NCAAF-HAMP': {
+    color: '#0067AC',
+    backgroundColor: '#000000',
   },
   'NCAAF-HAW': {
     color: '#005737',
@@ -1318,6 +1326,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   'NCAAF-LAF': {
     color: '#a59474',
     backgroundColor: '#790000',
+  },
+  'NCAAF-LAM': {
+    color: '#ebebeb',
+    backgroundColor: '#000000',
   },
   'NCAAF-LIB': {
     color: '#b72025',
@@ -1506,6 +1518,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   'NCAAF-NU': {
     color: '#ffffff',
     backgroundColor: '#492f92',
+  },
+  'NCAAF-NWST': {
+    color: '#ed6118',
+    backgroundColor: '#492F91',
   },
   'NCAAF-ODU': {
     color: '#a1d2f1',

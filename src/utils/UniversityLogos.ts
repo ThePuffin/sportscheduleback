@@ -169,6 +169,7 @@ export const UniversityLogos: Record<string, string> = {
   'GRA': 'https://a.espncdn.com/i/teamlogos/ncaa/500/2254.png',
   'GRAM': 'https://a.espncdn.com/guid/d8f839f3-b327-3a83-9d8d-147f13cfccfb/logos/primary_logo_on_white_color.png',
   'GRI': 'https://a.espncdn.com/i/teamlogos/ncaa/500/65.png',
+  'GRNL': 'https://a.espncdn.com/i/teamlogos/ncaa/500/65.png',
   'GT': 'https://a.espncdn.com/guid/95e576dc-b77b-e00f-194d-4bb7538fa60d/logos/primary_logo_on_white_color.png',
   'GTWN': 'https://a.espncdn.com/guid/4492fe92-59f4-713c-c83a-bf31d413d897/logos/primary_logo_on_white_color.png',
   'GW': 'https://a.espncdn.com/guid/dbb26f90-7984-0bf5-9234-b95546a63ccc/logos/primary_logo_on_white_color.png',

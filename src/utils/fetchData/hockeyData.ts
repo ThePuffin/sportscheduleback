@@ -257,13 +257,14 @@ export class HockeyData {
         `${pwhlAPI}index.php?feed=modulekit&view=statviewtype&stat=conference&type=standings&season_id=${seasonId}&key=446521baf8c38984&client_code=pwhl&fmt=json`,
       );
       const standingsJson = await standingsResponse.json();
-      const standingsList = standingsJson?.SiteKit?.Statviewtype;
+      const standingsList =
+        standingsJson?.SiteKit?.Statviewtype || standingsJson;
       if (!standingsList) return {};
 
       const records = {};
 
       standingsList.forEach((team) => {
-        const code = team.team_code;
+        const code = team.team_code || team.code;
         if (code) {
           let wins = Number.parseInt(team.wins, 10) || 0;
           const losses = Number.parseInt(team.losses, 10) || 0;
@@ -507,4 +508,83 @@ export class HockeyData {
       return [];
     }
   };
+
+  async getPWHLRealTimeData(): Promise<any[]> {
+    try {
+      const auth = 'uwM69pPkdUhb0UuVAxM8IcA6pBAzATAxOc8979oJ';
+      const key = 'AIzaSyBVn0Gr6zIFtba-hQy3StkifD8bb7Hi68A';
+
+      const [liveRes, clockRes] = await Promise.all([
+        fetch(
+          `https://leaguestat-b9523.firebaseio.com/svf/pwhl.json?auth=${auth}&key=${key}`,
+        ).catch(() => null),
+        fetch(
+          `https://leaguestat-b9523.firebaseio.com/svf/pwhl/runningclock.json?auth=${auth}`,
+        ).catch(() => null),
+      ]);
+
+      if (!liveRes?.ok || !clockRes?.ok) return [];
+
+      const liveData = await liveRes.json();
+      const clockData = await clockRes.json();
+
+      // Access games within the goalssummary category based on the Firebase dump structure
+      const gamesMap = liveData?.goalssummary?.[1]?.games || {};
+      const clockGamesMap = clockData?.games || {};
+      const results = [];
+
+      for (const [gameId, data] of Object.entries(gamesMap)) {
+        const clockEntry = clockGamesMap[gameId] || {};
+        const gameData = data as any;
+
+        // Use correct field names for scores from the goalssummary category
+        const homeScore = gameData.HomeGoalTotal;
+        const awayScore = gameData.VisitorGoalTotal;
+
+        let clock = '';
+        let period = '';
+        const clockInfo = clockEntry.Clock;
+        if (clockInfo) {
+          const mins = clockInfo.Minutes || '00';
+          const secs = clockInfo.Seconds || '00';
+          clock = `${mins}:${secs}`;
+          period = clockInfo.period || '';
+        }
+
+        const statusId = clockEntry.status_id;
+
+        let isFinal = false;
+        let gameStatus = 'SCHEDULED';
+
+        if (statusId === 4) {
+          gameStatus = 'FINISHED';
+          isFinal = true;
+        } else if (clock && period) {
+          gameStatus = `${clock} - ${period}`;
+        } else if (homeScore != null && awayScore != null) {
+          // Heuristic: If scores exist but it's not in the running clock, assume finished
+          gameStatus = 'FINISHED';
+          isFinal = true;
+        }
+
+        results.push({
+          uniqueId: gameId,
+          league: League.PWHL,
+          homeTeamScore:
+            homeScore != null ? Number.parseInt(homeScore, 10) : null,
+          awayTeamScore:
+            awayScore != null ? Number.parseInt(awayScore, 10) : null,
+          isFinal: isFinal,
+          gameStatus: gameStatus,
+          gameClock: clock,
+          gamePeriod: period,
+          startTimeUTC: '',
+        });
+      }
+      return results;
+    } catch (error) {
+      console.error('Error fetching PWHL RealTime data:', error);
+      return [];
+    }
+  }
 }
