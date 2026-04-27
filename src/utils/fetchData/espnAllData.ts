@@ -9,6 +9,12 @@ import { capitalize, getLuminance } from '../utils';
 
 const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
 
+const formatSeriesSummary = (summary?: string): string => {
+  if (!summary) return '';
+  if (summary.length > 30) return summary.substring(0, 27) + '...';
+  return summary;
+};
+
 const getNormalizedLeagueName = (leagueName: string) => {
   if (leagueName.includes('OLYMPICS')) {
     if (leagueName.includes('WOMEN')) return 'OLYMPICS-WOMEN';
@@ -538,6 +544,10 @@ const getEachTeamSchedule = async (
           homeTeamShort,
           homeTeamScore: homeTeamScore,
           awayTeamScore: awayTeamScore,
+          seriesSummary: formatSeriesSummary(
+            competitions[0].series?.summary ||
+              competitions[0].notes?.[0]?.headline,
+          ),
           league: normalizedLeagueName.toUpperCase(),
           placeName: capitalize(venue?.address?.city) ?? '',
           selectedTeam: homeAbbrev === abbrev,
@@ -572,7 +582,6 @@ const getEachTeamSchedule = async (
     return gamesData;
   } catch (error) {
     console.error(`Error in getEachTeamSchedule for ${value}:`, error);
-    return [];
   }
 };
 
@@ -690,6 +699,9 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
                     isFinalDetail === true,
                   homeTeamRecord,
                   awayTeamRecord,
+                  seriesSummary: formatSeriesSummary(
+                    comp.series?.summary || comp.notes?.[0]?.headline,
+                  ),
                   status: statusDetail?.name || displayClockDetail || '',
                   gameClock: displayClockDetail,
                   gamePeriod: comp.status?.period,
@@ -758,6 +770,9 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
           isFinal: statusIndicatesFinished === true,
           homeTeamRecord,
           awayTeamRecord,
+          seriesSummary: formatSeriesSummary(
+            competitions.series?.summary || competitions.notes?.[0]?.headline,
+          ),
           status: status?.name || displayClock || '',
         };
         results.push(normalized);
@@ -846,6 +861,9 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
       gameClock: displayClock || '',
       gamePeriod: competition.status?.period,
       startTimeUTC: competition.date,
+      seriesSummary: formatSeriesSummary(
+        competition.series?.summary || competition.notes?.[0]?.headline,
+      ),
     };
   } catch (error) {
     console.error(

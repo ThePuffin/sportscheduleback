@@ -445,6 +445,7 @@ export class HockeyData {
         homeTeamScore: null,
         awayTeamScore: null,
         gameStatus: null,
+        seriesSummary: (game as any).seriesSummary?.seriesStatusShort,
         league: leagueName,
         placeName: capitalize(homeTeam.placeName.default),
         selectedTeam: homeTeam.abbrev === id,
