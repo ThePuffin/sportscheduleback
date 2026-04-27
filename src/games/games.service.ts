@@ -226,6 +226,16 @@ export class GameService {
         forceUpdate ? 'manual' : 'auto',
       );
 
+      const todayStr = readableDate(now);
+      await this.gameModel.updateMany(
+        {
+          league: normalizedLeague,
+          gameDate: { $gte: todayStr },
+          isActive: true,
+        },
+        { $set: { isActive: false } },
+      );
+
       // Fetch teams and logos for the league
       const leagueTeams = await this.teamService.findAll([normalizedLeague]);
       const leagueLogos = await this.getTeamsLogo(leagueTeams);
@@ -254,6 +264,7 @@ export class GameService {
       if (games && games.length > 0) {
         for (const game of games) {
           game.updateDate = new Date().toISOString();
+          game.isActive = true;
           await this.create(game);
         }
       }
