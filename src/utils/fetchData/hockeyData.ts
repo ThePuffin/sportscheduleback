@@ -446,6 +446,7 @@ export class HockeyData {
         awayTeamScore: null,
         gameStatus: null,
         seriesSummary: (game as any).seriesSummary?.seriesStatusShort,
+        seriesStatus: (game as any).seriesSummary?.seriesStatusLong,
         league: leagueName,
         placeName: capitalize(homeTeam.placeName.default),
         selectedTeam: homeTeam.abbrev === id,
@@ -502,6 +503,8 @@ export class HockeyData {
             uniqueId: game.id,
             gameDate: date,
             league: League.PWHL,
+            seriesSummary: game?.game_number ? `Game ${game.game_number}` : '',
+            seriesStatus: game?.game_number ? `Game ${game.game_number}` : '',
           };
         });
     } catch (error) {

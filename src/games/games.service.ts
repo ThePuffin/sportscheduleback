@@ -59,7 +59,8 @@ export class GameService {
     return {
       ...game,
       homeTeamRecord: game.seriesSummary || homeTeam?.record || '',
-      awayTeamRecord: game.seriesSummary || awayTeam?.record || '',
+      awayTeamRecord:
+        game.seriesStatus || game.seriesSummary || awayTeam?.record || '',
       homeTeam: homeTeam?.label || game.homeTeam,
       homeTeamShort: homeTeam?.abbrev || game.homeTeamShort,
       homeTeamLogo:
@@ -1006,6 +1007,8 @@ export class GameService {
                     gameClock: score.gameClock,
                     gamePeriod: score.gamePeriod,
                     gameStatus: this._resolveStatus(score),
+                    seriesSummary: score.seriesSummary,
+                    seriesStatus: score.seriesStatus,
                   },
                   { new: true },
                 )
@@ -1175,6 +1178,8 @@ export class GameService {
         game.gamePeriod = matchedScore.gamePeriod;
 
         game.gameStatus = this._resolveStatus(matchedScore);
+        game.seriesSummary = matchedScore.seriesSummary;
+        game.seriesStatus = matchedScore.seriesStatus;
 
         updatedGames.push(game);
       } else {

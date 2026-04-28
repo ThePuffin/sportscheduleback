@@ -526,6 +526,7 @@ const getEachTeamSchedule = async (
 
         let homeTeamShort = homeAbbrev;
         let awayTeamShort = awayAbbrev;
+        const comp = competitions[0];
 
         return {
           arenaName: capitalize(venue?.fullName) ?? '',
@@ -544,10 +545,8 @@ const getEachTeamSchedule = async (
           homeTeamShort,
           homeTeamScore: homeTeamScore,
           awayTeamScore: awayTeamScore,
-          seriesSummary: formatSeriesSummary(
-            competitions[0].series?.summary ||
-              competitions[0].notes?.[0]?.headline,
-          ),
+          seriesSummary: formatSeriesSummary(comp?.notes?.[0]?.headline || ''),
+          seriesStatus: formatSeriesSummary(comp?.series?.summary || ''),
           league: normalizedLeagueName.toUpperCase(),
           placeName: capitalize(venue?.address?.city) ?? '',
           selectedTeam: homeAbbrev === abbrev,
@@ -700,8 +699,9 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
                   homeTeamRecord,
                   awayTeamRecord,
                   seriesSummary: formatSeriesSummary(
-                    comp.series?.summary || comp.notes?.[0]?.headline,
+                    comp.notes?.[0]?.headline || '',
                   ),
+                  seriesStatus: formatSeriesSummary(comp.series?.summary || ''),
                   status: statusDetail?.name || displayClockDetail || '',
                   gameClock: displayClockDetail,
                   gamePeriod: comp.status?.period,
@@ -771,8 +771,9 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
           homeTeamRecord,
           awayTeamRecord,
           seriesSummary: formatSeriesSummary(
-            competitions.series?.summary || competitions.notes?.[0]?.headline,
+            competitions.notes?.[0]?.headline || '',
           ),
+          seriesStatus: formatSeriesSummary(competitions.series?.summary || ''),
           status: status?.name || displayClock || '',
         };
         results.push(normalized);
@@ -862,8 +863,9 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
       gamePeriod: competition.status?.period,
       startTimeUTC: competition.date,
       seriesSummary: formatSeriesSummary(
-        competition.series?.summary || competition.notes?.[0]?.headline,
+        competition.notes?.[0]?.headline || '',
       ),
+      seriesStatus: formatSeriesSummary(competition.series?.summary || ''),
     };
   } catch (error) {
     console.error(
