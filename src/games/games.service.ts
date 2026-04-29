@@ -1165,19 +1165,35 @@ export class GameService {
       }
 
       if (matchedScore) {
+        // Resolve the status from the matched score
+        const resolvedStatus = this._resolveStatus(matchedScore);
+
+        // Update isActive based on resolved status
+        if (resolvedStatus === 'POSTPONED' || resolvedStatus === 'CANCELLED') {
+          game.isActive = false;
+        } else {
+          // If the matchedScore explicitly provides isActive, use it, otherwise keep current
+          game.isActive =
+            matchedScore.isActive === undefined
+              ? game.isActive
+              : matchedScore.isActive;
+        }
+
+        // Update startTimeUTC and gameDate if they have changed
+        if (
+          matchedScore.startTimeUTC &&
+          game.startTimeUTC !== matchedScore.startTimeUTC
+        ) {
+          game.startTimeUTC = matchedScore.startTimeUTC;
+          game.gameDate = readableDate(new Date(matchedScore.startTimeUTC));
+        }
+
         game.homeTeamScore = matchedScore.homeTeamScore;
         game.awayTeamScore = matchedScore.awayTeamScore;
-        game.isActive =
-          matchedScore.isActive === undefined
-            ? game.isActive
-            : matchedScore.isActive;
-
         game.updateDate = new Date().toISOString();
-
         game.gameClock = matchedScore.gameClock;
         game.gamePeriod = matchedScore.gamePeriod;
-
-        game.gameStatus = this._resolveStatus(matchedScore);
+        game.gameStatus = resolvedStatus; // Use the resolved status
         game.seriesSummary = matchedScore.seriesSummary;
         game.seriesStatus = matchedScore.seriesStatus;
 
@@ -1315,6 +1331,25 @@ export class GameService {
     // Priority 1: Check if game is truly finished
     if (score.isFinal) {
       return 'FINISHED';
+    }
+
+    // Priority 2: Check for explicit cancellation
+    if (score.status && typeof score.status === 'object') {
+      const statusName = score.status.name?.toUpperCase();
+      const statusDetail = score.status.detail?.toUpperCase();
+      const statusShortDetail = score.status.shortDetail?.toUpperCase();
+
+      if (
+        statusName?.includes('CANCELLED') ||
+        statusDetail?.includes('CANCELLED') ||
+        statusShortDetail?.includes('CANCELLED')
+      ) {
+        return 'CANCELLED';
+      }
+    } else if (typeof score.status === 'string') {
+      if (score.status.toUpperCase().includes('CANCELLED')) {
+        return 'CANCELLED';
+      }
     }
 
     // Priority 2: If API provides explicit game status (like "1st", "Top", "Bot", etc.), use it
