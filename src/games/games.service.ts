@@ -1171,12 +1171,14 @@ export class GameService {
         // Update isActive based on resolved status
         if (resolvedStatus === 'POSTPONED' || resolvedStatus === 'CANCELLED') {
           game.isActive = false;
+          await game.save();
         } else {
           // If the matchedScore explicitly provides isActive, use it, otherwise keep current
           game.isActive =
             matchedScore.isActive === undefined
               ? game.isActive
               : matchedScore.isActive;
+          await game.save();
         }
 
         // Update startTimeUTC and gameDate if they have changed
@@ -1186,6 +1188,7 @@ export class GameService {
         ) {
           game.startTimeUTC = matchedScore.startTimeUTC;
           game.gameDate = readableDate(new Date(matchedScore.startTimeUTC));
+          await game.save();
         }
 
         game.homeTeamScore = matchedScore.homeTeamScore;
