@@ -624,9 +624,20 @@ export class GameService {
       const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
       // avoid dupplicate games
-      const filteredGames = games.filter(({ homeTeamId, teamSelectedId }) => {
-        return homeTeamId === teamSelectedId;
-      });
+      const filteredGames = games
+        .filter(({ gameStatus, startTimeUTC }) => {
+          const now = new Date();
+          const isStartedForMoreThan12Hours =
+            new Date(startTimeUTC) <
+            new Date(now.getTime() - 12 * 60 * 60 * 1000);
+          return (
+            (gameStatus !== 'FINISHED' && !isStartedForMoreThan12Hours) ||
+            gameStatus === 'FINISHED'
+          );
+        })
+        .filter(({ homeTeamId, teamSelectedId }) => {
+          return homeTeamId === teamSelectedId;
+        });
       return filteredGames.map((game: any) =>
         this._enrichGameWithTeamData(game, teamsMap),
       );
@@ -1326,9 +1337,20 @@ export class GameService {
       const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
       // avoid dupplicate games
-      const filteredGames = games.filter(({ homeTeamId, teamSelectedId }) => {
-        return homeTeamId === teamSelectedId;
-      });
+      const filteredGames = games
+        .filter(({ gameStatus, startTimeUTC }) => {
+          const now = new Date();
+          const isStartedForMoreThan12Hours =
+            new Date(startTimeUTC) <
+            new Date(now.getTime() - 12 * 60 * 60 * 1000);
+          return (
+            (gameStatus !== 'FINISHED' && !isStartedForMoreThan12Hours) ||
+            gameStatus === 'FINISHED'
+          );
+        })
+        .filter(({ homeTeamId, teamSelectedId }) => {
+          return homeTeamId === teamSelectedId;
+        });
 
       const gamesByTimeSlot: { [key: string]: any[] } = {};
       filteredGames.forEach((game: any) => {
