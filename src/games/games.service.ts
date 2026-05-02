@@ -633,7 +633,7 @@ export class GameService {
     }
   }
 
-  async update(uniqueId: string, updateGameDto: UpdateGameDto) {
+  async update(uniqueId: string, updateGameDto: Partial<UpdateGameDto>) {
     const filter = { uniqueId: uniqueId };
     return this.gameModel.updateOne(filter, updateGameDto);
   }
@@ -906,7 +906,11 @@ export class GameService {
           }
 
           // fallback: match by home/away ids + gameDate (allow using team shorts when ids missing)
-          if (!game && (score.startTimeUTC || score.gameDate)) {
+          const dateOfGame = score.startTimeUTC || score?.gameDate;
+
+          if (!game && dateOfGame) {
+            // if score.startTimeUTC is after now update game in DB with this new startTimeUTC to be able to match better next time
+
             const gameDate =
               score.gameDate || readableDate(new Date(score.startTimeUTC));
             const candidateHomeId =
@@ -985,52 +989,24 @@ export class GameService {
           }
 
           if (game) {
-            if (isPostponed) {
-              await this.remove(game.uniqueId);
-              continue;
-            }
-
             const needsUpdate =
               game.homeTeamScore === null ||
               game.homeTeamScore === undefined ||
               game.awayTeamScore === null ||
               game.awayTeamScore === undefined;
-            if (needsUpdate) {
-              const updated = await this.gameModel
-                .findOneAndUpdate(
-                  { _id: game._id },
-                  {
-                    homeTeamScore: score.homeTeamScore,
-                    awayTeamScore: score.awayTeamScore,
-                    isActive: true,
-                    updateDate: new Date().toISOString(),
-                    gameClock: score.gameClock,
-                    gamePeriod: score.gamePeriod,
-                    gameStatus: this._resolveStatus(score),
-                    seriesSummary: score.seriesSummary,
-                    seriesStatus: score.seriesStatus,
-                  },
-                  { new: true },
-                )
-                .lean()
-                .exec();
-              if (updated) {
-                if (score.homeTeamRecord && game.homeTeamId) {
-                  await this.teamService.updateRecord(
-                    game.homeTeamId,
-                    score.homeTeamRecord,
-                  );
-                }
-                if (score.awayTeamRecord && game.awayTeamId) {
-                  await this.teamService.updateRecord(
-                    game.awayTeamId,
-                    score.awayTeamRecord,
-                  );
-                }
-                updated.homeTeamRecord = score.homeTeamRecord;
-                updated.awayTeamRecord = score.awayTeamRecord;
-                appliedUpdates.push(updated);
-              }
+
+            await this.syncGameWithScore(score, game);
+
+            if (isPostponed) {
+              await this.remove(game.uniqueId);
+              continue;
+            }
+
+            if (needsUpdate && score.isFinal) {
+              // On attache les records pour le retour API si nécessaire pour l'UI
+              (game as any).homeTeamRecord = score.homeTeamRecord;
+              (game as any).awayTeamRecord = score.awayTeamRecord;
+              appliedUpdates.push(game);
             }
           }
         } catch (err) {
@@ -1165,41 +1141,7 @@ export class GameService {
       }
 
       if (matchedScore) {
-        // Resolve the status from the matched score
-        const resolvedStatus = this._resolveStatus(matchedScore);
-
-        // Update isActive based on resolved status
-        if (resolvedStatus === 'POSTPONED' || resolvedStatus === 'CANCELLED') {
-          game.isActive = false;
-          await game.save();
-        } else {
-          // If the matchedScore explicitly provides isActive, use it, otherwise keep current
-          game.isActive =
-            matchedScore.isActive === undefined
-              ? game.isActive
-              : matchedScore.isActive;
-          await game.save();
-        }
-
-        // Update startTimeUTC and gameDate if they have changed
-        if (
-          matchedScore.startTimeUTC &&
-          game.startTimeUTC !== matchedScore.startTimeUTC
-        ) {
-          game.startTimeUTC = matchedScore.startTimeUTC;
-          game.gameDate = readableDate(new Date(matchedScore.startTimeUTC));
-          await game.save();
-        }
-
-        game.homeTeamScore = matchedScore.homeTeamScore;
-        game.awayTeamScore = matchedScore.awayTeamScore;
-        game.updateDate = new Date().toISOString();
-        game.gameClock = matchedScore.gameClock;
-        game.gamePeriod = matchedScore.gamePeriod;
-        game.gameStatus = resolvedStatus; // Use the resolved status
-        game.seriesSummary = matchedScore.seriesSummary;
-        game.seriesStatus = matchedScore.seriesStatus;
-
+        await this.syncGameWithScore(matchedScore, game);
         updatedGames.push(game);
       } else {
         updatedGames.push(game);
@@ -1207,6 +1149,83 @@ export class GameService {
     }
 
     return updatedGames;
+  }
+
+  private async syncGameWithScore(
+    matchedScore: any,
+    game: mongoose.Document<unknown, {}, Game> &
+      Game &
+      Required<{ _id: unknown }> & { __v: number },
+  ) {
+    const resolvedStatus = this._resolveStatus(matchedScore);
+
+    // On ne met à jour les scores et les informations de temps de jeu que si le match est en cours ou terminé.
+    // Cela évite de remplir la base de données avec des scores temporaires (ex: 0-0) pour des matchs encore "programmés".
+    if (
+      resolvedStatus !== 'SCHEDULED' &&
+      resolvedStatus !== 'POSTPONED' &&
+      resolvedStatus !== 'CANCELLED'
+    ) {
+      game.homeTeamScore = matchedScore.homeTeamScore;
+      game.awayTeamScore = matchedScore.awayTeamScore;
+      game.gameClock = matchedScore.gameClock;
+      game.gamePeriod = matchedScore.gamePeriod;
+    }
+
+    game.updateDate = new Date().toISOString();
+    game.gameStatus = resolvedStatus;
+    game.seriesSummary = matchedScore.seriesSummary;
+    game.seriesStatus = matchedScore.seriesStatus;
+
+    // Mise à jour des fiches d'équipes (Records)
+    if (matchedScore.homeTeamRecord && game.homeTeamId) {
+      await this.teamService.updateRecord(
+        game.homeTeamId,
+        matchedScore.homeTeamRecord,
+      );
+    }
+    if (matchedScore.awayTeamRecord && game.awayTeamId) {
+      await this.teamService.updateRecord(
+        game.awayTeamId,
+        matchedScore.awayTeamRecord,
+      );
+    }
+
+    // Update isActive based on resolved status
+    if (resolvedStatus === 'POSTPONED' || resolvedStatus === 'CANCELLED') {
+      game.isActive = false;
+    } else {
+      // If the matchedScore explicitly provides isActive, use it, otherwise keep current
+      game.isActive =
+        matchedScore.isActive === undefined
+          ? game.isActive
+          : matchedScore.isActive;
+    }
+
+    // Update startTimeUTC and gameDate if they have changed (using same logic as fetchGamesScores)
+    if (matchedScore.startTimeUTC) {
+      const startTime = new Date(matchedScore.startTimeUTC);
+      const now = new Date();
+      const currentDateAdjusted = new Date(
+        new Date(matchedScore.startTimeUTC).toLocaleString('en-US', {
+          timeZone: 'America/Los_Angeles',
+        }),
+      );
+
+      const newStartTimeISO = startTime.toISOString();
+      const newGameDate = readableDate(currentDateAdjusted);
+
+      if (
+        startTime > now &&
+        (game.startTimeUTC !== newStartTimeISO || game.gameDate !== newGameDate)
+      ) {
+        game.startTimeUTC = newStartTimeISO;
+        game.gameDate = newGameDate;
+      }
+    }
+
+    await game.save();
+    return resolvedStatus;
   }
 
   async findByDateHour(
