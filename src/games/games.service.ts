@@ -395,6 +395,36 @@ export class GameService {
     return games;
   }
 
+  async findResultsByTeam(teamSelectedId: string, startDate?: string) {
+    if (!startDate) {
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      startDate = readableDate(oneYearAgo);
+    }
+
+    const games = await this.filterGames({
+      teamSelectedIds: teamSelectedId,
+      startDate,
+      clean: true,
+    });
+
+    for (const date in games) {
+      games[date] = games[date].filter((game) => {
+        return (
+          game.homeTeamScore !== null &&
+          game.homeTeamScore !== undefined &&
+          game.awayTeamScore !== null &&
+          game.awayTeamScore !== undefined
+        );
+      });
+      if (games[date].length === 0) {
+        delete games[date];
+      }
+    }
+
+    return games;
+  }
+
   async findByLeague(
     league: string,
     maxResults?: number,

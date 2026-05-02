@@ -33,6 +33,14 @@ export class GamesController {
     return this.GameService.findByTeam(teamSelectedId, startDate, clean);
   }
 
+  @Get('/team/:teamSelectedId/results')
+  findResultsByTeam(
+    @Param('teamSelectedId') teamSelectedId: string,
+    @Query('startDate') startDate?: string,
+  ) {
+    return this.GameService.findResultsByTeam(teamSelectedId, startDate);
+  }
+
   @Get('/filter')
   async filterGames(
     @Query('startDate') startDate: string,
