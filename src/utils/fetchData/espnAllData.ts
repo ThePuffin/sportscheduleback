@@ -545,8 +545,12 @@ const getEachTeamSchedule = async (
           homeTeamShort,
           homeTeamScore: homeTeamScore,
           awayTeamScore: awayTeamScore,
-          seriesSummary: formatSeriesSummary(comp?.notes?.[0]?.headline || ''),
-          seriesStatus: formatSeriesSummary(comp?.series?.summary || ''),
+          seriesSummary: formatSeriesSummary(
+            comp?.notes?.[0]?.headline || game.notes?.[0]?.headline || '',
+          ),
+          seriesStatus: formatSeriesSummary(
+            comp?.series?.summary || game.series?.summary || '',
+          ),
           league: normalizedLeagueName.toUpperCase(),
           placeName: capitalize(venue?.address?.city) ?? '',
           selectedTeam: homeAbbrev === abbrev,
@@ -584,12 +588,16 @@ const getEachTeamSchedule = async (
   }
 };
 
-export const getESPNScores = async (leagueKey: string, date: string) => {
+export const getESPNScores = async (
+  leagueKey: string,
+  date?: string,
+  seasonType?: number,
+) => {
   try {
     if (aggregateLeagues[leagueKey]) {
       let allScores = [];
       for (const subLeague of aggregateLeagues[leagueKey]) {
-        const scores = await getESPNScores(subLeague, date);
+        const scores = await getESPNScores(subLeague, date, seasonType);
         allScores = [...allScores, ...scores];
       }
       return allScores;
@@ -599,9 +607,12 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
     if (!leagueConfigs[leagueKey]) return results;
     const { sport, league } = leagueConfigs[leagueKey];
     const base = `${espnAPI}${sport}/${league}`;
-    // ESPN scoreboard endpoint: /scoreboard?dates=YYYYMMDD
-    const datestr = date.replace(/-/g, '');
-    const url = `${base}/scoreboard?dates=${datestr}`;
+    const params = new URLSearchParams();
+    if (date) params.append('dates', date.replace(/-/g, ''));
+    if (seasonType) params.append('seasontype', seasonType.toString());
+
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const url = `${base}/scoreboard${queryString}`;
     try {
       const res = await fetch(url);
       const json = await res.json();
@@ -699,9 +710,11 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
                   homeTeamRecord,
                   awayTeamRecord,
                   seriesSummary: formatSeriesSummary(
-                    comp.notes?.[0]?.headline || '',
+                    comp.notes?.[0]?.headline || j.notes?.[0]?.headline || '',
                   ),
-                  seriesStatus: formatSeriesSummary(comp.series?.summary || ''),
+                  seriesStatus: formatSeriesSummary(
+                    comp.series?.summary || j.series?.summary || '',
+                  ),
                   status: statusDetail?.name || displayClockDetail || '',
                   gameClock: displayClockDetail,
                   gamePeriod: comp.status?.period,
@@ -771,9 +784,11 @@ export const getESPNScores = async (leagueKey: string, date: string) => {
           homeTeamRecord,
           awayTeamRecord,
           seriesSummary: formatSeriesSummary(
-            competitions.notes?.[0]?.headline || '',
+            competitions.notes?.[0]?.headline || ev.notes?.[0]?.headline || '',
           ),
-          seriesStatus: formatSeriesSummary(competitions.series?.summary || ''),
+          seriesStatus: formatSeriesSummary(
+            competitions.series?.summary || ev.series?.summary || '',
+          ),
           status: status?.name || displayClock || '',
         };
         results.push(normalized);
@@ -863,9 +878,11 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
       gamePeriod: competition.status?.period,
       startTimeUTC: competition.date,
       seriesSummary: formatSeriesSummary(
-        competition.notes?.[0]?.headline || '',
+        competition.notes?.[0]?.headline || data.notes?.[0]?.headline || '',
       ),
-      seriesStatus: formatSeriesSummary(competition.series?.summary || ''),
+      seriesStatus: formatSeriesSummary(
+        competition.series?.summary || data.series?.summary || '',
+      ),
     };
   } catch (error) {
     console.error(
