@@ -41,6 +41,16 @@ export class GamesController {
     return this.GameService.findResultsByTeam(teamSelectedId, startDate);
   }
 
+  @Get('/league/:league/results')
+  findResultsByLeague(
+    @Param('league') league: string,
+    @Query('startDate') startDate?: string,
+    @Query('maxResults', new ParseIntPipe({ optional: true }))
+    maxResults?: number,
+  ) {
+    return this.GameService.findResultsByLeague(league, startDate, maxResults);
+  }
+
   @Get('/filter')
   async filterGames(
     @Query('startDate') startDate: string,

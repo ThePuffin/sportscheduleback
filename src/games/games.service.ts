@@ -401,11 +401,52 @@ export class GameService {
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
       startDate = readableDate(oneYearAgo);
     }
-
+    const today = readableDate(new Date());
     const games = await this.filterGames({
       teamSelectedIds: teamSelectedId,
       startDate,
+      endDate: today,
       clean: true,
+    });
+
+    for (const date in games) {
+      games[date] = games[date].filter((game) => {
+        return (
+          game.homeTeamScore !== null &&
+          game.homeTeamScore !== undefined &&
+          game.awayTeamScore !== null &&
+          game.awayTeamScore !== undefined
+        );
+      });
+      if (games[date].length === 0) {
+        delete games[date];
+      }
+    }
+
+    return games;
+  }
+
+  async findResultsByLeague(
+    league: string,
+    startDate?: string,
+    maxResults?: number,
+  ) {
+    if (!startDate) {
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      startDate = readableDate(oneYearAgo);
+    }
+    maxResults = maxResults || 5000;
+
+    const today = readableDate(new Date());
+
+    const games = await this.filterGames({
+      league,
+      startDate,
+      endDate: today,
+      clean: true,
+      selectedTeam: true,
+      maxResults,
     });
 
     for (const date in games) {
