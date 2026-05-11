@@ -58,9 +58,8 @@ export class GameService {
     const awayTeam = teamsMap.get(game.awayTeamId);
     return {
       ...game,
-      homeTeamRecord: game.seriesSummary || homeTeam?.record || '',
-      awayTeamRecord:
-        game.seriesStatus || game.seriesSummary || awayTeam?.record || '',
+      homeTeamRecord: game.homeTeamRecord || homeTeam?.record || '',
+      awayTeamRecord: game.awayTeamRecord || awayTeam?.record || '',
       homeTeam: homeTeam?.label || game.homeTeam,
       homeTeamShort: homeTeam?.abbrev || game.homeTeamShort,
       homeTeamLogo:
