@@ -90,15 +90,6 @@ export class GameService {
     if (uniqueId) {
       const existingGame = await this.findOne(uniqueId);
       if (existingGame) {
-        // ✅ Correction : On vérifie si la propriété est présente dans le DTO
-        // On n'utilise PAS "if (gameDto.homeTeamScore)" car si c'est 0, ça échouera.
-
-        const hasHomeScore =
-          gameDto.homeTeamScore !== undefined && gameDto.homeTeamScore !== null;
-        const hasAwayScore =
-          gameDto.awayTeamScore !== undefined && gameDto.awayTeamScore !== null;
-
-        // Si le DTO envoie null alors qu'on a déjà un score (0 ou plus), on protège la DB
         if (
           gameDto.homeTeamScore === null &&
           existingGame.homeTeamScore !== null
@@ -113,7 +104,6 @@ export class GameService {
           delete gameDto.awayTeamScore;
         }
 
-        // On force la mise à jour des champs même s'ils valent 0
         Object.assign(existingGame, gameDto);
 
         return await existingGame.save();
@@ -1264,18 +1254,24 @@ export class GameService {
       resolvedStatus !== 'POSTPONED' &&
       resolvedStatus !== 'CANCELLED'
     ) {
-      if (
+      const isFinalStatus =
+        resolvedStatus === 'FINISHED' || matchedScore.isFinal;
+
+      game.homeTeamScore =
         matchedScore.homeTeamScore !== null &&
         matchedScore.homeTeamScore !== undefined
-      ) {
-        game.homeTeamScore = matchedScore.homeTeamScore;
-      }
-      if (
+          ? matchedScore.homeTeamScore
+          : isFinalStatus
+            ? 0
+            : game.homeTeamScore;
+
+      game.awayTeamScore =
         matchedScore.awayTeamScore !== null &&
         matchedScore.awayTeamScore !== undefined
-      ) {
-        game.awayTeamScore = matchedScore.awayTeamScore;
-      }
+          ? matchedScore.awayTeamScore
+          : isFinalStatus
+            ? 0
+            : game.awayTeamScore;
       game.gameClock = matchedScore.gameClock;
       game.gamePeriod = matchedScore.gamePeriod;
     }
