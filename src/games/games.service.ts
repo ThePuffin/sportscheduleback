@@ -58,8 +58,14 @@ export class GameService {
     const awayTeam = teamsMap.get(game.awayTeamId);
     return {
       ...game,
-      homeTeamRecord: game.homeTeamRecord || homeTeam?.record || '',
-      awayTeamRecord: game.awayTeamRecord || awayTeam?.record || '',
+      homeTeamRecord:
+        game.seriesSummary || game.homeTeamRecord || homeTeam?.record || '',
+      awayTeamRecord:
+        game.seriesStatus ||
+        game.seriesSummary ||
+        game.awayTeamRecord ||
+        awayTeam?.record ||
+        '',
       homeTeam: homeTeam?.label || game.homeTeam,
       homeTeamShort: homeTeam?.abbrev || game.homeTeamShort,
       homeTeamLogo:
@@ -1231,8 +1237,8 @@ export class GameService {
   ) {
     const resolvedStatus = this._resolveStatus(matchedScore);
 
-    // On ne met à jour les scores et les informations de temps de jeu que si le match est en cours ou terminé.
-    // Cela évite de remplir la base de données avec des scores temporaires (ex: 0-0) pour des matchs encore "programmés".
+    // Only update scores and game time information if the game is in progress or finished.
+    // This avoids filling the database with temporary scores (e.g., 0-0) for games that are still "scheduled".
     if (
       resolvedStatus !== 'SCHEDULED' &&
       resolvedStatus !== 'POSTPONED' &&
@@ -1265,7 +1271,7 @@ export class GameService {
     game.seriesSummary = matchedScore.seriesSummary;
     game.seriesStatus = matchedScore.seriesStatus;
 
-    // Mise à jour des fiches d'équipes (Records)
+    // Update team records
     if (matchedScore.homeTeamRecord && game.homeTeamId) {
       await this.teamService.updateRecord(
         game.homeTeamId,
@@ -1277,6 +1283,29 @@ export class GameService {
         game.awayTeamId,
         matchedScore.awayTeamRecord,
       );
+    }
+
+    // Propagate series info to future games in the same series
+    // This allows users to see the series lead/status on future scheduled games
+    if (game.seriesSummary || game.seriesStatus) {
+      await this.gameModel
+        .updateMany(
+          {
+            league: game.league,
+            startTimeUTC: { $gt: game.startTimeUTC },
+            $or: [
+              { homeTeamId: game.homeTeamId, awayTeamId: game.awayTeamId },
+              { homeTeamId: game.awayTeamId, awayTeamId: game.homeTeamId },
+            ],
+          },
+          {
+            $set: {
+              seriesSummary: game.seriesSummary,
+              seriesStatus: game.seriesStatus,
+            },
+          },
+        )
+        .exec();
     }
 
     // Update isActive based on resolved status

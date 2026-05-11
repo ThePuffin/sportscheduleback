@@ -2147,6 +2147,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#ffffff',
     backgroundColor: '#000000',
   },
+  'NCAAMH-POS': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
   'NCAAMH-PRIN': {
     color: '#ffffff',
     backgroundColor: '#000000',
