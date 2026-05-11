@@ -104,6 +104,18 @@ export class GameService {
           delete gameDto.awayTeamScore;
         }
 
+        // Protect game status and live info from being overwritten by null/default values
+        const fieldsToProtect = ['gameStatus', 'gameClock', 'gamePeriod'];
+
+        fieldsToProtect.forEach((field) => {
+          if (
+            (gameDto[field] === null || gameDto[field] === undefined) &&
+            existingGame[field] !== null
+          ) {
+            delete gameDto[field];
+          }
+        });
+
         Object.assign(existingGame, gameDto);
 
         return await existingGame.save();
@@ -825,8 +837,19 @@ export class GameService {
     return await this.gameModel
       .find({
         isActive: true,
-        startTimeUTC: { $lte: hoursAgo.toISOString() },
-        gameStatus: { $nin: ['FINISHED', 'FINAL', 'CANCELLED', 'POSTPONED'] },
+        $or: [
+          {
+            startTimeUTC: { $lte: hoursAgo.toISOString() },
+            gameStatus: {
+              $nin: ['FINISHED', 'FINAL', 'CANCELLED', 'POSTPONED'],
+            },
+          },
+          {
+            // Explicitly target games with scores but no status
+            gameStatus: null,
+            homeTeamScore: { $ne: null },
+          },
+        ],
       })
       .sort({ startTimeUTC: -1 }) // Most recent first
       .exec();
@@ -927,7 +950,11 @@ export class GameService {
               game.league,
               possibleId,
             );
-            if (individualScore?.isFinal) {
+            // Accept individual update if it is final OR if the database record is missing its status
+            if (
+              individualScore &&
+              (individualScore.isFinal || game.gameStatus === null)
+            ) {
               console.info(
                 `[fetchGamesScores] Fallback: individual score retrieved for ${game.uniqueId}`,
               );
@@ -959,129 +986,88 @@ export class GameService {
           if (isPostponed) {
             postponedGamesLeagues.add(score.league);
           }
-          if (!score.isFinal && !isPostponed) {
-            continue;
-          }
 
-          // try to find by uniqueId exact first
-          let game = null as any;
+          const matchingGames: any[] = [];
+
           if (score.uniqueId) {
-            game = await this.gameModel
-              .findOne({
-                uniqueId: score.uniqueId,
-                league: score.league,
-                $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
-              })
-              .exec();
-          }
-          // exact uniqueId match result available in `game`
-
-          // try matching DB uniqueId that ends with ESPN id
-          if (!game && score.uniqueId) {
             try {
+              // Match by exact uniqueId or suffix (handles both "123" and "MLB-TEX-123")
               const regex = new RegExp(`${score.uniqueId}$`);
-              game = await this.gameModel
-                .findOne({
-                  uniqueId: { $regex: regex },
+              const idMatches = await this.gameModel
+                .find({
+                  $or: [
+                    { uniqueId: score.uniqueId },
+                    { uniqueId: { $regex: regex } },
+                  ],
                   league: score.league,
-                  $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
                 })
                 .exec();
+              matchingGames.push(...idMatches);
             } catch (e) {
               // ignore regex errors
             }
-            // uniqueId suffix match result available in `game`
           }
 
-          // fallback: match by home/away ids + gameDate (allow using team shorts when ids missing)
-          const dateOfGame = score.startTimeUTC || score?.gameDate;
+          // If no ID matches, try fallback by team IDs and date
+          if (matchingGames.length === 0) {
+            const dateOfGame = score.startTimeUTC || score?.gameDate;
+            if (dateOfGame) {
+              const gameDate =
+                score.gameDate || readableDate(new Date(score.startTimeUTC));
 
-          if (!game && dateOfGame) {
-            // if score.startTimeUTC is after now update game in DB with this new startTimeUTC to be able to match better next time
+              const candidateHomeId =
+                score.homeTeamId ||
+                (score.homeTeamShort
+                  ? `${score.league}-${score.homeTeamShort}`
+                  : undefined);
+              const candidateAwayId =
+                score.awayTeamId ||
+                (score.awayTeamShort
+                  ? `${score.league}-${score.awayTeamShort}`
+                  : undefined);
 
-            const gameDate =
-              score.gameDate || readableDate(new Date(score.startTimeUTC));
-            const candidateHomeId =
-              score.homeTeamId ||
-              (score.homeTeamShort
-                ? `${score.league}-${score.homeTeamShort}`
-                : undefined);
-            const candidateAwayId =
-              score.awayTeamId ||
-              (score.awayTeamShort
-                ? `${score.league}-${score.awayTeamShort}`
-                : undefined);
+              if (candidateHomeId && candidateAwayId) {
+                const teamMatches = await this.gameModel
+                  .find({
+                    homeTeamId: candidateHomeId,
+                    awayTeamId: candidateAwayId,
+                    gameDate,
+                    league: score.league,
+                    isActive: true,
+                  })
+                  .exec();
+                matchingGames.push(...teamMatches);
+              }
 
-            if (candidateHomeId && candidateAwayId) {
-              game = await this.gameModel
-                .findOne({
-                  homeTeamId: candidateHomeId,
-                  awayTeamId: candidateAwayId,
-                  gameDate,
-                  league: score.league,
-                  isActive: true,
-                  $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
-                })
-                .exec();
-            }
-            // teams+date match result available in `game`
-            // skipped teams+date match when ids missing
-          }
-
-          // additional fallback: match by home/away short codes + gameDate when ids/league missing
-          if (
-            !game &&
-            (score.startTimeUTC || score.gameDate) &&
-            score.homeTeamShort &&
-            score.awayTeamShort
-          ) {
-            const gameDate =
-              score.gameDate || readableDate(new Date(score.startTimeUTC));
-            try {
-              game = await this.gameModel
-                .findOne({
-                  homeTeamShort: score.homeTeamShort,
-                  awayTeamShort: score.awayTeamShort,
-                  gameDate,
-                  league: score.league,
-                  isActive: true,
-                  $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
-                })
-                .exec();
-            } catch (e) {
-              // ignore
+              if (
+                matchingGames.length === 0 &&
+                score.homeTeamShort &&
+                score.awayTeamShort
+              ) {
+                const shortMatches = await this.gameModel
+                  .find({
+                    homeTeamShort: score.homeTeamShort,
+                    awayTeamShort: score.awayTeamShort,
+                    gameDate,
+                    league: score.league,
+                    isActive: true,
+                  })
+                  .exec();
+                matchingGames.push(...shortMatches);
+              }
             }
           }
 
-          if (
-            !game &&
-            score.startTimeUTC &&
-            score.homeTeamId &&
-            score.awayTeamId
-          ) {
-            const start = new Date(score.startTimeUTC);
-            const from = new Date(
-              start.getTime() - 5 * 60 * 1000,
-            ).toISOString();
-            const to = new Date(start.getTime() + 5 * 60 * 1000).toISOString();
-            game = await this.gameModel
-              .findOne({
-                startTimeUTC: { $gte: from, $lte: to },
-                homeTeamId: score.homeTeamId,
-                awayTeamId: score.awayTeamId,
-                isActive: true,
-                league: score.league,
-                $or: [{ homeTeamScore: null }, { awayTeamScore: null }],
-              })
-              .exec();
-          }
+          // Deduplicate matches and process each
+          const uniqueMatches = Array.from(
+            new Map(matchingGames.map((g) => [g._id.toString(), g])).values(),
+          );
 
-          if (game) {
+          for (const game of uniqueMatches) {
             const needsUpdate =
               game.homeTeamScore === null ||
-              game.homeTeamScore === undefined ||
               game.awayTeamScore === null ||
-              game.awayTeamScore === undefined;
+              game.gameStatus === null;
 
             await this.syncGameWithScore(score, game);
 
@@ -1090,8 +1076,7 @@ export class GameService {
               continue;
             }
 
-            if (needsUpdate && score.isFinal) {
-              // On attache les records pour le retour API si nécessaire pour l'UI
+            if ((needsUpdate || score.isFinal) && score.isFinal) {
               (game as any).homeTeamRecord = score.homeTeamRecord;
               (game as any).awayTeamRecord = score.awayTeamRecord;
               appliedUpdates.push(game);
@@ -1470,6 +1455,21 @@ export class GameService {
       return 'FINISHED';
     }
 
+    // If the game started a long time ago (e.g., > 12 hours) and has scores,
+    // it is almost certainly finished, regardless of the API status string.
+    if (score.startTimeUTC) {
+      const startTime = new Date(score.startTimeUTC);
+      const now = new Date();
+      const hoursSinceStart =
+        (now.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+      if (
+        hoursSinceStart > 12 &&
+        (score.homeTeamScore !== null || score.awayTeamScore !== null)
+      ) {
+        return 'FINISHED';
+      }
+    }
+
     // Priority 2: Check for explicit cancellation
     if (score.status && typeof score.status === 'object') {
       const statusName = score.status.name?.toUpperCase();
@@ -1493,6 +1493,10 @@ export class GameService {
     if (score.gameStatus) {
       const gameStatus = score.gameStatus.toUpperCase();
       // Game status indicators that mean the game is in progress
+      if (gameStatus === 'FINISHED' || gameStatus === 'FINAL') {
+        return 'FINISHED';
+      }
+
       if (
         [
           'TOP',
@@ -1512,7 +1516,12 @@ export class GameService {
         return score.gameStatus; // Return as-is for live game indicators
       }
       // Game status indicators that mean the game is finished
-      if (gameStatus.includes('FINAL') || gameStatus.includes('ENDED')) {
+      if (
+        gameStatus.includes('FINAL') ||
+        gameStatus.includes('ENDED') ||
+        gameStatus === 'FT' ||
+        gameStatus === 'FULL TIME'
+      ) {
         return 'FINISHED';
       }
       // For other explicit statuses, use them as-is

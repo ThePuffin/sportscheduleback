@@ -486,8 +486,12 @@ const getEachTeamSchedule = async (
         if (new Date(date) < untilDate && !leagueName.includes('OLYMPICS'))
           return;
         const { venue, competitors } = competitions[0];
-        const homeTeamScore = competitors[0]?.score?.value || null;
-        const awayTeamScore = competitors[1]?.score?.value || null;
+
+        const homeCompetitor = competitors.find((c) => c.homeAway === 'home');
+        const awayCompetitor = competitors.find((c) => c.homeAway === 'away');
+        const homeTeamScore = homeCompetitor?.score?.value ?? null;
+        const awayTeamScore = awayCompetitor?.score?.value ?? null;
+
         const venueTimezone = 'America/Los_Angeles';
         const currentDate = new Date(
           new Date(date).toLocaleString('en-US', { timeZone: venueTimezone }),
@@ -556,10 +560,23 @@ const getEachTeamSchedule = async (
           selectedTeam: homeAbbrev === abbrev,
           show: homeAbbrev === abbrev,
           startTimeUTC: new Date(date).toISOString(),
-          gameStatus:
-            homeTeamScore === null || awayTeamScore === null
-              ? null
-              : 'FINISHED',
+          gameStatus: (function () {
+            const status = comp?.status?.type?.name || game?.status?.type?.name;
+            if (
+              status === 'STATUS_FINAL' ||
+              status === 'STATUS_FULL_TIME' ||
+              status === 'STATUS_POSTPONED' ||
+              status === 'STATUS_CANCELLED'
+            ) {
+              return status === 'STATUS_FINAL' || status === 'STATUS_FULL_TIME'
+                ? 'FINISHED'
+                : status.replace('STATUS_', '');
+            }
+            if (status === 'STATUS_IN_PROGRESS') return 'IN_PROGRESS';
+            return homeTeamScore !== null && awayTeamScore !== null
+              ? 'FINISHED'
+              : null;
+          })(),
           teamSelectedId: value,
           isActive,
           uniqueId: id ? `${value}-${id}` : `${value}-${gameDate}-${number}`,
@@ -632,7 +649,7 @@ export const getESPNScores = async (
           status?.completed === true ||
           status?.state === 'post' ||
           (typeof status?.name === 'string' &&
-            /final|completed|post/i.test(status.name)) ||
+            /final|completed|post|full|time|finished/i.test(status.name)) ||
           (typeof displayClock === 'string' &&
             /final|completed/i.test(displayClock));
 
@@ -682,7 +699,9 @@ export const getESPNScores = async (
                   statusDetail?.completed === true ||
                   statusDetail?.state === 'post' ||
                   (typeof statusDetail?.name === 'string' &&
-                    /final|completed|post/i.test(statusDetail.name)) ||
+                    /final|completed|post|full|time|finished/i.test(
+                      statusDetail.name,
+                    )) ||
                   (typeof displayClockDetail === 'string' &&
                     /final|completed/i.test(displayClockDetail));
                 const isFinalDetail =
@@ -715,11 +734,14 @@ export const getESPNScores = async (
                   seriesStatus: formatSeriesSummary(
                     comp.series?.summary || j.series?.summary || '',
                   ),
-                  status: statusDetail?.name || displayClockDetail || '',
+                  status: isFinalDetail
+                    ? 'FINISHED'
+                    : statusDetail?.name || displayClockDetail || '',
                   gameClock: displayClockDetail,
                   gamePeriod: comp.status?.period,
-                  gameStatus:
-                    statusDetail?.shortDetail || statusDetail?.description,
+                  gameStatus: isFinalDetail
+                    ? 'FINISHED'
+                    : statusDetail?.shortDetail || statusDetail?.description,
                 };
               } catch (e) {
                 console.error(`Error fetching summary for event ${ev.id}:`, e);
@@ -780,7 +802,7 @@ export const getESPNScores = async (
             : undefined,
           homeTeamShort,
           awayTeamShort,
-          isFinal: statusIndicatesFinished === true,
+          isFinal: isFinished === true,
           homeTeamRecord,
           awayTeamRecord,
           seriesSummary: formatSeriesSummary(
@@ -789,7 +811,21 @@ export const getESPNScores = async (
           seriesStatus: formatSeriesSummary(
             competitions.series?.summary || ev.series?.summary || '',
           ),
-          status: status?.name || displayClock || '',
+          status: isFinished
+            ? 'FINISHED'
+            : status?.type?.name ||
+              status?.name ||
+              status?.shortDetail ||
+              displayClock ||
+              '',
+          gameClock: displayClock,
+          gamePeriod: competitions.status?.period,
+          gameStatus: isFinished
+            ? 'FINISHED'
+            : status?.type?.detail ||
+              status?.detail ||
+              status?.shortDetail ||
+              status?.description,
         };
         results.push(normalized);
       }
@@ -848,7 +884,7 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
       status?.completed === true ||
       status?.state === 'post' ||
       (typeof status?.name === 'string' &&
-        /final|completed|post/i.test(status.name)) ||
+        /final|completed|post|full|time/i.test(status.name)) ||
       (typeof displayClock === 'string' &&
         displayClock !== '' &&
         /final|completed/i.test(displayClock));
@@ -856,10 +892,11 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
     let gameStatus =
       status?.shortDetail || status?.detail || status?.description;
 
-    if (
+    if (isFinal) {
+      gameStatus = 'FINISHED';
+    } else if (
       (!gameStatus || gameStatus === 'In Progress') &&
-      status?.state === 'in' &&
-      !isFinal
+      status?.state === 'in'
     ) {
       if (displayClock) {
         gameStatus = `${displayClock}${competition.status?.period ? ' - ' + competition.status.period : ''}`;
