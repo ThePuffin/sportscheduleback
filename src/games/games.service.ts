@@ -5,7 +5,7 @@ import * as mongoose from 'mongoose';
 import { Model } from 'mongoose';
 import { TeamService } from '../teams/teams.service';
 import { addHours, readableDate } from '../utils/date';
-import { League } from '../utils/enum';
+import { CollegeLeague, League } from '../utils/enum';
 import {
   getESPNGameScore,
   getESPNScores,
@@ -90,35 +90,32 @@ export class GameService {
     if (uniqueId) {
       const existingGame = await this.findOne(uniqueId);
       if (existingGame) {
-        const now = new Date();
-        const existingStartTime = existingGame.startTimeUTC
-          ? new Date(existingGame.startTimeUTC)
-          : null;
-        const dtoStartTime = gameDto.startTimeUTC
-          ? new Date(gameDto.startTimeUTC)
-          : null;
-        const isExistingGamePast =
-          existingStartTime && existingStartTime.getTime() < now.getTime();
-        const isDtoGamePast =
-          dtoStartTime && dtoStartTime.getTime() < now.getTime();
+        // ✅ Correction : On vérifie si la propriété est présente dans le DTO
+        // On n'utilise PAS "if (gameDto.homeTeamScore)" car si c'est 0, ça échouera.
 
-        if (isExistingGamePast || isDtoGamePast) {
-          return existingGame;
-        }
+        const hasHomeScore =
+          gameDto.homeTeamScore !== undefined && gameDto.homeTeamScore !== null;
+        const hasAwayScore =
+          gameDto.awayTeamScore !== undefined && gameDto.awayTeamScore !== null;
 
+        // Si le DTO envoie null alors qu'on a déjà un score (0 ou plus), on protège la DB
         if (
           gameDto.homeTeamScore === null &&
-          existingGame.homeTeamScore != null
+          existingGame.homeTeamScore !== null
         ) {
           delete gameDto.homeTeamScore;
         }
+
         if (
           gameDto.awayTeamScore === null &&
-          existingGame.awayTeamScore != null
+          existingGame.awayTeamScore !== null
         ) {
           delete gameDto.awayTeamScore;
         }
+
+        // On force la mise à jour des champs même s'ils valent 0
         Object.assign(existingGame, gameDto);
+
         return await existingGame.save();
       }
     }
@@ -810,7 +807,7 @@ export class GameService {
     }
   }
 
-  async fetchGamesWithoutScores(hours = 2): Promise<Game[]> {
+  async fetchOldGamesWithMissingScores(hours = 2): Promise<Game[]> {
     const hoursAgo = new Date();
     hoursAgo.setHours(hoursAgo.getHours() - hours);
 
@@ -825,14 +822,33 @@ export class GameService {
     return gamesWithoutScores;
   }
 
-  async fetchGamesNotStartedWithScores(): Promise<Game[]> {
-    const now = new Date();
+  async fetchGamesForLiveScoreUpdate(hours = 2): Promise<Game[]> {
+    const hoursAgo = new Date();
+    hoursAgo.setHours(hoursAgo.getHours() - hours);
 
+    // Fetch games that are:
+    // 1. Active
+    // 2. Started at least `hours` ago
+    // 3. NOT in a final/cancelled/postponed state
+    // This will include games with partial scores (e.g., 3-0) that are still in progress,
+    // and games with null scores that are in progress or should have started.
     return await this.gameModel
       .find({
-        startTimeUTC: { $gt: now.toISOString() },
+        isActive: true,
+        startTimeUTC: { $lte: hoursAgo.toISOString() },
+        gameStatus: { $nin: ['FINISHED', 'FINAL', 'CANCELLED', 'POSTPONED'] },
+      })
+      .sort({ startTimeUTC: -1 }) // Most recent first
+      .exec();
+  }
+
+  async fetchGamesNotStartedWithScores(): Promise<Game[]> {
+    const now = new Date();
+    return await this.gameModel
+      .find({
+        startTimeUTC: { $gt: now.toISOString() }, // Game has NOT started
         $and: [
-          { homeTeamScore: { $exists: true, $ne: null } },
+          { homeTeamScore: { $exists: true, $ne: null } }, // But has scores
           { awayTeamScore: { $exists: true, $ne: null } },
         ],
       })
@@ -847,7 +863,7 @@ export class GameService {
     this.isFetchingScores = true;
     try {
       console.info('[fetchGamesScores] Starting score recovery cycle...');
-      const gamesToProcess = await this.fetchGamesWithoutScores(2);
+      const gamesToProcess = await this.fetchGamesForLiveScoreUpdate(2);
 
       const postponedGamesLeagues = new Set<string>();
 
@@ -1140,7 +1156,7 @@ export class GameService {
   }
 
   private async removeOldGamesWithoutScore() {
-    let gamesToDelete = await this.fetchGamesWithoutScores(72);
+    let gamesToDelete = await this.fetchOldGamesWithMissingScores(72);
 
     console.info(
       `[fetchGamesScores] ${gamesToDelete.length} games without scores found. Processing...`,
@@ -1248,8 +1264,18 @@ export class GameService {
       resolvedStatus !== 'POSTPONED' &&
       resolvedStatus !== 'CANCELLED'
     ) {
-      game.homeTeamScore = matchedScore.homeTeamScore;
-      game.awayTeamScore = matchedScore.awayTeamScore;
+      if (
+        matchedScore.homeTeamScore !== null &&
+        matchedScore.homeTeamScore !== undefined
+      ) {
+        game.homeTeamScore = matchedScore.homeTeamScore;
+      }
+      if (
+        matchedScore.awayTeamScore !== null &&
+        matchedScore.awayTeamScore !== undefined
+      ) {
+        game.awayTeamScore = matchedScore.awayTeamScore;
+      }
       game.gameClock = matchedScore.gameClock;
       game.gamePeriod = matchedScore.gamePeriod;
     }
@@ -1523,11 +1549,97 @@ export class GameService {
     }
 
     // Priority 4: If we have scores but no explicit finish, it's ongoing
-    if (score.homeTeamScore != null && score.awayTeamScore != null) {
+    // If at least one score is present, the game is no longer just scheduled
+    if (score.homeTeamScore != null || score.awayTeamScore != null) {
       return 'IN_PROGRESS';
     }
 
     // Default: Scheduled
     return 'SCHEDULED';
+  }
+
+  async syncRecentGames(): Promise<any[]> {
+    const allLeagues = Object.values(League);
+    const collegeLeagues = Object.values(CollegeLeague) as string[];
+    const targetLeagues = allLeagues.filter((l) => !collegeLeagues.includes(l));
+
+    const now = new Date();
+
+    for (const league of targetLeagues) {
+      // Synchronize data for the last 7 days
+      for (let i = 0; i < 7; i++) {
+        const date = new Date();
+        date.setDate(now.getDate() - i);
+        const dateStr = readableDate(date);
+
+        let externalGames: any[] = [];
+        try {
+          if (league === League.PWHL) {
+            const hockeyData = new HockeyData();
+            externalGames = await hockeyData.getPWHLScores(dateStr);
+          } else {
+            externalGames = await getESPNScores(league, dateStr);
+          }
+        } catch (error) {
+          console.error(
+            `[syncRecentGames] Error fetching data for ${league} on ${dateStr}:`,
+            error,
+          );
+          continue;
+        }
+
+        if (!Array.isArray(externalGames) || externalGames.length === 0)
+          continue;
+
+        // Fetch games already in DB for this specific day and league
+        const dbGames = await this.gameModel
+          .find({
+            league,
+            gameDate: dateStr,
+          })
+          .exec();
+
+        for (const extGame of externalGames) {
+          // Check if the game is missing from DB
+          const alreadyExists = dbGames.some((dbGame) => {
+            const matchesId =
+              extGame.uniqueId &&
+              (dbGame.uniqueId === extGame.uniqueId ||
+                dbGame.uniqueId.endsWith(extGame.uniqueId));
+            const matchesTeams =
+              dbGame.homeTeamId === extGame.homeTeamId &&
+              dbGame.awayTeamId === extGame.awayTeamId;
+            return matchesId || matchesTeams;
+          });
+
+          if (!alreadyExists) {
+            // Create missing game
+            const gameToCreate = {
+              ...extGame,
+              league: extGame.league || league,
+              gameDate: extGame.gameDate || dateStr,
+              isActive: true,
+              updateDate: new Date().toISOString(),
+            };
+            await this.create(gameToCreate);
+          }
+        }
+      }
+    }
+
+    // Retrieve and return all games for the last 7 days for these leagues
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(now.getDate() - 7);
+    const startDateStr = readableDate(sevenDaysAgo);
+
+    return this.gameModel
+      .find({
+        league: { $in: targetLeagues },
+        gameDate: { $gte: startDateStr },
+        isActive: true,
+      })
+      .sort({ gameDate: -1, startTimeUTC: 1 })
+      .lean()
+      .exec();
   }
 }

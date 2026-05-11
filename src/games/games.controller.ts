@@ -127,6 +127,11 @@ export class GamesController {
     return this.GameService.getLeagueGames(league, true, true);
   }
 
+  @Post('/sync/recent')
+  async syncRecentGames() {
+    return this.GameService.syncRecentGames();
+  }
+
   @Post('/scores')
   async fetchScores() {
     return this.GameService.fetchGamesScores();
