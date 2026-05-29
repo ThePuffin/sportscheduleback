@@ -1478,6 +1478,43 @@ export class GameService {
   }
 
   private _resolveStatus(score: any): string {
+    // Priority 0: Check for explicit postponement or cancellation in text fields
+    // Sometimes APIs put postponement reasons in status detail, series summary, or records
+    const postponementKeywords = [
+      'POSTPONED',
+      'RAIN',
+      'DELAY',
+      'TBD',
+      'WEATHER',
+    ];
+    const cancellationKeywords = ['CANCELLED', 'CANCELED'];
+
+    const statusTextFields = [
+      typeof score.status === 'string' ? score.status : '',
+      score.status?.detail,
+      score.status?.type?.detail,
+      score.seriesSummary,
+      score.homeTeamRecord,
+    ]
+      .filter(Boolean)
+      .map((s) => s.toUpperCase());
+
+    if (
+      statusTextFields.some((text) =>
+        postponementKeywords.some((key) => text.includes(key)),
+      )
+    ) {
+      return 'POSTPONED';
+    }
+
+    if (
+      statusTextFields.some((text) =>
+        cancellationKeywords.some((key) => text.includes(key)),
+      )
+    ) {
+      return 'CANCELLED';
+    }
+
     // Priority 1: Check if game is truly finished
     if (score.isFinal) {
       return 'FINISHED';
@@ -1495,25 +1532,6 @@ export class GameService {
         (score.homeTeamScore !== null || score.awayTeamScore !== null)
       ) {
         return 'FINISHED';
-      }
-    }
-
-    // Priority 2: Check for explicit cancellation
-    if (score.status && typeof score.status === 'object') {
-      const statusName = score.status.name?.toUpperCase();
-      const statusDetail = score.status.detail?.toUpperCase();
-      const statusShortDetail = score.status.shortDetail?.toUpperCase();
-
-      if (
-        statusName?.includes('CANCELLED') ||
-        statusDetail?.includes('CANCELLED') ||
-        statusShortDetail?.includes('CANCELLED')
-      ) {
-        return 'CANCELLED';
-      }
-    } else if (typeof score.status === 'string') {
-      if (score.status.toUpperCase().includes('CANCELLED')) {
-        return 'CANCELLED';
       }
     }
 
@@ -1564,13 +1582,6 @@ export class GameService {
       } else if (state === 'in') {
         return 'IN_PROGRESS';
       } else if (state === 'pre') {
-        // Check if postponed
-        if (
-          score.status?.type?.name === 'STATUS_POSTPONED' ||
-          score.status?.type?.detail?.includes('TBD')
-        ) {
-          return 'POSTPONED';
-        }
         return 'SCHEDULED';
       }
     } else if (typeof score.status === 'string') {

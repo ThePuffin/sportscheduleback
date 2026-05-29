@@ -3127,6 +3127,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#C61018',
     backgroundColor: '#000000',
   },
+  'NCCABB-JXST': {
+    color: '#C61018',
+    backgroundColor: '#000000',
+  },
   'NCCABB-KC': {
     color: '#004A8B',
     backgroundColor: '#000000',
