@@ -274,6 +274,8 @@ export class GameService {
           await this.create(game);
         }
       }
+
+      await this._deleteUnlinkedTeams(normalizedLeague);
       return games;
     } finally {
       this.isFetchingGames[normalizedLeague] = false;
@@ -1686,5 +1688,40 @@ export class GameService {
       .sort({ gameDate: -1, startTimeUTC: 1 })
       .lean()
       .exec();
+  }
+
+  private async _deleteUnlinkedTeams(normalizedLeague: string): Promise<void> {
+    const allTeamsInLeague =
+      await this.teamService.findByLeague(normalizedLeague);
+    const activeGamesInLeague = await this.gameModel
+      .find({
+        league: normalizedLeague,
+        isActive: true,
+      })
+      .lean()
+      .exec();
+
+    const linkedTeamIds = new Set<string>();
+    activeGamesInLeague.forEach((game) => {
+      if (game.homeTeamId) linkedTeamIds.add(game.homeTeamId);
+      if (game.awayTeamId) linkedTeamIds.add(game.awayTeamId);
+    });
+
+    let deletedCount = 0;
+    for (const team of allTeamsInLeague) {
+      if (!linkedTeamIds.has(team.uniqueId)) {
+        console.info(
+          `Deleting team ${team.uniqueId} from league ${normalizedLeague} as it has no linked active games.`,
+        );
+        await this.teamService.remove(team.uniqueId);
+        deletedCount++;
+      }
+    }
+    if (deletedCount > 0) {
+      console.info(
+        `Refetching teams for league ${normalizedLeague} due to ${deletedCount} unlinked team(s) deleted.`,
+      );
+      await this.teamService.getTeams(normalizedLeague);
+    }
   }
 }
