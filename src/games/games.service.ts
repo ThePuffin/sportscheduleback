@@ -237,6 +237,7 @@ export class GameService {
           league: normalizedLeague,
           gameDate: { $gte: todayStr },
           isActive: true,
+          startTimeUTC: { $gt: now.toISOString() },
         },
         { $set: { isActive: false } },
       );
