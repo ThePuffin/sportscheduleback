@@ -326,7 +326,12 @@ export class GameService {
 
   async getDateRange() {
     const result = await this.gameModel.aggregate([
-      { $match: { isActive: true } },
+      {
+        $match: {
+          isActive: true,
+          $expr: { $eq: ['$homeTeamId', '$teamSelectedId'] },
+        },
+      },
       {
         $group: {
           _id: null,
@@ -637,6 +642,7 @@ export class GameService {
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
     const yesterdayString = readableDate(yesterdayDate);
     const filter: any = { isActive: true };
+    filter.$expr = { $eq: ['$homeTeamId', '$teamSelectedId'] };
 
     if (gameDate === today) {
       const threeHoursAgo = new Date(addHours(new Date(), -3));
@@ -702,20 +708,16 @@ export class GameService {
       const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
       // avoid dupplicate games
-      const filteredGames = games
-        .filter(({ gameStatus, startTimeUTC }) => {
-          const now = new Date();
-          const isStartedForMoreThan12Hours =
-            new Date(startTimeUTC) <
-            new Date(now.getTime() - 12 * 60 * 60 * 1000);
-          return (
-            (gameStatus !== 'FINISHED' && !isStartedForMoreThan12Hours) ||
-            gameStatus === 'FINISHED'
-          );
-        })
-        .filter(({ homeTeamId, teamSelectedId }) => {
-          return homeTeamId === teamSelectedId;
-        });
+      const filteredGames = games.filter(({ gameStatus, startTimeUTC }) => {
+        const now = new Date();
+        const isStartedForMoreThan12Hours =
+          new Date(startTimeUTC) <
+          new Date(now.getTime() - 12 * 60 * 60 * 1000);
+        return (
+          (gameStatus !== 'FINISHED' && !isStartedForMoreThan12Hours) ||
+          gameStatus === 'FINISHED'
+        );
+      });
       return filteredGames.map((game: any) =>
         this._enrichGameWithTeamData(game, teamsMap),
       );
@@ -1359,6 +1361,7 @@ export class GameService {
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
     const yesterdayString = readableDate(yesterdayDate);
     const filter: any = { isActive: true };
+    filter.$expr = { $eq: ['$homeTeamId', '$teamSelectedId'] };
     let leaguesList: string[] = [];
 
     if (leagues) {
@@ -1446,20 +1449,16 @@ export class GameService {
       const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
       // avoid dupplicate games
-      const filteredGames = games
-        .filter(({ gameStatus, startTimeUTC }) => {
-          const now = new Date();
-          const isStartedForMoreThan12Hours =
-            new Date(startTimeUTC) <
-            new Date(now.getTime() - 12 * 60 * 60 * 1000);
-          return (
-            (gameStatus !== 'FINISHED' && !isStartedForMoreThan12Hours) ||
-            gameStatus === 'FINISHED'
-          );
-        })
-        .filter(({ homeTeamId, teamSelectedId }) => {
-          return homeTeamId === teamSelectedId;
-        });
+      const filteredGames = games.filter(({ gameStatus, startTimeUTC }) => {
+        const now = new Date();
+        const isStartedForMoreThan12Hours =
+          new Date(startTimeUTC) <
+          new Date(now.getTime() - 12 * 60 * 60 * 1000);
+        return (
+          (gameStatus !== 'FINISHED' && !isStartedForMoreThan12Hours) ||
+          gameStatus === 'FINISHED'
+        );
+      });
 
       const gamesByTimeSlot: { [key: string]: any[] } = {};
       filteredGames.forEach((game: any) => {
