@@ -55,26 +55,26 @@ describe('Utility Functions', () => {
       jest.useRealTimers();
     });
 
-    it('should return true for needRefresh if games object is empty', () => {
-      expect(needRefresh(League.NHL, {})).toBe(true);
+    it('should return true for needRefresh if games object is empty', async () => {
+      expect(await needRefresh(League.NHL, {})).toBe(true);
     });
 
-    it('should return false for needRefresh if updateDate is recent', () => {
+    it('should return false for needRefresh if updateDate is recent', async () => {
       jest.setSystemTime(new Date('2024-01-05'));
       const mockGames = {
         '2024-01-05': [{ updateDate: '2024-01-04' }],
       };
-      expect(needRefresh(League.NHL, mockGames)).toBe(false);
+      expect(await needRefresh(League.NHL, mockGames)).toBe(false);
     });
 
-    it('should handle missing updateDate gracefully', () => {
+    it('should handle missing updateDate gracefully', async () => {
       jest.setSystemTime(new Date('2024-01-05'));
       const mockGames = { '2024-01-05': [{}] };
 
-      expect(needRefresh(League.NHL, mockGames)).toBe(true);
+      expect(await needRefresh(League.NHL, mockGames)).toBe(true);
     });
 
-    it('should return 3 days refresh during NHL regular season (Oct to April)', () => {
+    it('should return 3 days refresh during NHL regular season (Oct to April)', async () => {
       // Simulate November 15, 2025
       jest.setSystemTime(new Date('2025-11-15'));
 
@@ -84,16 +84,16 @@ describe('Utility Functions', () => {
 
       // In NHL regular season, refresh = 3 days.
       // 2 days < 3 days => false
-      expect(needRefresh(League.NHL, mockGames)).toBe(false);
+      expect(await needRefresh(League.NHL, mockGames)).toBe(false);
 
       // 4 days difference => true
       const oldGames = {
         '2025-11-15': [{ updateDate: '2025-11-10' }],
       };
-      expect(needRefresh(League.NHL, oldGames)).toBe(true);
+      expect(await needRefresh(League.NHL, oldGames)).toBe(true);
     });
 
-    it('should return 1 day refresh during Playoffs (MLS example)', () => {
+    it('should return 1 day refresh during Playoffs (MLS example)', async () => {
       // MLS EndSeason: 10, EndPlayoffs: 12. Simulating November 15.
       jest.setSystemTime(new Date('2025-11-15'));
 
@@ -102,10 +102,10 @@ describe('Utility Functions', () => {
       };
 
       // In playoffs, refresh = 1 day.
-      expect(needRefresh(League.MLS, mockGames)).toBe(true);
+      expect(await needRefresh(League.MLS, mockGames)).toBe(true);
     });
 
-    it('should handle Olympic years correctly (Winter 2026)', () => {
+    it('should handle Olympic years correctly (Winter 2026)', async () => {
       // February 2026 (Year % 4 === 2)
       jest.setSystemTime(new Date('2026-02-10'));
 
@@ -115,7 +115,7 @@ describe('Utility Functions', () => {
 
       // Olympic season, expected refresh at 3 days.
       // 3 day difference => true
-      expect(needRefresh(League['OLYMPICS-MEN'], mockGames)).toBe(true);
+      expect(await needRefresh(League['OLYMPICS-MEN'], mockGames)).toBe(true);
     });
 
     describe('getLeagueConfig', () => {
@@ -175,7 +175,7 @@ describe('Utility Functions', () => {
       });
     });
 
-    it('should return off-season refresh (7 days) when no Olympics are active', () => {
+    it('should return off-season refresh (7 days) when no Olympics are active', async () => {
       // June 2025 (No Olympics)
       jest.setSystemTime(new Date('2025-06-10'));
 
@@ -184,7 +184,7 @@ describe('Utility Functions', () => {
       };
 
       // Off-season = 7 days. 5 < 7 => false
-      expect(needRefresh(League['OLYMPICS-MEN'], mockGames)).toBe(false);
+      expect(await needRefresh(League['OLYMPICS-MEN'], mockGames)).toBe(false);
     });
 
     describe('isInThePeriod', () => {

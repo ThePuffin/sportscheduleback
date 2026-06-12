@@ -17,7 +17,7 @@ export const getLuminance = (hex: string) => {
   const rgb = Number.parseInt(c, 16);
   const r = (rgb >> 16) & 0xff;
   const g = (rgb >> 8) & 0xff;
-  if (isNaN(rgb)) return NaN;
+  if (Number.isNaN(rgb)) return NaN;
   const b = (rgb >> 0) & 0xff;
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 };
@@ -130,6 +130,80 @@ const leagueConfigs = {
   },
 };
 
+interface LeagueDates {
+  regularSeason?: { start: Date; end: Date };
+  postSeason?: { start: Date; end: Date };
+  lastFetched: number;
+}
+
+const leagueDatesCache = new Map<string, LeagueDates>();
+const pendingLeagueDatesRequests = new Map<
+  string,
+  Promise<LeagueDates | null>
+>();
+
+const fetchLeagueDates = async (leagueName: string) => {
+  const cached = leagueDatesCache.get(leagueName);
+  const REFRESH_INTERVAL = 10 * 24 * 60 * 60 * 1000; // 10 days
+
+  if (cached && Date.now() - cached.lastFetched < REFRESH_INTERVAL) {
+    return cached;
+  }
+
+  if (pendingLeagueDatesRequests.has(leagueName))
+    return pendingLeagueDatesRequests.get(leagueName);
+
+  const requestPromise = (async () => {
+    const config = getLeagueConfig(leagueName);
+    if (!config || config.league === 'pwhl' || config.sport === 'none')
+      return null;
+
+    try {
+      const url = `https://site.api.espn.com/apis/site/v2/sports/${config.sport}/${config.league}/scoreboard`;
+      const response = await fetch(url);
+      const data = await response.json();
+      const calendar = data?.leagues?.[0]?.calendar;
+
+      if (!calendar || !Array.isArray(calendar)) return null;
+
+      const result: LeagueDates = { lastFetched: Date.now() };
+      calendar.forEach((entry: any) => {
+        if (entry.value === '2') {
+          result.regularSeason = {
+            start: new Date(entry.startDate),
+            end: new Date(entry.endDate),
+          };
+        } else if (entry.value === '3') {
+          result.postSeason = {
+            start: new Date(entry.startDate),
+            end: new Date(entry.endDate),
+          };
+        }
+      });
+
+      leagueDatesCache.set(leagueName, result);
+      console.info(
+        `[fetchLeagueDates] Fetched and cached dates for ${leagueName}`,
+        JSON.stringify(result),
+      );
+      return result;
+    } catch (err) {
+      console.error(
+        `[fetchLeagueDates] Error fetching dates for ${leagueName}:`,
+        err,
+      );
+      return null;
+    } finally {
+      pendingLeagueDatesRequests.delete(leagueName);
+    }
+  })();
+
+  pendingLeagueDatesRequests.set(leagueName, requestPromise);
+  return requestPromise;
+};
+export const getCachedLeagueDates = (leagueName: string) =>
+  leagueDatesCache.get(leagueName);
+
 export const getLeagueConfig = (leagueName: string) => {
   if (
     leagueName === League['OLYMPICS-MEN'] ||
@@ -208,7 +282,15 @@ export const isInThePeriod = (start: string, end: string) => {
   }
 };
 
-export const isCurrentSeason = (leagueName: string) => {
+export const isCurrentSeason = async (leagueName: string) => {
+  const dates = await fetchLeagueDates(leagueName);
+  if (dates?.regularSeason) {
+    const today = new Date();
+    return (
+      today >= dates.regularSeason.start && today <= dates.regularSeason.end
+    );
+  }
+
   const config = getLeagueConfig(leagueName);
   if (!config) {
     return true;
@@ -217,7 +299,13 @@ export const isCurrentSeason = (leagueName: string) => {
   return isInThePeriod(startSeason, endSeason);
 };
 
-const isEndPlayoffs = (leagueName: string) => {
+const isEndPlayoffs = async (leagueName: string) => {
+  const dates = await fetchLeagueDates(leagueName);
+  if (dates?.postSeason) {
+    const today = new Date();
+    return today >= dates.postSeason.start && today <= dates.postSeason.end;
+  }
+
   const config = getLeagueConfig(leagueName);
   if (!config) {
     return false;
@@ -226,14 +314,14 @@ const isEndPlayoffs = (leagueName: string) => {
   return isInThePeriod(endSeason, endPlayoffs);
 };
 
-const numberOfDaysToRefresh = (leagueName: string) => {
-  if (isEndPlayoffs(leagueName)) return 1;
-  if (isCurrentSeason(leagueName)) return 3;
+const numberOfDaysToRefresh = async (leagueName: string) => {
+  if (await isEndPlayoffs(leagueName)) return 1;
+  if (await isCurrentSeason(leagueName)) return 3;
   return 7;
 };
 
-export const needRefresh = (leagueName: string, games) => {
-  const daysToRefresh = numberOfDaysToRefresh(leagueName);
+export const needRefresh = async (leagueName: string, games) => {
+  const daysToRefresh = await numberOfDaysToRefresh(leagueName);
 
   const keys = Object.keys(games);
   if (keys.length === 0) return true;

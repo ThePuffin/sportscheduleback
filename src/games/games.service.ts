@@ -211,7 +211,7 @@ export class GameService {
 
         if (
           gamesForLeague.length > 0 &&
-          !needRefresh(normalizedLeague, { data: gamesForLeague })
+          !(await needRefresh(normalizedLeague, { data: gamesForLeague }))
         ) {
           return; // Skip silently, data is fresh
         }
@@ -703,7 +703,11 @@ export class GameService {
           if (filteredGamesForLeague.length === 0) {
             continue;
           }
-          if (!needRefresh(currentLeague, { data: filteredGamesForLeague })) {
+          if (
+            !(await needRefresh(currentLeague, {
+              data: filteredGamesForLeague,
+            }))
+          ) {
             continue;
           }
 
@@ -745,7 +749,6 @@ export class GameService {
     const filter = { uniqueId: uniqueId };
     return this.gameModel.updateOne(filter, updateGameDto);
   }
-
   async remove(uniqueId: string) {
     const filter = { uniqueId: uniqueId };
     const deleted = await this.gameModel.findOneAndDelete(filter).exec();
@@ -1445,7 +1448,11 @@ export class GameService {
             },
           );
 
-          if (!needRefresh(currentLeague, { data: filteredGamesForLeague })) {
+          if (
+            !(await needRefresh(currentLeague, {
+              data: filteredGamesForLeague,
+            }))
+          ) {
             continue;
           }
           this.refreshChain = this.refreshChain.then(() =>
@@ -1762,7 +1769,7 @@ export class GameService {
         try {
           // check if the league
 
-          if (isCurrentSeason(league)) {
+          if (await isCurrentSeason(league)) {
             // fetch all the games for the next 7 days for the league
             const today = new Date();
             const sevenDaysLater = new Date();
