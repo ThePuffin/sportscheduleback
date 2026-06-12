@@ -227,7 +227,11 @@ describe('GamesController', () => {
     it('should refresh games for a league', async () => {
       const league = 'NHL';
       await controller.refreshByLeague(league);
-      expect(service.getLeagueGames).toHaveBeenCalledWith(league, true, true);
+      expect(service.getLeagueGames).toHaveBeenCalledWith({
+        forceUpdate: true,
+        league,
+        skipCascade: true,
+      });
     });
   });
 

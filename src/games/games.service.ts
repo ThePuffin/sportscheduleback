@@ -14,7 +14,7 @@ import {
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
 import { UniversityLogos } from '../utils/UniversityLogos';
-import { needRefresh } from '../utils/utils';
+import { isCurrentSeason, needRefresh } from '../utils/utils';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { RefreshTimestampService } from './refresh-timestamps.service';
@@ -25,6 +25,7 @@ export class GameService {
   private isFetchingGames: { [league: string]: boolean } = {};
   private manualRefreshInProgress: { [league: string]: boolean } = {};
   private isFetchingScores: boolean = false;
+  private isCheckingAvailability: boolean = false;
   private refreshChain: Promise<any> = Promise.resolve();
   constructor(
     @InjectModel(Game.name) public gameModel: Model<Game>,
@@ -131,11 +132,13 @@ export class GameService {
     return await newGame.save();
   }
 
-  async getLeagueGames(
-    league: string,
-    forceUpdate = false,
-    skipCascade = false,
-  ): Promise<any> {
+  async getLeagueGames(params): Promise<any> {
+    const {
+      league,
+      forceUpdate = false,
+      skipCascade = true,
+      maxRecall = 2,
+    } = params;
     const normalizedLeague = league.toUpperCase().trim();
     if (this.isFetchingGames[normalizedLeague]) {
       console.info(
@@ -213,9 +216,9 @@ export class GameService {
           await this.refreshTimestampService.getTodayManualTimestamps(
             normalizedLeague,
           );
-        if (todayTimestamps.length >= 2) {
+        if (todayTimestamps.length >= maxRecall) {
           throw new HttpException(
-            `Refresh for league ${normalizedLeague} is limited to 2 times per day.`,
+            `Refresh for league ${normalizedLeague} is limited to ${maxRecall} times per day.`,
             249,
           );
         }
@@ -294,7 +297,7 @@ export class GameService {
     const leagues = Array.from(new Set(teams.map((team) => team.league)));
 
     for (const league of leagues) {
-      await this.getLeagueGames(league, forceUpdate, false);
+      await this.getLeagueGames({ league, forceUpdate, skipCascade: false });
     }
     return this.findAll();
   }
@@ -385,7 +388,11 @@ export class GameService {
           );
         });
         if (games.length) {
-          await this.getLeagueGames(league, false);
+          await this.getLeagueGames({
+            league,
+            forceUpdate: false,
+            skipCascade: false,
+          });
         }
       }
       const refreshedGames = await this.filterGames({
@@ -695,7 +702,11 @@ export class GameService {
           }
 
           this.refreshChain = this.refreshChain.then(() =>
-            this.getLeagueGames(currentLeague, false).catch((err) =>
+            this.getLeagueGames({
+              league: currentLeague,
+              forceUpdate: false,
+              skipCascade: false,
+            }).catch((err) =>
               console.error(`Error refreshing ${currentLeague}`, err),
             ),
           );
@@ -1109,7 +1120,11 @@ export class GameService {
         );
       } else {
         for (const league of postponedGamesLeagues) {
-          await this.getLeagueGames(league, true);
+          await this.getLeagueGames({
+            league,
+            forceUpdate: true,
+            skipCascade: false,
+          });
         }
       }
 
@@ -1428,7 +1443,11 @@ export class GameService {
             continue;
           }
           this.refreshChain = this.refreshChain.then(() =>
-            this.getLeagueGames(currentLeague, false, true).catch((err) =>
+            this.getLeagueGames({
+              league: currentLeague,
+              forceUpdate: false,
+              skipCascade: true,
+            }).catch((err) =>
               console.error(`Error refreshing ${currentLeague}`, err),
             ),
           );
@@ -1721,6 +1740,62 @@ export class GameService {
         `Refetching teams for league ${normalizedLeague} due to ${deletedCount} unlinked team(s) deleted.`,
       );
       await this.teamService.getTeams(normalizedLeague);
+    }
+  }
+
+  async checkLeagueGamesAvailability() {
+    if (this.isCheckingAvailability) {
+      console.info('checkLeagueGamesAvailability is already running.');
+      return;
+    }
+
+    this.isCheckingAvailability = true;
+    try {
+      const allLeagues = Object.values(League);
+      for (const league of allLeagues) {
+        try {
+          // check if the league
+
+          if (isCurrentSeason(league)) {
+            // fetch all the games for the next 7 days for the league
+            const today = new Date();
+            const sevenDaysLater = new Date();
+            sevenDaysLater.setDate(today.getDate() + 7);
+            const games = await this.gameModel
+              .find({
+                league,
+                gameDate: {
+                  $gte: readableDate(today),
+                  $lte: readableDate(sevenDaysLater),
+                },
+              })
+              .lean()
+              .exec();
+            const numberOfTeams = await this.teamService.countByLeague(league);
+            if (games.length < numberOfTeams * 0.3) {
+              await this.getLeagueGames({
+                league,
+                forceUpdate: true,
+                skipCascade: false,
+                maxRecall: 5,
+              });
+            } else {
+              console.info(
+                `Found ${games.length} games for league ${league} in the next 7 days. No refresh needed.`,
+              );
+            }
+          } else {
+            console.info(
+              `Skipping availability check for ${league} as it is not in current season.`,
+            );
+            continue;
+          }
+        } catch (error) {
+          console.error(`Error checking availability for ${league}:`, error);
+        }
+      }
+    } finally {
+      this.isCheckingAvailability = false;
     }
   }
 }

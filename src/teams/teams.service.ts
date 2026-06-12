@@ -267,6 +267,10 @@ export class TeamService {
     return this.teamModel.deleteMany({}).exec();
   }
 
+  async countByLeague(league: string): Promise<number> {
+    return this.teamModel.countDocuments({ league }).exec();
+  }
+
   private async generateLeaguesTeamsAndColorsFiles() {
     try {
       const AllLeagues = await this.findAllLeagues();

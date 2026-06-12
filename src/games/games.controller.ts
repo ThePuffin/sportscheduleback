@@ -124,7 +124,11 @@ export class GamesController {
 
   @Post('/refresh/:league')
   async refreshByLeague(@Param('league') league: string) {
-    return this.GameService.getLeagueGames(league, true, true);
+    return this.GameService.getLeagueGames({
+      league,
+      forceUpdate: true,
+      skipCascade: true,
+    });
   }
 
   @Post('/sync/recent')

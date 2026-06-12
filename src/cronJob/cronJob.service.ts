@@ -36,22 +36,22 @@ export class CronService implements OnModuleInit {
 
   @Cron('0 2 * * *') // EVERY DAY AT 2AM
   async updateMLBGames() {
-    await this.gameService.getLeagueGames(League.MLB);
+    await this.gameService.getLeagueGames({ league: League.MLB });
   }
 
   @Cron('0 3 * * *') // EVERY DAY AT 3AM
   async updateNBAGames() {
-    await this.gameService.getLeagueGames(League.NBA);
+    await this.gameService.getLeagueGames({ league: League.NBA });
   }
 
   @Cron('0 4 * * *') // EVERY DAY AT 4AM
   async updateNFLGames() {
-    await this.gameService.getLeagueGames(League.NFL);
+    await this.gameService.getLeagueGames({ league: League.NFL });
   }
 
   @Cron('0 5 * * *') // EVERY DAY AT 5AM
   async updateNHLGames() {
-    await this.gameService.getLeagueGames(League.NHL);
+    await this.gameService.getLeagueGames({ league: League.NHL });
   }
 
   @Cron('*/10 * * * *') // EVERY 10 MINUTES
@@ -78,6 +78,16 @@ export class CronService implements OnModuleInit {
       );
     } catch (err) {
       console.error('[Cron] Error running fetchGamesScores:', err);
+    }
+  }
+
+  @Cron('*/15  * * * *') // EVERY 15 MINUTES
+  async checkLeagueGamesAvailability() {
+    try {
+      console.info(`[Cron] Running checkLeagueGamesAvailability cron job`);
+      await this.gameService.checkLeagueGamesAvailability();
+    } catch (err) {
+      console.error('[Cron] Error running checkLeagueGamesAvailability:', err);
     }
   }
 }

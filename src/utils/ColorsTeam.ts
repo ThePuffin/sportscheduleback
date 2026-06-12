@@ -187,10 +187,6 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#ece83a',
     backgroundColor: '#1f1646',
   },
-  'MLS-NY': {
-    color: '#ffc72c',
-    backgroundColor: '#ba0c2f',
-  },
   'MLS-NYC': {
     color: '#9fd2ff',
     backgroundColor: '#000229',

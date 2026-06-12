@@ -208,7 +208,7 @@ export const isInThePeriod = (start: string, end: string) => {
   }
 };
 
-const isCurrentSeason = (leagueName: string) => {
+export const isCurrentSeason = (leagueName: string) => {
   const config = getLeagueConfig(leagueName);
   if (!config) {
     return true;
@@ -217,7 +217,7 @@ const isCurrentSeason = (leagueName: string) => {
   return isInThePeriod(startSeason, endSeason);
 };
 
-const isendPlayoffs = (leagueName: string) => {
+const isEndPlayoffs = (leagueName: string) => {
   const config = getLeagueConfig(leagueName);
   if (!config) {
     return false;
@@ -227,7 +227,7 @@ const isendPlayoffs = (leagueName: string) => {
 };
 
 const numberOfDaysToRefresh = (leagueName: string) => {
-  if (isendPlayoffs(leagueName)) return 1;
+  if (isEndPlayoffs(leagueName)) return 1;
   if (isCurrentSeason(leagueName)) return 3;
   return 7;
 };
