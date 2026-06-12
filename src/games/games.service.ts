@@ -57,13 +57,19 @@ export class GameService {
   private _enrichGameWithTeamData(game: any, teamsMap: Map<string, TeamType>) {
     const homeTeam = teamsMap.get(game.homeTeamId);
     const awayTeam = teamsMap.get(game.awayTeamId);
+    const isPlayoffs =
+      (game.seriesSummary || game.seriesStatus) &&
+      !game.seriesSummary?.toLowerCase().includes('regular season');
+
     return {
       ...game,
       homeTeamRecord:
-        game.seriesSummary || game.homeTeamRecord || homeTeam?.record || '',
+        (isPlayoffs ? game.seriesSummary : null) ||
+        game.homeTeamRecord ||
+        homeTeam?.record ||
+        '',
       awayTeamRecord:
-        game.seriesStatus ||
-        game.seriesSummary ||
+        (isPlayoffs ? game.seriesStatus || game.seriesSummary : null) ||
         game.awayTeamRecord ||
         awayTeam?.record ||
         '',
