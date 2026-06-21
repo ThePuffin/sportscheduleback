@@ -81,10 +81,22 @@ export class CronService implements OnModuleInit {
     }
   }
 
-  @Cron('*/15  * * * *') // EVERY 15 MINUTES
+  @Cron('*/12 * * * *') // EVERY 12 MINUTES
   async checkLeagueGamesAvailability() {
     try {
-      console.info(`[Cron] Running checkLeagueGamesAvailability cron job`);
+      const laNow = new Date(
+        new Date().toLocaleString('en-US', {
+          timeZone: 'America/Los_Angeles',
+        }),
+      );
+      const hour = laNow.getHours();
+      if (hour < 0 || hour >= 11) {
+        return;
+      }
+
+      console.info(
+        `[Cron] Running checkLeagueGamesAvailability cron job (LA hour=${hour})`,
+      );
       await this.gameService.checkLeagueGamesAvailability();
     } catch (err) {
       console.error('[Cron] Error running checkLeagueGamesAvailability:', err);

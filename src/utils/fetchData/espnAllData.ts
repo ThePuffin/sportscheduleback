@@ -361,25 +361,30 @@ export const getTeamsSchedule = async (
   forceUpdate = false,
 ) => {
   const allGames = {};
-  await Promise.all(
-    activeTeams.map(
-      async ({ id, abbrev, value, uniqueId, color, backgroundColor }) => {
-        const leagueID = `${uniqueId}`;
-        allGames[leagueID] = await getEachTeamSchedule(
-          {
-            id,
-            abbrev,
-            value,
-            leagueName,
-            leagueLogos,
-            color,
-            backgroundColor,
-          },
-          forceUpdate,
-        );
-      },
-    ),
-  );
+  const concurrencyLimit = 2;
+
+  for (let start = 0; start < activeTeams.length; start += concurrencyLimit) {
+    const batch = activeTeams.slice(start, start + concurrencyLimit);
+    await Promise.all(
+      batch.map(
+        async ({ id, abbrev, value, uniqueId, color, backgroundColor }) => {
+          const leagueID = `${uniqueId}`;
+          allGames[leagueID] = await getEachTeamSchedule(
+            {
+              id,
+              abbrev,
+              value,
+              leagueName,
+              leagueLogos,
+              color,
+              backgroundColor,
+            },
+            forceUpdate,
+          );
+        },
+      ),
+    );
+  }
 
   console.info(`updated ${leagueName}`);
   return allGames;

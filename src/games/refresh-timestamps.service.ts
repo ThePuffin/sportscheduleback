@@ -37,6 +37,21 @@ export class RefreshTimestampService {
       .exec();
   }
 
+  async getManualTimestampsSince(
+    league: string,
+    since: Date,
+  ): Promise<RefreshTimestamp[]> {
+    return this.refreshTimestampModel
+      .find({
+        league,
+        type: 'manual',
+        timestamp: {
+          $gte: since,
+        },
+      })
+      .exec();
+  }
+
   async getLastRefresh(league: string): Promise<RefreshTimestamp | null> {
     return this.refreshTimestampModel
       .findOne({ league })

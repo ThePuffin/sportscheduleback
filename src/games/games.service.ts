@@ -273,11 +273,18 @@ export class GameService {
         );
       }
 
-      // Flatten the games object into an array
+      // Flatten the games object into an array and deduplicate by uniqueId
       const games = Object.values(gamesObj).flat() as any[];
+      const uniqueGamesMap = new Map<string, any>();
+      for (const game of games) {
+        if (game?.uniqueId) {
+          uniqueGamesMap.set(game.uniqueId, game);
+        }
+      }
+      const uniqueGames = Array.from(uniqueGamesMap.values());
 
-      if (games && games.length > 0) {
-        for (const game of games) {
+      if (uniqueGames && uniqueGames.length > 0) {
+        for (const game of uniqueGames) {
           game.updateDate = new Date().toISOString();
           game.isActive = true;
           await this.create(game);
@@ -1786,6 +1793,27 @@ export class GameService {
               .exec();
             const numberOfTeams = await this.teamService.countByLeague(league);
             if (games.length < numberOfTeams * 0.3) {
+              const oneHourAgo = new Date();
+              oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+              let recentRefreshes = [] as any[];
+              if (
+                this.refreshTimestampService &&
+                typeof this.refreshTimestampService.getManualTimestampsSince ===
+                  'function'
+              ) {
+                recentRefreshes =
+                  await this.refreshTimestampService.getManualTimestampsSince(
+                    league,
+                    oneHourAgo,
+                  );
+              }
+              if (recentRefreshes && recentRefreshes.length >= 2) {
+                console.info(
+                  `Skipping refresh for ${league} because it has already been refreshed ${recentRefreshes.length} times in the last hour.`,
+                );
+                continue;
+              }
+
               await this.getLeagueGames({
                 league,
                 forceUpdate: true,
