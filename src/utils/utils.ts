@@ -282,12 +282,13 @@ export const isInThePeriod = (start: string, end: string) => {
   }
 };
 
-export const isCurrentSeason = async (leagueName: string) => {
+export const isCurrentSeason = async (leagueName: string, date?: Date) => {
   const dates = await fetchLeagueDates(leagueName);
   if (dates?.regularSeason) {
-    const today = new Date();
+    const dateToCheck = date ? new Date(date) : new Date();
     return (
-      today >= dates.regularSeason.start && today <= dates.regularSeason.end
+      dateToCheck >= dates.regularSeason.start &&
+      dateToCheck <= dates.regularSeason.end
     );
   }
 
@@ -299,11 +300,14 @@ export const isCurrentSeason = async (leagueName: string) => {
   return isInThePeriod(startSeason, endSeason);
 };
 
-const isEndPlayoffs = async (leagueName: string) => {
+export const isPlayoffsPeriod = async (leagueName: string, date?: Date) => {
   const dates = await fetchLeagueDates(leagueName);
   if (dates?.postSeason) {
-    const today = new Date();
-    return today >= dates.postSeason.start && today <= dates.postSeason.end;
+    const dateToCheck = date ? new Date(date) : new Date();
+    return (
+      dateToCheck >= dates.postSeason.start &&
+      dateToCheck <= dates.postSeason.end
+    );
   }
 
   const config = getLeagueConfig(leagueName);
@@ -315,7 +319,7 @@ const isEndPlayoffs = async (leagueName: string) => {
 };
 
 const numberOfDaysToRefresh = async (leagueName: string) => {
-  if (await isEndPlayoffs(leagueName)) return 1;
+  if (await isPlayoffsPeriod(leagueName)) return 1;
   if (await isCurrentSeason(leagueName)) return 3;
   return 7;
 };

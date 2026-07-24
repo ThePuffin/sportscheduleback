@@ -14,7 +14,7 @@ import {
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
 import { UniversityLogos } from '../utils/UniversityLogos';
-import { isCurrentSeason, needRefresh } from '../utils/utils';
+import { isCurrentSeason, isPlayoffsPeriod, needRefresh } from '../utils/utils';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { RefreshTimestampService } from './refresh-timestamps.service';
@@ -301,16 +301,32 @@ export class GameService {
     }
   }
 
-  async getAllGames(forceUpdate = false): Promise<Game[]> {
+  async getAllGames(
+    forceUpdate = false,
+    date?,
+    leagueList?: string[],
+  ): Promise<Game[]> {
     let teams = await this.teamService.findAll();
     if (!teams.length) {
       console.info('No teams found in DB. Fetching teams...');
       teams = (await this.teamService.getTeams()) || [];
     }
     const leagues = Array.from(new Set(teams.map((team) => team.league)));
+    const leaguesToRefresh =
+      leagueList && leagueList.length > 0
+        ? leagues.filter((l) => leagueList.includes(l))
+        : leagues;
 
-    for (const league of leagues) {
-      await this.getLeagueGames({ league, forceUpdate, skipCascade: false });
+    for (const league of leaguesToRefresh) {
+      let needRefresh = true;
+      if (date) {
+        needRefresh =
+          (await isCurrentSeason(league, date)) ||
+          (await isPlayoffsPeriod(league, date));
+      }
+      if (needRefresh) {
+        await this.getLeagueGames({ league, forceUpdate, skipCascade: false });
+      }
     }
     return this.findAll();
   }
@@ -1433,7 +1449,11 @@ export class GameService {
       if (!skip) {
         const allGames = await this.findAll();
         if (!allGames.length) {
-          this.getAllGames();
+          if (leaguesList.length > 0) {
+            await this.getAllGames(false, gameDate, leaguesList);
+          } else {
+            await this.getAllGames(false, gameDate);
+          }
         }
       }
       return {};
