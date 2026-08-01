@@ -300,6 +300,37 @@ export const isCurrentSeason = async (leagueName: string, date?: Date) => {
   return isInThePeriod(startSeason, endSeason);
 };
 
+export const doesDateRangeOverlapLeaguePeriod = async (
+  leagueName: string,
+  startDate?: Date | string,
+  endDate?: Date | string,
+) => {
+  const start = startDate ? new Date(startDate) : new Date();
+  const end = endDate ? new Date(endDate) : new Date();
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return false;
+  }
+
+  const rangeStart = new Date(start);
+  const rangeEnd = new Date(end);
+  if (rangeEnd < rangeStart) {
+    rangeEnd.setTime(rangeStart.getTime());
+  }
+
+  const cursor = new Date(rangeStart);
+  while (cursor <= rangeEnd) {
+    const isSeason = await isCurrentSeason(leagueName, cursor);
+    const isPlayoffs = await isPlayoffsPeriod(leagueName, cursor);
+    if (isSeason || isPlayoffs) {
+      return true;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return false;
+};
+
 export const isPlayoffsPeriod = async (leagueName: string, date?: Date) => {
   const dates = await fetchLeagueDates(leagueName);
   if (dates?.postSeason) {

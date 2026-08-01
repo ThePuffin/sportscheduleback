@@ -1,6 +1,7 @@
 import { League } from './enum';
 import {
   capitalize,
+  doesDateRangeOverlapLeaguePeriod,
   getLeagueConfig,
   getLuminance,
   isInThePeriod,
@@ -116,6 +117,59 @@ describe('Utility Functions', () => {
       // Olympic season, expected refresh at 3 days.
       // 3 day difference => true
       expect(await needRefresh(League['OLYMPICS-MEN'], mockGames)).toBe(true);
+    });
+
+    describe('doesDateRangeOverlapLeaguePeriod', () => {
+      it('should return true when the range overlaps the regular season', async () => {
+        jest
+          .spyOn(require('./utils'), 'isCurrentSeason')
+          .mockResolvedValue(true);
+        jest
+          .spyOn(require('./utils'), 'isPlayoffsPeriod')
+          .mockResolvedValue(false);
+
+        await expect(
+          doesDateRangeOverlapLeaguePeriod(
+            League.NHL,
+            '2025-11-10',
+            '2025-11-12',
+          ),
+        ).resolves.toBe(true);
+      });
+
+      it('should return true when the range overlaps the playoffs', async () => {
+        jest
+          .spyOn(require('./utils'), 'isCurrentSeason')
+          .mockResolvedValue(false);
+        jest
+          .spyOn(require('./utils'), 'isPlayoffsPeriod')
+          .mockResolvedValue(true);
+
+        await expect(
+          doesDateRangeOverlapLeaguePeriod(
+            League.NHL,
+            '2025-05-10',
+            '2025-05-12',
+          ),
+        ).resolves.toBe(true);
+      });
+
+      it('should return false when the range overlaps neither season nor playoffs', async () => {
+        jest
+          .spyOn(require('./utils'), 'isCurrentSeason')
+          .mockResolvedValue(false);
+        jest
+          .spyOn(require('./utils'), 'isPlayoffsPeriod')
+          .mockResolvedValue(false);
+
+        await expect(
+          doesDateRangeOverlapLeaguePeriod(
+            League.NHL,
+            '2025-07-10',
+            '2025-07-12',
+          ),
+        ).resolves.toBe(false);
+      });
     });
 
     describe('getLeagueConfig', () => {

@@ -14,7 +14,12 @@ import {
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { TeamType } from '../utils/interface/team';
 import { UniversityLogos } from '../utils/UniversityLogos';
-import { isCurrentSeason, isPlayoffsPeriod, needRefresh } from '../utils/utils';
+import {
+  doesDateRangeOverlapLeaguePeriod,
+  isCurrentSeason,
+  isPlayoffsPeriod,
+  needRefresh,
+} from '../utils/utils';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { RefreshTimestampService } from './refresh-timestamps.service';
@@ -144,6 +149,8 @@ export class GameService {
       forceUpdate = false,
       skipCascade = true,
       maxRecall = 2,
+      startDate,
+      endDate,
     } = params;
     const normalizedLeague = league.toUpperCase().trim();
     if (this.isFetchingGames[normalizedLeague]) {
@@ -171,6 +178,20 @@ export class GameService {
       }
 
       const now = new Date();
+
+      if (startDate && endDate) {
+        const overlaps = await doesDateRangeOverlapLeaguePeriod(
+          normalizedLeague,
+          startDate,
+          endDate,
+        );
+        if (!overlaps) {
+          console.info(
+            `Skipping refresh for ${normalizedLeague} because the requested range does not overlap the season or playoffs.`,
+          );
+          return;
+        }
+      }
 
       if (!forceUpdate) {
         const lastRefresh =
