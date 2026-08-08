@@ -578,9 +578,13 @@ const getEachTeamSchedule = async (
                 : status.replace('STATUS_', '');
             }
             if (status === 'STATUS_IN_PROGRESS') return 'IN_PROGRESS';
-            return homeTeamScore !== null && awayTeamScore !== null
-              ? 'FINISHED'
-              : null;
+            // For other explicit live statuses (e.g. STATUS_HALFTIME, STATUS_1ST_QUARTER,
+            // STATUS_OT, etc.), return a human-readable status instead of assuming the
+            // game is finished just because both scores are present.
+            if (status && status.startsWith('STATUS_')) {
+              return status.replace('STATUS_', '').replace(/_/g, ' ');
+            }
+            return null;
           })(),
           teamSelectedId: value,
           isActive,
@@ -654,7 +658,7 @@ export const getESPNScores = async (
           status?.completed === true ||
           status?.state === 'post' ||
           (typeof status?.name === 'string' &&
-            /final|completed|post|full|time|finished/i.test(status.name)) ||
+            /final|completed|post|full|finished/i.test(status.name)) ||
           (typeof displayClock === 'string' &&
             /final|completed/i.test(displayClock));
 
@@ -704,7 +708,7 @@ export const getESPNScores = async (
                   statusDetail?.completed === true ||
                   statusDetail?.state === 'post' ||
                   (typeof statusDetail?.name === 'string' &&
-                    /final|completed|post|full|time|finished/i.test(
+                    /final|completed|post|full|finished/i.test(
                       statusDetail.name,
                     )) ||
                   (typeof displayClockDetail === 'string' &&
@@ -889,7 +893,7 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
       status?.completed === true ||
       status?.state === 'post' ||
       (typeof status?.name === 'string' &&
-        /final|completed|post|full|time/i.test(status.name)) ||
+        /final|completed|post|full|finished/i.test(status.name)) ||
       (typeof displayClock === 'string' &&
         displayClock !== '' &&
         /final|completed/i.test(displayClock));
