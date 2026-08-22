@@ -1788,8 +1788,8 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#00205b',
   },
   'NCAAF-VMI': {
-    color: '#ffd619',
-    backgroundColor: '#ae122a',
+    color: '#ae122a',
+    backgroundColor: '#000000',
   },
   'NCAAF-VT': {
     color: '#cf4520',
@@ -3005,6 +3005,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   },
   'NCCABB-NCAT': {
     color: '#0505aa',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-NCST': {
+    color: '#D60039',
     backgroundColor: '#000000',
   },
   'NCCABB-NCSU': {

@@ -217,6 +217,7 @@ export const UniversityLogos: Record<string, string> = {
   'NAU': 'https://a.espncdn.com/i/teamlogos/ncaa/500/2464.png',
   'NAVY': 'https://a.espncdn.com/guid/35dd3beb-dc96-331a-b75a-2403df970807/logos/primary_logo_on_white_color.png',
   'NCAT': 'https://a.espncdn.com/guid/173fffd2-7746-3b81-afd0-8f1b4b07a40d/logos/primary_logo_on_white_color.png',
+  'NCST': 'https://a.espncdn.com/guid/1faa7dc2-dc88-313b-9bf8-08ddaee8a288/logos/primary_logo_on_white_color.png',
   'NCSU': 'https://a.espncdn.com/guid/1faa7dc2-dc88-313b-9bf8-08ddaee8a288/logos/primary_logo_on_white_color.png',
   'ND': 'https://a.espncdn.com/guid/75bd857b-8e0e-e918-785d-4e74f5b3df8a/logos/primary_logo_on_white_color.png',
   'NDSU': 'https://a.espncdn.com/guid/9de0ad0a-50f8-34e5-9212-ad6b299aaef0/logos/primary_logo_on_white_color.png',

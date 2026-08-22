@@ -1,9 +1,7 @@
 import { readableDate } from '../../utils/date';
 import { CollegeLeague, League } from '../../utils/enum';
-import type { MLSGameAPI } from '../../utils/interface/gameMLS';
 import { Colors } from '../Colors';
 import type { ESPNTeam, TeamESPN, TeamType } from '../interface/team';
-import { TeamDetailed } from '../interface/teamDetails';
 import { UniversityLogos } from '../UniversityLogos';
 import { capitalize, getLuminance } from '../utils';
 
@@ -414,11 +412,18 @@ const getEachTeamSchedule = async (
       return allGames;
     }
     let games = [];
-    if (leagueName.includes('OLYMPICS') || leagueName === League.MLS) {
+    const soccerLeagues = new Set([League.MLS, League.NWSL]);
+
+    if (
+      leagueName.includes('OLYMPICS') ||
+      soccerLeagues.has(leagueName as League)
+    ) {
       const years = [new Date().getFullYear()];
-      if (leagueName === League.MLS) {
+
+      if (soccerLeagues.has(leagueName as League)) {
         years.push(new Date().getFullYear() + 1);
       }
+
       for (const year of years) {
         try {
           if (leagueConfigs[leagueName]) {
@@ -450,23 +455,41 @@ const getEachTeamSchedule = async (
       }
     } else {
       try {
-        const link = leaguesData[leagueName].fetchGames.replace('${id}', id);
-        const fetchedGames = await fetch(link);
-        const fetchGames: MLSGameAPI = await fetchedGames.json();
-        const { events } = fetchGames;
+        const baseUrl = leaguesData[leagueName].fetchGames.replace('${id}', id);
+        games = [];
 
-        games = events?.[0] ? events : [];
+        // 1 = Preseason, 2 = Regular season, (Optionnal: 3 = Playoffs)
+        const seasonTypes = [1, 2, 3];
+
+        for (const type of seasonTypes) {
+          try {
+            const link = `${baseUrl}?seasontype=${type}`;
+            const fetchedGames = await fetch(link);
+            const fetchGamesData = await fetchedGames.json();
+
+            if (fetchGamesData.events && fetchGamesData.events.length > 0) {
+              games = [...games, ...fetchGamesData.events];
+            }
+          } catch (err) {
+            console.error(
+              `Error type ${type} for ${leagueName} team ${id}:`,
+              err,
+            );
+          }
+        }
 
         const now = new Date();
         const tenMonthAgo = new Date(now.getTime() - 300 * 24 * 60 * 60 * 1000);
         const untilDate = forceUpdate ? tenMonthAgo : now;
+
         const gamesFilter = games.filter(
           ({ date }) => new Date(date) >= untilDate,
         );
+
         if (gamesFilter.length === 0) {
           const link = leaguesData[leagueName].fetchTeam + '/' + id;
           const fetchedTeams = await fetch(link);
-          const fetchTeams: TeamDetailed = await fetchedTeams.json();
+          const fetchTeams = await fetchedTeams.json();
           games = fetchTeams?.team?.nextEvent || [];
         }
 
