@@ -151,6 +151,7 @@ export class HockeyData {
     leagueLogos,
     league,
     forceUpdate = false,
+    season?: number,
   ) => {
     const allGames = {};
 
@@ -166,6 +167,7 @@ export class HockeyData {
               leagueLogos,
               color,
               backgroundColor,
+              season,
             );
           }
           if (league === League.PWHL) {
@@ -178,6 +180,7 @@ export class HockeyData {
               color,
               backgroundColor,
               forceUpdate,
+              season,
             );
           }
         } catch (error) {
@@ -200,12 +203,13 @@ export class HockeyData {
     return allGames;
   };
 
-  fetchGamesData = async (id: string, league: string) => {
+  fetchGamesData = async (id: string, league: string, season?: number) => {
     try {
       let fetchGames;
       if (league === League.NHL) {
+        const seasonParam = season ? `${season}${season + 1}` : 'now';
         const fetchedGames = await fetch(
-          `https://api-web.nhle.com/v1/club-schedule-season/${id}/now`,
+          `https://api-web.nhle.com/v1/club-schedule-season/${id}/${seasonParam}`,
         );
         const tempGames = await fetchedGames.json();
 
@@ -275,9 +279,6 @@ export class HockeyData {
             (Number.parseInt(team.shootout_losses, 10) || 0);
           const gamesPlayed = Number.parseInt(team.games_played, 10) || 0;
 
-          // The API is inconsistent. For some teams, 'wins' is total wins, for others it's regulation wins.
-          // We check if the sum of wins, losses, and otLosses equals gamesPlayed.
-          // If it doesn't, we assume 'wins' is regulation wins and add OT/SO wins to it.
           if (gamesPlayed > 0 && wins + losses + otLosses !== gamesPlayed) {
             wins += otWins + shootoutWins;
           }
@@ -316,10 +317,15 @@ export class HockeyData {
     color: string | undefined,
     backgroundColor: string | undefined,
     forceUpdate = false,
+    season?: number,
   ) => {
     const leagueName = League.PWHL;
 
-    const games: PWHLGameAPI[] = await this.fetchGamesData(id, League.PWHL);
+    const games: PWHLGameAPI[] = await this.fetchGamesData(
+      id,
+      League.PWHL,
+      season,
+    );
     if (!games || games.length === 0) {
       return [];
     }
@@ -352,10 +358,18 @@ export class HockeyData {
           status = 'FINISHED';
         }
         const now = new Date();
-        const tenMonthAgo = new Date(now.getTime() - 300 * 24 * 60 * 60 * 1000);
-        const untilDate = forceUpdate ? tenMonthAgo : now;
         const isActive = true;
-        if (new Date(GameDateISO8601) < untilDate) return;
+
+        if (season) {
+          const gameYear = new Date(GameDateISO8601).getFullYear();
+          if (gameYear !== season && gameYear !== season + 1) return;
+        } else {
+          const tenMonthAgo = new Date(
+            now.getTime() - 300 * 24 * 60 * 60 * 1000,
+          );
+          const untilDate = forceUpdate ? tenMonthAgo : now;
+          if (new Date(GameDateISO8601) < untilDate) return;
+        }
 
         const awayTeamName = visiting_team_name.includes(visiting_team_city)
           ? visiting_team_name
@@ -406,8 +420,13 @@ export class HockeyData {
     leagueLogos: { string },
     color: string | undefined,
     backgroundColor: string | undefined,
+    season?: number,
   ) => {
-    const games: NHLGameAPI[] = await this.fetchGamesData(id, League.NHL);
+    const games: NHLGameAPI[] = await this.fetchGamesData(
+      id,
+      League.NHL,
+      season,
+    );
 
     let gamesData: GameFormatted[] = games.map((game: NHLGameAPI) => {
       const {
@@ -421,9 +440,12 @@ export class HockeyData {
       } = game;
 
       const now = new Date();
-
       const isActive = true;
-      if (new Date(startTimeUTC) < now) return;
+
+      if (!season) {
+        if (new Date(startTimeUTC) < now) return;
+      }
+
       const awayTeamName = `${awayTeam.placeName.default} ${awayTeam.commonName.default}`;
       const homeTeamName = `${homeTeam.placeName.default} ${homeTeam.commonName.default}`;
 
@@ -532,7 +554,6 @@ export class HockeyData {
       const liveData = await liveRes.json();
       const clockData = await clockRes.json();
 
-      // Access games within the goalssummary category based on the Firebase dump structure
       const gamesMap = liveData?.goalssummary?.[1]?.games || {};
       const clockGamesMap = clockData?.games || {};
       const results = [];
@@ -541,7 +562,6 @@ export class HockeyData {
         const clockEntry = clockGamesMap[gameId] || {};
         const gameData = data as any;
 
-        // Use correct field names for scores from the goalssummary category
         const homeScore = gameData.HomeGoalTotal;
         const awayScore = gameData.VisitorGoalTotal;
 
@@ -566,7 +586,6 @@ export class HockeyData {
         } else if (clock && period) {
           gameStatus = `${clock} - ${period}`;
         } else if (homeScore != null && awayScore != null) {
-          // Heuristic: If scores exist but it's not in the running clock, assume finished
           gameStatus = 'FINISHED';
           isFinal = true;
         }

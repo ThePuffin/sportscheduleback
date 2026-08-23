@@ -54,6 +54,37 @@ export class CronService implements OnModuleInit {
     await this.gameService.getLeagueGames({ league: League.NHL });
   }
 
+  @Cron('0 10 * * *') // EVERY DAY AT 10AM
+  async getOldGames() {
+    const currentYear = new Date().getFullYear();
+    const maxYearsBeforeDelete = this.gameService.maxYearBeforeDelete; // 5
+
+    // 1. Pick a random year within the last 5 years limit
+    const minYear = currentYear - maxYearsBeforeDelete;
+    const randomYear =
+      Math.floor(Math.random() * (currentYear - minYear + 1)) + minYear;
+
+    // 2. Pick a random league from the League enum
+    const leagueValues = Object.values(League);
+    const randomLeague =
+      leagueValues[Math.floor(Math.random() * leagueValues.length)];
+
+    console.info(
+      `[Cron] Triggering oldies games refresh for league: ${randomLeague}, year: ${randomYear}`,
+    );
+
+    try {
+      // Pass parameters correctly as individual arguments (strings)
+      await this.gameService.getOldiesGames(
+        randomYear.toString(),
+        randomLeague,
+      );
+      console.info('[Cron] Oldies games refresh completed successfully.');
+    } catch (error) {
+      console.error('[Cron] Error during oldies games refresh:', error);
+    }
+  }
+
   @Cron('*/10 * * * *') // EVERY 10 MINUTES
   async fetchAndApplyScores() {
     try {

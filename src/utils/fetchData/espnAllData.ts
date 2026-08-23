@@ -357,6 +357,7 @@ export const getTeamsSchedule = async (
   leagueName,
   leagueLogos,
   forceUpdate = false,
+  season?: number,
 ) => {
   const allGames = {};
   const concurrencyLimit = 2;
@@ -378,6 +379,7 @@ export const getTeamsSchedule = async (
               backgroundColor,
             },
             forceUpdate,
+            season,
           );
         },
       ),
@@ -391,22 +393,26 @@ export const getTeamsSchedule = async (
 const getEachTeamSchedule = async (
   { id, abbrev, value, leagueName, leagueLogos, color, backgroundColor },
   forceUpdate = false,
+  season?: number,
 ) => {
   try {
     const normalizedLeagueName = getNormalizedLeagueName(leagueName);
-    // Handle aggregate leagues for Olympics
     if (aggregateLeagues[leagueName]) {
       let allGames = [];
       for (const subLeague of aggregateLeagues[leagueName]) {
-        const games = await getEachTeamSchedule({
-          id,
-          abbrev,
-          value,
-          leagueName: subLeague,
-          leagueLogos,
-          color,
-          backgroundColor,
-        });
+        const games = await getEachTeamSchedule(
+          {
+            id,
+            abbrev,
+            value,
+            leagueName: subLeague,
+            leagueLogos,
+            color,
+            backgroundColor,
+          },
+          forceUpdate,
+          season,
+        );
         allGames = [...allGames, ...games];
       }
       return allGames;
@@ -418,9 +424,9 @@ const getEachTeamSchedule = async (
       leagueName.includes('OLYMPICS') ||
       soccerLeagues.has(leagueName as League)
     ) {
-      const years = [new Date().getFullYear()];
+      const years = season ? [season] : [new Date().getFullYear()];
 
-      if (soccerLeagues.has(leagueName as League)) {
+      if (soccerLeagues.has(leagueName as League) && !season) {
         years.push(new Date().getFullYear() + 1);
       }
 
@@ -447,7 +453,6 @@ const getEachTeamSchedule = async (
                 page++;
               }
             }
-            console.log(id, 'total games found', games.length);
           }
         } catch (error) {
           console.info('no games found' + leagueName, value, error);
@@ -457,13 +462,12 @@ const getEachTeamSchedule = async (
       try {
         const baseUrl = leaguesData[leagueName].fetchGames.replace('${id}', id);
         games = [];
-
-        // 1 = Preseason, 2 = Regular season, (Optionnal: 3 = Playoffs)
         const seasonTypes = [1, 2, 3];
 
         for (const type of seasonTypes) {
           try {
-            const link = `${baseUrl}?seasontype=${type}`;
+            const seasonParam = season ? `&season=${season}` : '';
+            const link = `${baseUrl}?seasontype=${type}${seasonParam}`;
             const fetchedGames = await fetch(link);
             const fetchGamesData = await fetchedGames.json();
 
@@ -482,23 +486,17 @@ const getEachTeamSchedule = async (
         const tenMonthAgo = new Date(now.getTime() - 300 * 24 * 60 * 60 * 1000);
         const untilDate = forceUpdate ? tenMonthAgo : now;
 
-        const gamesFilter = games.filter(
-          ({ date }) => new Date(date) >= untilDate,
-        );
+        const gamesFilter = season
+          ? games
+          : games.filter(({ date }) => new Date(date) >= untilDate);
 
-        if (gamesFilter.length === 0) {
-          const link = leaguesData[leagueName].fetchTeam + '/' + id;
-          const fetchedTeams = await fetch(link);
-          const fetchTeams = await fetchedTeams.json();
-          games = fetchTeams?.team?.nextEvent || [];
-        }
-
-        console.info('yes', value);
+        games = gamesFilter;
       } catch (error) {
         console.info('no', value, error);
         games = [];
       }
     }
+
     let gamesData = [];
     if (!games.length) {
       return gamesData;
@@ -511,7 +509,11 @@ const getEachTeamSchedule = async (
       gamesData = games.map((game) => {
         const { date, competitions, id, links } = game;
 
-        if (new Date(date) < untilDate && !leagueName.includes('OLYMPICS'))
+        if (
+          !season &&
+          new Date(date) < untilDate &&
+          !leagueName.includes('OLYMPICS')
+        )
           return;
         const { venue, competitors } = competitions[0];
 
@@ -601,9 +603,6 @@ const getEachTeamSchedule = async (
                 : status.replace('STATUS_', '');
             }
             if (status === 'STATUS_IN_PROGRESS') return 'IN_PROGRESS';
-            // For other explicit live statuses (e.g. STATUS_HALFTIME, STATUS_1ST_QUARTER,
-            // STATUS_OT, etc.), return a human-readable status instead of assuming the
-            // game is finished just because both scores are present.
             if (status && status.startsWith('STATUS_')) {
               return status.replace('STATUS_', '').replace(/_/g, ' ');
             }
@@ -916,48 +915,43 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
       status?.completed === true ||
       status?.state === 'post' ||
       (typeof status?.name === 'string' &&
-        /final|completed|post|full|finished/i.test(status.name)) ||
-      (typeof displayClock === 'string' &&
-        displayClock !== '' &&
-        /final|completed/i.test(displayClock));
+        /final|completed|post|full|finished/i.test(status.name));
 
-    let gameStatus =
-      status?.shortDetail || status?.detail || status?.description;
-
-    if (isFinal) {
-      gameStatus = 'FINISHED';
-    } else if (
-      (!gameStatus || gameStatus === 'In Progress') &&
-      status?.state === 'in'
-    ) {
-      if (displayClock) {
-        gameStatus = `${displayClock}${competition.status?.period ? ' - ' + competition.status.period : ''}`;
-      }
-    }
+    const homeTeamRecord =
+      home?.records?.find((r) => r.type === 'total')?.summary || '';
+    const awayTeamRecord =
+      away?.records?.find((r) => r.type === 'total')?.summary || '';
 
     return {
       uniqueId: gameId,
       league: normalizedLeagueName,
+      startTimeUTC: competition.date || header?.gameDate,
       homeTeamScore: homeScore,
       awayTeamScore: awayScore,
+      homeTeamId: home
+        ? `${leagueKey}-${home.team?.abbreviation || home.team?.id}`
+        : undefined,
+      awayTeamId: away
+        ? `${leagueKey}-${away.team?.abbreviation || away.team?.id}`
+        : undefined,
+      homeTeamShort: home?.team?.abbreviation,
+      awayTeamShort: away?.team?.abbreviation,
       isFinal,
-      status: status,
-      gameStatus: gameStatus || status?.name,
-      gameClock: displayClock || '',
-      gamePeriod: competition.status?.period,
-      startTimeUTC: competition.date,
+      homeTeamRecord,
+      awayTeamRecord,
       seriesSummary: formatSeriesSummary(
         competition.notes?.[0]?.headline || data.notes?.[0]?.headline || '',
       ),
       seriesStatus: formatSeriesSummary(
         competition.series?.summary || data.series?.summary || '',
       ),
+      status: isFinal ? 'FINISHED' : status?.name || displayClock || '',
+      gameClock: displayClock,
+      gamePeriod: competition.status?.period,
+      gameStatus: isFinal ? 'FINISHED' : status?.detail || status?.shortDetail,
     };
   } catch (error) {
-    console.error(
-      `Error fetching single game score for ${leagueKey} ${gameId}:`,
-      error,
-    );
+    console.error(`Error in getESPNGameScore for ${gameId}:`, error);
     return null;
   }
 };

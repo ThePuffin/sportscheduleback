@@ -38,6 +38,8 @@ export class GameService {
     private readonly refreshTimestampService: RefreshTimestampService,
   ) {}
 
+  maxYearBeforeDelete = 5;
+
   getTeams = (teamSelectedIds, games) => {
     if (teamSelectedIds) {
       return teamSelectedIds.split(',');
@@ -151,6 +153,7 @@ export class GameService {
       maxRecall = 2,
       startDate,
       endDate,
+      season,
     } = params;
     const normalizedLeague = league.toUpperCase().trim();
     if (this.isFetchingGames[normalizedLeague]) {
@@ -193,7 +196,8 @@ export class GameService {
         }
       }
 
-      if (!forceUpdate) {
+      // Bypass freshness check if a specific past season is requested
+      if (!forceUpdate && !season) {
         const lastRefresh =
           await this.refreshTimestampService.getLastRefresh(normalizedLeague);
         if (lastRefresh) {
@@ -238,7 +242,7 @@ export class GameService {
         }
       }
 
-      if (forceUpdate) {
+      if (forceUpdate && !season) {
         const todayTimestamps =
           await this.refreshTimestampService.getTodayManualTimestamps(
             normalizedLeague,
@@ -255,22 +259,27 @@ export class GameService {
         `Data for ${normalizedLeague} is stale. Refreshing in background...`,
       );
 
-      // Add current timestamp
-      await this.refreshTimestampService.addTimestamp(
-        normalizedLeague,
-        forceUpdate ? 'manual' : 'auto',
-      );
+      // Add current timestamp (only if not a historical season bulk fetch)
+      if (!season) {
+        await this.refreshTimestampService.addTimestamp(
+          normalizedLeague,
+          forceUpdate ? 'manual' : 'auto',
+        );
+      }
 
       const todayStr = readableDate(now);
-      await this.gameModel.updateMany(
-        {
-          league: normalizedLeague,
-          gameDate: { $gte: todayStr },
-          isActive: true,
-          startTimeUTC: { $gt: now.toISOString() },
-        },
-        { $set: { isActive: false } },
-      );
+      // Only deactivate future games if we are not fetching an old season
+      if (!season) {
+        await this.gameModel.updateMany(
+          {
+            league: normalizedLeague,
+            gameDate: { $gte: todayStr },
+            isActive: true,
+            startTimeUTC: { $gt: now.toISOString() },
+          },
+          { $set: { isActive: false } },
+        );
+      }
 
       // Fetch teams and logos for the league
       const leagueTeams = await this.teamService.findAll([normalizedLeague]);
@@ -284,6 +293,7 @@ export class GameService {
           leagueLogos,
           normalizedLeague,
           forceUpdate,
+          season,
         );
       } else {
         gamesObj = await getTeamsSchedule(
@@ -291,6 +301,7 @@ export class GameService {
           normalizedLeague,
           leagueLogos,
           forceUpdate,
+          season,
         );
       }
 
@@ -810,15 +821,38 @@ export class GameService {
   async removeDuplicatesAndOlds() {
     console.info('Removing duplicates and old games...');
 
-    const tenMonthsAgo = new Date();
-    tenMonthsAgo.setMonth(tenMonthsAgo.getMonth() - 10);
+    const maxYearsAgo = new Date();
+    maxYearsAgo.setFullYear(
+      maxYearsAgo.getFullYear() - this.maxYearBeforeDelete,
+    );
 
-    // 1. Delete games older than 10 months directly in DB for efficiency
+    // Prepare both date formats
+    const maxYearsAgoISO = maxYearsAgo.toISOString();
+    // E.g., "2025-10-23" to match the format of your gameDate field
+    const maxYearsAgoStr = maxYearsAgo.toISOString().split('T')[0];
+
+    // 1. Delete games older than 5 years directly in DB for efficiency
     const deleteResult = await this.gameModel.deleteMany({
-      startTimeUTC: { $lt: tenMonthsAgo.toISOString() },
+      $or: [
+        {
+          // Condition 1: startTimeUTC is valid and older than 5 years
+          startTimeUTC: {
+            $lt: maxYearsAgoISO,
+            $nin: ['', null], // Ignore empty or null fields here
+          },
+        },
+        {
+          // Condition 2 (safety net): gameDate is older than 5 years
+          gameDate: {
+            $lt: maxYearsAgoStr,
+            $nin: ['', null],
+          },
+        },
+      ],
     });
+
     console.info(
-      `Deleted ${deleteResult.deletedCount} games older than 10 months.`,
+      `Deleted ${deleteResult.deletedCount} games older than ${this.maxYearBeforeDelete} years.`,
     );
 
     // 2. Handle duplicates among remaining active games
@@ -1879,5 +1913,68 @@ export class GameService {
     } finally {
       this.isCheckingAvailability = false;
     }
+  }
+
+  async getOldiesGames(yearStr: string, leagueParam?: string) {
+    const targetYear = parseInt(yearStr, 10);
+    const currentYear = new Date().getFullYear();
+
+    // Security check: the year must be valid, not in the future,
+    // and not older than the allowed historical limit
+    if (
+      isNaN(targetYear) ||
+      targetYear > currentYear ||
+      targetYear < currentYear - this.maxYearBeforeDelete
+    ) {
+      throw new HttpException(
+        `The year parameter must be a valid year between ${currentYear - this.maxYearBeforeDelete} and ${currentYear}`,
+        400,
+      );
+    }
+
+    // 1. Retrieve all teams to infer the leagues
+    let teams = await this.teamService.findAll();
+    if (!teams.length) {
+      teams = (await this.teamService.getTeams()) || [];
+    }
+
+    let leagues = Array.from(new Set(teams.map((team) => team.league)));
+
+    // Filter leagues if a specific league query parameter is provided
+    if (leagueParam) {
+      const normalizedLeague = leagueParam.toUpperCase().trim();
+      if (!leagues.includes(normalizedLeague)) {
+        throw new HttpException(`League ${normalizedLeague} not found`, 404);
+      }
+      leagues = [normalizedLeague];
+    }
+
+    console.info(
+      `[Oldies] Starting data recovery for the year ${targetYear} ${leagueParam ? `(League: ${leagueParam})` : ''}...`,
+    );
+
+    // 2. Loop through the leagues for the specific target year
+    for (const league of leagues) {
+      console.info(
+        `[Oldies] Fetching league ${league} for the year ${targetYear}...`,
+      );
+
+      try {
+        // Call getLeagueGames passing the specific season parameter
+        await this.getLeagueGames({
+          league,
+          forceUpdate: true,
+          skipCascade: true, // true to avoid concurrent refresh conflicts
+          season: targetYear,
+        });
+      } catch (error) {
+        console.error(`[Oldies] Error for ${league} in ${targetYear}:`, error);
+      }
+    }
+
+    console.info('[Oldies] History data recovery completed!');
+    return {
+      message: `History recovery for the year ${targetYear} ${leagueParam ? `for league ${leagueParam}` : ''} started successfully.`,
+    };
   }
 }
