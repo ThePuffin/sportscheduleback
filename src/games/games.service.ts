@@ -477,9 +477,11 @@ export class GameService {
 
   async findResultsByTeam(teamSelectedId: string, startDate?: string) {
     if (!startDate) {
-      const oneYearAgo = new Date();
-      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-      startDate = readableDate(oneYearAgo);
+      const fewYearsAgo = new Date();
+      fewYearsAgo.setFullYear(
+        fewYearsAgo.getFullYear() - this.maxYearBeforeDelete,
+      );
+      startDate = readableDate(fewYearsAgo);
     }
     const today = readableDate(new Date());
     const games = await this.filterGames({
@@ -512,9 +514,11 @@ export class GameService {
     maxResults?: number,
   ) {
     if (!startDate) {
-      const oneYearAgo = new Date();
-      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-      startDate = readableDate(oneYearAgo);
+      const fewYearsAgo = new Date();
+      fewYearsAgo.setFullYear(
+        fewYearsAgo.getFullYear() - this.maxYearBeforeDelete,
+      );
+      startDate = readableDate(fewYearsAgo);
     }
     maxResults = maxResults || 5000;
 
