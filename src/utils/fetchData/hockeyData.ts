@@ -14,6 +14,64 @@ const leagueName = League.NHL;
 const pwhlAPI = 'https://lscluster.hockeytech.com/feed/';
 
 export class HockeyData {
+  /**
+   * Fetch the list of PWHL seasons (by default ordered from most recent to oldest).
+   */
+  private async getPWHLSeasons(): Promise<
+    {
+      season_id: string;
+      season_name: string;
+      start_date: string;
+      end_date: string;
+    }[]
+  > {
+    const response = await fetch(
+      `${pwhlAPI}index.php?feed=modulekit&view=seasons&key=446521baf8c38984&client_code=pwhl&fmt=json`,
+    );
+    const json = await response.json();
+    const seasons = json?.SiteKit?.Seasons;
+    return Array.isArray(seasons) ? seasons : [];
+  }
+
+  /**
+   * Resolve the PWHL `season_id`(s) to request for a specific calendar year.
+   *
+   * - When `year` is provided, returns every season whose date span overlaps that
+   *   calendar year (a PWHL season runs across two years, e.g. 2024-25), so a full
+   *   calendar year of results is recovered.
+   * - When `year` is omitted, returns the currently live season, falling back to the
+   *   most recent regular season, to avoid hitting the API's default (often a
+   *   pre-season) which has an empty schedule.
+   */
+  private async getPWHLSeasonIds(year?: number): Promise<string[]> {
+    try {
+      const seasons = await this.getPWHLSeasons();
+      if (!Array.isArray(seasons) || seasons.length === 0) return [];
+
+      if (year) {
+        const yearStart = `${year}-01-01`;
+        const yearEnd = `${year}-12-31`;
+        return seasons
+          .filter((s) => s.start_date <= yearEnd && s.end_date >= yearStart)
+          .map((s) => s.season_id);
+      }
+
+      const nowStr = new Date().toISOString().slice(0, 10);
+      const ongoing = seasons.find(
+        (s) => s.start_date <= nowStr && s.end_date >= nowStr,
+      );
+      if (ongoing) return [ongoing.season_id];
+
+      const latestReg = seasons.find((s) =>
+        s.season_name.toLowerCase().includes('regular season'),
+      );
+      return latestReg ? [latestReg.season_id] : [];
+    } catch (error) {
+      console.error('Error fetching PWHL seasons:', error);
+      return [];
+    }
+  }
+
   async getNHLTeams(): Promise<TeamType[]> {
     try {
       let allTeams: TeamNHL[];
@@ -216,15 +274,25 @@ export class HockeyData {
         fetchGames = await tempGames.games;
       }
       if (league === League.PWHL) {
-        const fetchedGames = await fetch(
-          `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
+        const seasonIds = await this.getPWHLSeasonIds(season);
+        const urls = seasonIds.length
+          ? seasonIds.map(
+              (seasonId) =>
+                `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl&season_id=${seasonId}`,
+            )
+          : [
+              `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
+            ];
+        const fetchedSchedules = await Promise.all(
+          urls.map((url) => fetch(url).then((res) => res.json())),
         );
-        const allFetchGames = (await fetchedGames.json()).SiteKit.Schedule;
+        const allFetchGames = fetchedSchedules.flatMap(
+          (json) => json?.SiteKit?.Schedule || [],
+        );
         fetchGames = allFetchGames.filter(
           (game) =>
             game.home_team_code === id || game.visiting_team_code === id,
         );
-        console.info('yes', id);
         return (await fetchGames.games) || fetchGames;
       }
       console.info('yes', id);
@@ -362,7 +430,9 @@ export class HockeyData {
 
         if (season) {
           const gameYear = new Date(GameDateISO8601).getFullYear();
-          if (gameYear !== season && gameYear !== season + 1) return;
+          // `season` is the requested calendar year: keep only games played that
+          // year (a PWHL season spans two years, e.g. 2024-25).
+          if (gameYear !== season) return;
         } else {
           const tenMonthAgo = new Date(
             now.getTime() - 300 * 24 * 60 * 60 * 1000,

@@ -124,7 +124,7 @@ export class GamesController {
 
   @Post('refresh/oldies')
   async refreshOldies(
-    @Query('year') year: string,
+    @Query('year') year?: string,
     @Query('league') league?: string,
   ) {
     return this.GameService.getOldiesGames(year, league);

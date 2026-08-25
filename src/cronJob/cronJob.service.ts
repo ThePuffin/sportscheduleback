@@ -58,30 +58,64 @@ export class CronService implements OnModuleInit {
   async getOldGames() {
     const currentYear = new Date().getFullYear();
     const maxYearsBeforeDelete = this.gameService.maxYearBeforeDelete; // 5
-
-    // 1. Pick a random year within the last 5 years limit
     const minYear = currentYear - maxYearsBeforeDelete;
-    const randomYear =
-      Math.floor(Math.random() * (currentYear - minYear + 1)) + minYear;
 
-    // 2. Pick a random league from the League enum
+    // 1. Pick a random league from the League enum
     const leagueValues = Object.values(League);
     const randomLeague =
       leagueValues[Math.floor(Math.random() * leagueValues.length)];
 
     console.info(
-      `[Cron] Triggering oldies games refresh for league: ${randomLeague}, year: ${randomYear}`,
+      `[Cron] Oldies refresh: checking league ${randomLeague} for the last ${maxYearsBeforeDelete} years...`,
     );
 
-    try {
-      // Pass parameters correctly as individual arguments (strings)
-      await this.gameService.getOldiesGames(
-        randomYear.toString(),
-        randomLeague,
+    let allYearsComplete = true;
+
+    // 2. Loop over the last N years, from the most recent to the oldest
+    for (let year = currentYear; year > minYear; year--) {
+      try {
+        // Dry-run comparison: API games vs games already in DB (nothing saved)
+        const status = await this.gameService.getSeasonStatus(
+          randomLeague,
+          year,
+        );
+
+        // The current season (or upcoming) is still in progress: always refresh it.
+        if (status.isCurrentSeason) {
+          console.info(
+            `[Cron] ${randomLeague} ${year}: current season - refreshing it.`,
+          );
+          allYearsComplete = false;
+          await this.gameService.getOldiesGames(year.toString(), randomLeague);
+          continue;
+        }
+
+        if (status.complete) {
+          console.info(
+            `[Cron] ${randomLeague} ${year}: ${status.obtained} games already in DB (${status.stored}/${status.obtained}) - skipping (no modification).`,
+          );
+          continue;
+        }
+
+        console.info(
+          `[Cron] ${randomLeague} ${year}: DB has ${status.stored}/${status.obtained} games - refreshing this season.`,
+        );
+        allYearsComplete = false;
+        await this.gameService.getOldiesGames(year.toString(), randomLeague);
+      } catch (error) {
+        console.error(
+          `[Cron] Error checking ${randomLeague} for ${year}:`,
+          error,
+        );
+      }
+    }
+
+    if (allYearsComplete) {
+      console.info(
+        `[Cron] All the last ${maxYearsBeforeDelete} years are already complete for ${randomLeague} - finishing without any modification.`,
       );
+    } else {
       console.info('[Cron] Oldies games refresh completed successfully.');
-    } catch (error) {
-      console.error('[Cron] Error during oldies games refresh:', error);
     }
   }
 

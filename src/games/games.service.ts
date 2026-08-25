@@ -145,6 +145,101 @@ export class GameService {
     return await newGame.save();
   }
 
+  /**
+   * Fetch a league's games for a given season (or current when no season) and
+   * return them flattened + deduplicated by `uniqueId`, WITHOUT persisting them.
+   * Used by `getLeagueGames` (which saves) and by the "dry run" season counting
+   * for the oldies cron job.
+   */
+  private async _fetchUniqueGames(normalizedLeague: string, season?: number) {
+    const leagueTeams = await this.teamService.findAll([normalizedLeague]);
+    const leagueLogos = await this.getTeamsLogo(leagueTeams);
+
+    let gamesObj = {};
+    if (normalizedLeague === League.PWHL) {
+      const hockeyData = new HockeyData();
+      gamesObj = await hockeyData.getHockeySchedule(
+        leagueTeams,
+        leagueLogos,
+        normalizedLeague,
+        true,
+        season,
+      );
+    } else {
+      gamesObj = await getTeamsSchedule(
+        leagueTeams,
+        normalizedLeague,
+        leagueLogos,
+        true,
+        season,
+      );
+    }
+
+    const games = Object.values(gamesObj).flat() as any[];
+    const uniqueGamesMap = new Map<string, any>();
+    for (const game of games) {
+      if (game?.uniqueId) {
+        uniqueGamesMap.set(game.uniqueId, game);
+      }
+    }
+    return Array.from(uniqueGamesMap.values());
+  }
+
+  /**
+   * Compares the number of games the API would produce for a league+season
+   * (dry run, nothing saved) against how many of those are already in the DB.
+   * Returns `complete = true` when both counts match.
+   *
+   * Only meaningful for seasons BEFORE the current one: a current (or upcoming)
+   * season is still in progress, so a partial DB is expected and should not be
+   * treated as "missing". `isCurrentSeason` reflects that.
+   */
+  async getSeasonStatus(league: string, season?: number) {
+    const normalizedLeague = league.toUpperCase().trim();
+
+    // The PWHL debuted in 2024: prior years are a no-op (0 expected games).
+    if (normalizedLeague === League.PWHL && season && season < 2024) {
+      return {
+        league: normalizedLeague,
+        season,
+        obtained: 0,
+        stored: 0,
+        complete: true,
+        isCurrentSeason: false,
+      };
+    }
+
+    const isCurrent =
+      !season ||
+      (await isCurrentSeason(normalizedLeague, new Date(`${season}-06-30`)));
+
+    const obtainedGames = await this._fetchUniqueGames(
+      normalizedLeague,
+      season,
+    );
+    const uniqueIds = obtainedGames.map((g) => g.uniqueId);
+
+    let stored = 0;
+    if (uniqueIds.length > 0) {
+      stored = await this.gameModel.countDocuments({
+        league: normalizedLeague,
+        uniqueId: { $in: uniqueIds },
+      });
+    }
+
+    // For the current season, do not treat a partial DB as "incomplete".
+    const complete = isCurrent ? true : uniqueIds.length === stored;
+
+    return {
+      league: normalizedLeague,
+      season,
+      obtained: uniqueIds.length,
+      stored,
+      complete,
+      isCurrentSeason: isCurrent,
+    };
+  }
+
   async getLeagueGames(params): Promise<any> {
     const {
       league,
@@ -176,6 +271,15 @@ export class GameService {
       if (otherManualRefresh) {
         console.info(
           `Skipping getLeagueGames for ${league} because another manual refresh is in progress.`,
+        );
+        return;
+      }
+
+      // The PWHL debuted in 2024 : there is nothing to recover for earlier
+      // seasons. Early-return so earlier years are a no-op for this league.
+      if (normalizedLeague === League.PWHL && season && season < 2024) {
+        console.info(
+          `Skipping PWHL refresh for season ${season} because the PWHL did not exist before 2024.`,
         );
         return;
       }
@@ -281,39 +385,13 @@ export class GameService {
         );
       }
 
-      // Fetch teams and logos for the league
-      const leagueTeams = await this.teamService.findAll([normalizedLeague]);
-      const leagueLogos = await this.getTeamsLogo(leagueTeams);
-
-      let gamesObj = {};
-      if (normalizedLeague === League.PWHL) {
-        const hockeyData = new HockeyData();
-        gamesObj = await hockeyData.getHockeySchedule(
-          leagueTeams,
-          leagueLogos,
-          normalizedLeague,
-          forceUpdate,
-          season,
-        );
-      } else {
-        gamesObj = await getTeamsSchedule(
-          leagueTeams,
-          normalizedLeague,
-          leagueLogos,
-          forceUpdate,
-          season,
-        );
-      }
-
-      // Flatten the games object into an array and deduplicate by uniqueId
-      const games = Object.values(gamesObj).flat() as any[];
-      const uniqueGamesMap = new Map<string, any>();
-      for (const game of games) {
-        if (game?.uniqueId) {
-          uniqueGamesMap.set(game.uniqueId, game);
-        }
-      }
-      const uniqueGames = Array.from(uniqueGamesMap.values());
+      // Fetch teams and logos for the league, then fetch + deduplicate the
+      // season's games (same pipeline used by getSeasonStatus, without saving).
+      const uniqueGames = await this._fetchUniqueGames(
+        normalizedLeague,
+        season,
+      );
+      const games = uniqueGames;
 
       if (uniqueGames && uniqueGames.length > 0) {
         for (const game of uniqueGames) {
@@ -1919,21 +1997,34 @@ export class GameService {
     }
   }
 
-  async getOldiesGames(yearStr: string, leagueParam?: string) {
-    const targetYear = parseInt(yearStr, 10);
+  async getOldiesGames(yearStr?: string, leagueParam?: string) {
     const currentYear = new Date().getFullYear();
+    const minYear = currentYear - this.maxYearBeforeDelete;
 
-    // Security check: the year must be valid, not in the future,
-    // and not older than the allowed historical limit
-    if (
-      isNaN(targetYear) ||
-      targetYear > currentYear ||
-      targetYear < currentYear - this.maxYearBeforeDelete
-    ) {
-      throw new HttpException(
-        `The year parameter must be a valid year between ${currentYear - this.maxYearBeforeDelete} and ${currentYear}`,
-        400,
-      );
+    let years: number[];
+    if (yearStr === undefined || yearStr === null || yearStr.trim() === '') {
+      // No year specified -> loop over the last N seasons (years), from the
+      // most recent to the oldest allowed by the historical limit.
+      years = [];
+      for (let y = currentYear; y > minYear; y--) {
+        years.push(y);
+      }
+    } else {
+      const targetYear = parseInt(yearStr, 10);
+
+      // Security check: the year must be valid, not in the future,
+      // and not older than the allowed historical limit
+      if (
+        isNaN(targetYear) ||
+        targetYear > currentYear ||
+        targetYear < minYear
+      ) {
+        throw new HttpException(
+          `The year parameter must be a valid year between ${minYear} and ${currentYear}`,
+          400,
+        );
+      }
+      years = [targetYear];
     }
 
     // 1. Retrieve all teams to infer the leagues
@@ -1953,32 +2044,36 @@ export class GameService {
       leagues = [normalizedLeague];
     }
 
+    const yearsLabel =
+      years.length > 1 ? `years ${years.join(', ')}` : `the year ${years[0]}`;
     console.info(
-      `[Oldies] Starting data recovery for the year ${targetYear} ${leagueParam ? `(League: ${leagueParam})` : ''}...`,
+      `[Oldies] Starting data recovery for ${yearsLabel} ${leagueParam ? `(League: ${leagueParam})` : ''}...`,
     );
 
-    // 2. Loop through the leagues for the specific target year
+    // 2. Loop through the leagues and the requested years
     for (const league of leagues) {
-      console.info(
-        `[Oldies] Fetching league ${league} for the year ${targetYear}...`,
-      );
+      for (const year of years) {
+        console.info(
+          `[Oldies] Fetching league ${league} for the year ${year}...`,
+        );
 
-      try {
-        // Call getLeagueGames passing the specific season parameter
-        await this.getLeagueGames({
-          league,
-          forceUpdate: true,
-          skipCascade: true, // true to avoid concurrent refresh conflicts
-          season: targetYear,
-        });
-      } catch (error) {
-        console.error(`[Oldies] Error for ${league} in ${targetYear}:`, error);
+        try {
+          // Call getLeagueGames passing the specific season parameter
+          await this.getLeagueGames({
+            league,
+            forceUpdate: true,
+            skipCascade: true, // true to avoid concurrent refresh conflicts
+            season: year,
+          });
+        } catch (error) {
+          console.error(`[Oldies] Error for ${league} in ${year}:`, error);
+        }
       }
     }
 
     console.info('[Oldies] History data recovery completed!');
     return {
-      message: `History recovery for the year ${targetYear} ${leagueParam ? `for league ${leagueParam}` : ''} started successfully.`,
+      message: `History recovery for ${yearsLabel} ${leagueParam ? `for league ${leagueParam}` : ''} started successfully.`,
     };
   }
 }
