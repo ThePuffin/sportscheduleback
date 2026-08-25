@@ -4,6 +4,31 @@
 
 ---
 
+## Added: unit tests for the season-aware recovery features
+
+### Purpose
+
+Prevent regressions on the PWHL historical recovery, the `getOldiesGames` multi-year loop,
+and the season-aware oldies cron.
+
+### Added
+
+- **`backend/src/games/tests/games.service.spec.ts`** — new `describe` blocks:
+  - `getSeasonStatus`: past complete/incomplete seasons, current season always `complete`,
+    PWHL pre-2024 short-circuit (no fetch / no DB count).
+  - `getOldiesGames`: throws on out-of-range explicit year, loops over the last 5 seasons when
+    no year is given, and processes a single explicit year with a league filter.
+  - The `mockGameModel` now also exposes `countDocuments`.
+- **`backend/src/cronJob/tests/cronJob.service.spec.ts`** (new file) — `CronService.getOldGames`:
+  refreshes the current season even when `complete`, skips a past complete season without
+  refreshing, and refreshes a past incomplete season. Uses a deterministic `Math.random`.
+
+### Verification
+
+`tsc --noEmit` clean; ESLint clean on the new/edited spec files; Jest suites pass.
+
+---
+
 ## Added: cron oldies refresh is season-aware (dry-run comparison, no-op when complete)
 
 ### Purpose

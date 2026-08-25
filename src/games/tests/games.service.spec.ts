@@ -9,13 +9,12 @@ import { Game } from '../schemas/game.schema';
 
 describe('GameService', () => {
   let service: GameService;
-  let gameModel: any;
-  let teamService: TeamService;
 
   const mockGameModel = {
     find: jest.fn().mockReturnThis(),
     lean: jest.fn().mockReturnThis(),
     exec: jest.fn(),
+    countDocuments: jest.fn(),
   };
 
   const mockTeamService = {
@@ -49,8 +48,6 @@ describe('GameService', () => {
     }).compile();
 
     service = module.get<GameService>(GameService);
-    gameModel = module.get(getModelToken(Game.name));
-    teamService = module.get<TeamService>(TeamService);
   });
 
   afterEach(() => {
@@ -127,6 +124,167 @@ describe('GameService', () => {
 
       consoleSpy.mockRestore();
       isCurrentSeasonSpy.mockRestore();
+    });
+  });
+
+  describe('getSeasonStatus', () => {
+    let fetchUniqueSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      // Stub the dry-run fetch to avoid real network calls
+      fetchUniqueSpy = jest
+        .spyOn(service as any, '_fetchUniqueGames')
+        .mockResolvedValue([
+          { uniqueId: 'g1' },
+          { uniqueId: 'g2' },
+          { uniqueId: 'g3' },
+        ]);
+      mockGameModel.countDocuments.mockResolvedValue(3);
+    });
+
+    afterEach(() => {
+      fetchUniqueSpy.mockRestore();
+    });
+
+    it('should mark a past season as complete when all obtained games are stored', async () => {
+      // A past season (isCurrentSeason returns false for the representative date)
+      const isCurrentSeasonSpy = jest
+        .spyOn(utils, 'isCurrentSeason')
+        .mockResolvedValue(false);
+
+      const status = await service.getSeasonStatus(League.NHL, 2023);
+
+      expect(status).toEqual({
+        league: League.NHL,
+        season: 2023,
+        obtained: 3,
+        stored: 3,
+        complete: true,
+        isCurrentSeason: false,
+      });
+      expect(mockGameModel.countDocuments).toHaveBeenCalledWith({
+        league: League.NHL,
+        uniqueId: { $in: ['g1', 'g2', 'g3'] },
+      });
+
+      isCurrentSeasonSpy.mockRestore();
+    });
+
+    it('should mark a past season as incomplete when DB has fewer games than the API', async () => {
+      const isCurrentSeasonSpy = jest
+        .spyOn(utils, 'isCurrentSeason')
+        .mockResolvedValue(false);
+      mockGameModel.countDocuments.mockResolvedValue(2);
+
+      const status = await service.getSeasonStatus(League.NBA, 2022);
+
+      expect(status.complete).toBe(false);
+      expect(status.stored).toBe(2);
+      expect(status.obtained).toBe(3);
+
+      isCurrentSeasonSpy.mockRestore();
+    });
+
+    it('should not trust the comparison for the current season (always complete)', async () => {
+      // Current season -> isCurrentSeason returns true
+      const isCurrentSeasonSpy = jest
+        .spyOn(utils, 'isCurrentSeason')
+        .mockResolvedValue(true);
+      // DB would be partial (e.g. mid-season)
+      mockGameModel.countDocuments.mockResolvedValue(1);
+
+      const status = await service.getSeasonStatus(League.MLB, 2024);
+
+      expect(status.isCurrentSeason).toBe(true);
+      expect(status.complete).toBe(true);
+      expect(status.stored).toBe(1);
+
+      isCurrentSeasonSpy.mockRestore();
+    });
+
+    it('should short-circuit for PWHL seasons before 2024 (no-op complete)', async () => {
+      const status = await service.getSeasonStatus(League.PWHL, 2023);
+
+      expect(status).toEqual({
+        league: League.PWHL,
+        season: 2023,
+        obtained: 0,
+        stored: 0,
+        complete: true,
+        isCurrentSeason: false,
+      });
+      // Should not hit the fetch nor the DB count
+      expect(fetchUniqueSpy).not.toHaveBeenCalled();
+      expect(mockGameModel.countDocuments).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getOldiesGames', () => {
+    let getLeagueGamesSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      mockTeamService.findAll.mockResolvedValue([
+        { league: League.NHL },
+        { league: League.PWHL },
+      ]);
+      getLeagueGamesSpy = jest
+        .spyOn(service, 'getLeagueGames')
+        .mockResolvedValue([]);
+    });
+
+    afterEach(() => {
+      getLeagueGamesSpy.mockRestore();
+    });
+
+    it('should throw when an explicit year is out of the allowed range', async () => {
+      const currentYear = new Date().getFullYear();
+      const tooOld = currentYear - service.maxYearBeforeDelete - 1;
+
+      await expect(service.getOldiesGames(String(tooOld))).rejects.toThrow(
+        'The year parameter must be a valid year',
+      );
+      expect(getLeagueGamesSpy).not.toHaveBeenCalled();
+    });
+
+    it('should loop over the last 5 seasons when no year is specified', async () => {
+      const currentYear = new Date().getFullYear();
+      const expectedYears = [];
+      for (
+        let y = currentYear;
+        y > currentYear - service.maxYearBeforeDelete;
+        y--
+      ) {
+        expectedYears.push(y);
+      }
+
+      const result = await service.getOldiesGames(undefined, League.NHL);
+
+      // One league x each of the last 5 years
+      expect(getLeagueGamesSpy).toHaveBeenCalledTimes(expectedYears.length);
+      for (const year of expectedYears) {
+        expect(getLeagueGamesSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ league: League.NHL, season: year }),
+        );
+      }
+      expect(result.message).toContain('History recovery');
+    });
+
+    it('should process a single explicit year with a league filter', async () => {
+      const currentYear = new Date().getFullYear();
+
+      const result = await service.getOldiesGames(
+        String(currentYear - 1),
+        League.NHL,
+      );
+
+      expect(getLeagueGamesSpy).toHaveBeenCalledTimes(1);
+      expect(getLeagueGamesSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          league: League.NHL,
+          season: currentYear - 1,
+        }),
+      );
+      expect(result.message).toContain(String(currentYear - 1));
     });
   });
 });
