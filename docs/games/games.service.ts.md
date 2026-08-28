@@ -10,7 +10,8 @@ This is the core business logic module for games. It fetches schedules and score
 - **Live score updates** — updates ongoing games with score and status data
 - **Data enrichment** — attaches team names, logos, records and colors
 - **Query helpers** — returns upcoming games, results, date-range data and hour-grouped schedules
-- **Maintenance logic** — removes duplicates, old games and invalid score records
+- **Maintenance logic** — removes duplicates, old games and invalid score records, and purges stale
+  active games whose final result can no longer be recovered.
 
 ## Main Responsibilities
 

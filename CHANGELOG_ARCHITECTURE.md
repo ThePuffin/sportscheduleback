@@ -4,6 +4,32 @@
 
 ---
 
+## Fixed: stale active PWHL game keeps triggering the scores fetch cycle on every start
+
+### Problem
+
+The backend logged `[fetchGamesScores] Fetching scores for PWHL on 2026-05-11...` at every server
+start / cron run. A PWHL game stuck in the DB (`isActive: true`, non‑terminal status, started months
+ago) matched `fetchGamesForLiveScoreUpdate(2)` forever, and since its final result can no longer be
+recovered from the source, the recovery cycle re‑detected it each time.
+
+### Changes
+
+- **`GameService.removeStaleUnresolvedGames(maxAgeDays?)`** (`backend/src/games/games.service.ts`, new):
+  purges games that are still `isActive: true`, started more than the max age ago (default 90 days),
+  and whose `gameStatus` is not `FINISHED`/`FINAL`/`CANCELLED`/`POSTPONED`.
+- New configurable `GameService.staleGameMaxAgeDays = 90`.
+- `fetchGamesScores()` now calls `removeStaleUnresolvedGames()` at the end of the cycle, next to the
+  existing `removeOldGamesWithoutScore()`.
+- Added unit tests in `backend/src/games/tests/games.service.spec.ts`.
+
+### Result
+
+Stale, unresolvable active games are purged after ~3 months; the recurring `Fetching scores...` log
+for those games disappears.
+
+---
+
 ## Added: unit tests for the season-aware recovery features
 
 ### Purpose

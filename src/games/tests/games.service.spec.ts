@@ -287,4 +287,42 @@ describe('GameService', () => {
       expect(result.message).toContain(String(currentYear - 1));
     });
   });
+  describe('removeStaleUnresolvedGames', () => {
+    it('should remove active games unresolved for more than the max age', async () => {
+      const removeSpy = jest
+        .spyOn(service, 'remove')
+        .mockResolvedValue({} as any);
+      const consoleSpy = jest.spyOn(console, 'info').mockImplementation();
+
+      const staleGames = [
+        { uniqueId: 'PWHL-foo', league: League.PWHL },
+        { uniqueId: 'NHL-bar', league: League.NHL },
+      ];
+      mockGameModel.exec.mockResolvedValue(staleGames);
+
+      await (service as any).removeStaleUnresolvedGames(90);
+
+      expect(removeSpy).toHaveBeenCalledTimes(2);
+      expect(removeSpy).toHaveBeenCalledWith('PWHL-foo');
+      expect(removeSpy).toHaveBeenCalledWith('NHL-bar');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('active game(s) unresolved'),
+      );
+
+      removeSpy.mockRestore();
+      consoleSpy.mockRestore();
+    });
+
+    it('should not call remove when there is no stale game', async () => {
+      const removeSpy = jest
+        .spyOn(service, 'remove')
+        .mockResolvedValue({} as any);
+      mockGameModel.exec.mockResolvedValue([]);
+
+      await (service as any).removeStaleUnresolvedGames(90);
+
+      expect(removeSpy).not.toHaveBeenCalled();
+      removeSpy.mockRestore();
+    });
+  });
 });

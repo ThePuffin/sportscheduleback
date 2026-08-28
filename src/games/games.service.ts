@@ -39,6 +39,9 @@ export class GameService {
   ) {}
 
   maxYearBeforeDelete = 5;
+  // Purge games that are still active/resolved-less several months after their start
+  // (e.g. a PWHL game stuck on 2026-05-11 whose final result can never be fetched).
+  staleGameMaxAgeDays = 90;
 
   getTeams = (teamSelectedIds, games) => {
     if (teamSelectedIds) {
@@ -245,7 +248,7 @@ export class GameService {
       league,
       forceUpdate = false,
       skipCascade = true,
-      maxRecall = 2,
+      maxRecall = 20,
       startDate,
       endDate,
       season,
@@ -1299,6 +1302,7 @@ export class GameService {
 
       await this.fixScoreIssue();
       await this.removeOldGamesWithoutScore();
+      await this.removeStaleUnresolvedGames();
 
       return appliedUpdates.length ? appliedUpdates : results;
     } catch (error) {
@@ -1337,6 +1341,42 @@ export class GameService {
       );
       await this.remove(game.uniqueId);
     }
+  }
+
+  /**
+   * Purges games that are still active (and not resolved to a terminal status) several
+   * months after they started. These are stuck/stale games whose final result can no
+   * longer be recovered from the source, so they would otherwise trigger the
+   * "Fetching scores for {league}..." cycle on every run (e.g. a PWHL game on 2026-05-11).
+   */
+  private async removeStaleUnresolvedGames(
+    maxAgeDays = this.staleGameMaxAgeDays,
+  ): Promise<Game[]> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - maxAgeDays);
+
+    const staleGames = await this.gameModel
+      .find({
+        isActive: true,
+        startTimeUTC: { $lte: cutoff.toISOString(), $nin: ['', null] },
+        gameStatus: {
+          $nin: ['FINISHED', 'FINAL', 'CANCELLED', 'POSTPONED'],
+        },
+      })
+      .exec();
+
+    console.info(
+      `[fetchGamesScores] ${staleGames.length} active game(s) unresolved for more than ${maxAgeDays} days. Processing...`,
+    );
+
+    for (const game of staleGames) {
+      console.info(
+        `[fetchGamesScores] Removing unresolved game ${game.uniqueId} (${game.league}) started more than ${maxAgeDays} days ago without a final status...`,
+      );
+      await this.remove(game.uniqueId);
+    }
+
+    return staleGames;
   }
 
   async fetchLiveScores(gameIds: string[]): Promise<any[]> {
