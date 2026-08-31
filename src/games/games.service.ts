@@ -396,7 +396,7 @@ export class GameService {
         season,
       );
       const games = uniqueGames;
-      
+
       if (uniqueGames && uniqueGames.length > 0) {
         // Oldies recovery: only ever add missing games without overwriting an existing match.
         // A game is considered "already present" (same game) only when its uniqueId matches
@@ -407,14 +407,12 @@ export class GameService {
           { homeTeamScore?: number; awayTeamScore?: number }
         >();
         if (addMissingOnly) {
-          const ids = uniqueGames
-            .map((g) => g?.uniqueId)
-            .filter((id) => !!id);
+          const ids = uniqueGames.map((g) => g?.uniqueId).filter((id) => !!id);
           if (ids.length > 0) {
             const existing = await this.gameModel
               .find(
                 { uniqueId: { $in: ids } },
-                { uniqueId:1, homeTeamScore:1, awayTeamScore:1, _id:0 },
+                { uniqueId: 1, homeTeamScore: 1, awayTeamScore: 1, _id: 0 },
               )
               .lean()
               .exec();
@@ -426,28 +424,30 @@ export class GameService {
             }
           }
         }
-        
+
         let added = 0;
-        let skippedExisting =0;
-        let skippedMissingTeamData =0;
+        let skippedExisting = 0;
+        let skippedMissingTeamData = 0;
         for (const game of uniqueGames) {
           game.updateDate = new Date().toISOString();
           game.isActive = true;
-        
+
           if (addMissingOnly) {
-        
             // Treat as "already present" only ifthe stored game has the same result
             // (id AND home/away scores). Otherwise we refresh it with the fresh data.
-            const stored = game?.uniqueId ? existingResults.get(game?.uniqueId) : undefined;
+            const stored = game?.uniqueId
+              ? existingResults.get(game?.uniqueId)
+              : undefined;
             const sameResult =
               stored &&
-              (stored.homeTeamScore ?? null) === (game?.homeTeamScore ?? null) &&
+              (stored.homeTeamScore ?? null) ===
+                (game?.homeTeamScore ?? null) &&
               (stored.awayTeamScore ?? null) === (game?.awayTeamScore ?? null);
             if (game?.uniqueId && sameResult) {
               skippedExisting++;
               continue;
             }
-        
+
             // Do not inserta match without a well-defined home and away team (and their scores).
             const hasHomeTeam =
               game?.homeTeamId || game?.homeTeamShort || game?.homeTeam;
@@ -457,8 +457,13 @@ export class GameService {
               game?.homeTeamScore !== null && game?.homeTeamScore !== undefined;
             const hasAwayScore =
               game?.awayTeamScore !== null && game?.awayTeamScore !== undefined;
-        
-            if (!hasHomeTeam || !hasAwayTeam || !hasHomeScore || !hasAwayScore) {
+
+            if (
+              !hasHomeTeam ||
+              !hasAwayTeam ||
+              !hasHomeScore ||
+              !hasAwayScore
+            ) {
               skippedMissingTeamData++;
               console.warn(
                 `[Oldies] Skipping ${game?.uniqueId} for ${normalizedLeague} because team/score data is incomplete (home: ${game?.homeTeamShort || game?.homeTeam || 'none'} score ${game?.homeTeamScore ?? 'none'}, away: ${game?.awayTeamShort || game?.awayTeam || 'none'} score ${game?.awayTeamScore ?? 'none'}).`,
@@ -466,18 +471,18 @@ export class GameService {
               continue;
             }
           }
-        
+
           await this.create(game);
           added++;
         }
-        
+
         if (addMissingOnly) {
           console.info(
             `[Oldies] ${normalizedLeague} ${season ? `(season ${season})` : ''}: added ${added}, skipped (existing identical) ${skippedExisting}, skipped (missing team/score data) ${skippedMissingTeamData}.`,
           );
         }
       }
-    
+
       await this._deleteUnlinkedTeams(normalizedLeague);
       return games;
     } finally {
@@ -1999,38 +2004,55 @@ export class GameService {
       .exec();
   }
 
-  private async _deleteUnlinkedTeams(normalizedLeague: string): Promise<void> {
-    const allTeamsInLeague =
-      await this.teamService.findByLeague(normalizedLeague);
-    const activeGamesInLeague = await this.gameModel
-      .find({
-        league: normalizedLeague,
-        isActive: true,
-      })
-      .lean()
-      .exec();
+  private async _deleteUnlinkedTeams(league: string): Promise<void> {
+    const normalizedLeague = league.toUpperCase().trim();
 
-    const linkedTeamIds = new Set<string>();
-    activeGamesInLeague.forEach((game) => {
-      if (game.homeTeamId) linkedTeamIds.add(game.homeTeamId);
-      if (game.awayTeamId) linkedTeamIds.add(game.awayTeamId);
-    });
+    // 1. Exclude all college leagues to prevent infinite delete/refetch loops
+    const isCollegeLeague = Object.values(CollegeLeague).includes(
+      normalizedLeague as CollegeLeague,
+    );
 
-    let deletedCount = 0;
-    for (const team of allTeamsInLeague) {
-      if (!linkedTeamIds.has(team.uniqueId)) {
-        console.info(
-          `Deleting team ${team.uniqueId} from league ${normalizedLeague} as it has no linked active games.`,
-        );
-        await this.teamService.remove(team.uniqueId);
-        deletedCount++;
-      }
+    if (isCollegeLeague) {
+      return;
     }
-    if (deletedCount > 0) {
+
+    // 2. Safeguard: stop cleanup if no games exist at all for this league in the DB
+    const totalGamesForLeague = await this.gameModel.countDocuments({
+      league: normalizedLeague,
+    });
+    if (totalGamesForLeague === 0) {
+      return;
+    }
+
+    // 3. Fetch all teams currently stored for the specified league
+    const teams = await this.teamService.findAll([normalizedLeague]);
+    if (!teams.length) return;
+
+    // 4. Find all team IDs referenced in games across all years (without date filters)
+    const [referencedTeamIds, homeTeamIds, awayTeamIds] = await Promise.all([
+      this.gameModel.distinct('teamSelectedId', { league: normalizedLeague }),
+      this.gameModel.distinct('homeTeamId', { league: normalizedLeague }),
+      this.gameModel.distinct('awayTeamId', { league: normalizedLeague }),
+    ]);
+
+    const usedTeamIds = new Set([
+      ...referencedTeamIds,
+      ...homeTeamIds,
+      ...awayTeamIds,
+    ]);
+
+    // 5. Identify unlinked teams (pro leagues only) with zero existing games
+    const unlinkedTeams = teams.filter(
+      (team) => !usedTeamIds.has(team.uniqueId),
+    );
+
+    if (unlinkedTeams.length > 0) {
       console.info(
-        `Refetching teams for league ${normalizedLeague} due to ${deletedCount} unlinked team(s) deleted.`,
+        `[Cleanup] Found ${unlinkedTeams.length} unlinked teams for ${normalizedLeague}. Deleting...`,
       );
-      await this.teamService.getTeams(normalizedLeague);
+
+      const idsToDelete = unlinkedTeams.map((t) => t.uniqueId);
+      await this.teamService.deleteManyByIds(idsToDelete);
     }
   }
 

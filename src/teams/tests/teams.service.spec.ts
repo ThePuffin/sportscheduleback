@@ -1,9 +1,18 @@
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Model } from 'mongoose';
+import * as fs from 'node:fs';
 import { TeamType } from '../../utils/interface/team';
 import { Team } from '../schemas/team.schema';
 import { TeamService } from '../teams.service';
+
+// Mock du module fs pour éviter d'écrire sur le disque pendant les tests
+jest.mock('node:fs', () => ({
+  promises: {
+    readFile: jest.fn(),
+    writeFile: jest.fn(),
+  },
+}));
 
 // A mocked team object
 const mockTeam: TeamType = {
@@ -13,6 +22,8 @@ const mockTeam: TeamType = {
   wins: 10,
   losses: 5,
   otLosses: 2,
+  color: '#FFB81C',
+  backgroundColor: '#000000',
 } as TeamType;
 
 // We only mock the model methods used in the tested functions
@@ -20,6 +31,7 @@ const mockTeamModel = {
   findOneAndDelete: jest.fn(),
   deleteMany: jest.fn(),
   find: jest.fn(),
+  countDocuments: jest.fn(),
 };
 
 describe('TeamService', () => {
@@ -90,10 +102,152 @@ describe('TeamService', () => {
     });
   });
 
+  describe('Colors Merge Logic (parseExistingColorBlocks & mergeColorsContent)', () => {
+    it('should parse existing colors with single/double quotes and whitespace variations', () => {
+      const existingContent = `
+        export const ColorsTeamEnum = {
+          'NHL-BOS': {
+            color: '#FFB81C',
+            backgroundColor: '#000000',
+          },
+          "NCAA-ALA": { color: "#9E1B32" , backgroundColor: "#FFFFFF" }
+        };
+      `;
+
+      const parsed = service['parseExistingColorBlocks'](existingContent);
+      expect(parsed.size).toBe(2);
+      expect(parsed.get('NHL-BOS')).toEqual({
+        color: '#FFB81C',
+        backgroundColor: '#000000',
+      });
+      expect(parsed.get('NCAA-ALA')).toEqual({
+        color: '#9E1B32',
+        backgroundColor: '#FFFFFF',
+      });
+    });
+
+    it('should merge new entries without deleting old entries (additive-only)', () => {
+      const existingContent = `  'NHL-BOS': {\n    color: '#000000',\n    backgroundColor: '#ffffff',\n  },`;
+      const newEntries = [
+        { uniqueId: 'NHL-BOS', color: '#FFB81C', backgroundColor: '#000000' }, // Mise à jour
+        { uniqueId: 'NHL-MTL', color: '#AF1E2D', backgroundColor: '#192168' }, // Ajout
+      ];
+
+      const merged = service['mergeColorsContent'](existingContent, newEntries);
+
+      // L'ancienne équipe (BOS) doit être mise à jour
+      expect(merged).toContain(
+        "'NHL-BOS': {\n    color: '#FFB81C',\n    backgroundColor: '#000000',\n  }",
+      );
+      // La nouvelle équipe (MTL) doit être ajoutée
+      expect(merged).toContain(
+        "'NHL-MTL': {\n    color: '#AF1E2D',\n    backgroundColor: '#192168',\n  }",
+      );
+    });
+
+    it('should keep existing entries even if they are missing from new entries', () => {
+      const existingContent = `  'OLD-TEAM': {\n    color: '#123456',\n    backgroundColor: '#654321',\n  },`;
+      const newEntries = [
+        { uniqueId: 'NEW-TEAM', color: '#FFFFFF', backgroundColor: '#000000' },
+      ];
+
+      const merged = service['mergeColorsContent'](existingContent, newEntries);
+
+      expect(merged).toContain("'OLD-TEAM'");
+      expect(merged).toContain("'NEW-TEAM'");
+    });
+  });
+
+  describe('Logos Merge Logic (parseExistingLogoBlocks & mergeLogosContent)', () => {
+    it('should parse existing logos correctly', () => {
+      const existingContent = `
+        'BOS': 'http://logo.com/bos.png',
+        "ALA": "http://logo.com/ala.png",
+      `;
+
+      const parsed = service['parseExistingLogoBlocks'](existingContent);
+      expect(parsed.get('BOS')).toBe('http://logo.com/bos.png');
+      expect(parsed.get('ALA')).toBe('http://logo.com/ala.png');
+    });
+
+    it('should preserve existing logo if new logo entry is empty', () => {
+      const existingContent = `  'ALA': 'http://logo.com/existing_ala.png',`;
+      const newLogos = new Map<string, string>([
+        ['ALA', ''], // Nouvelle valeur vide
+        ['TEX', 'http://logo.com/tex.png'], // Nouvel ajout
+      ]);
+
+      const merged = service['mergeLogosContent'](existingContent, newLogos);
+
+      // Ne doit pas écraser le logo existant par une chaîne vide
+      expect(merged).toContain("'ALA': 'http://logo.com/existing_ala.png'");
+      expect(merged).toContain("'TEX': 'http://logo.com/tex.png'");
+    });
+
+    it('should update existing logo if new logo entry is valid', () => {
+      const existingContent = `  'ALA': 'http://logo.com/old_ala.png',`;
+      const newLogos = new Map<string, string>([
+        ['ALA', 'http://logo.com/new_ala.png'],
+      ]);
+
+      const merged = service['mergeLogosContent'](existingContent, newLogos);
+
+      expect(merged).toContain("'ALA': 'http://logo.com/new_ala.png'");
+    });
+  });
+
+  describe('readExistingFile', () => {
+    it('should return file content if file exists', async () => {
+      (fs.promises.readFile as jest.Mock).mockResolvedValue('content_data');
+
+      const content = await service['readExistingFile']('some/path.ts');
+      expect(content).toBe('content_data');
+    });
+
+    it('should return empty string if file reading fails', async () => {
+      (fs.promises.readFile as jest.Mock).mockRejectedValue(
+        new Error('File not found'),
+      );
+
+      const content = await service['readExistingFile']('invalid/path.ts');
+      expect(content).toBe('');
+    });
+  });
+
+  describe('generateLeaguesTeamsAndColorsFiles', () => {
+    it('should execute merge and write files', async () => {
+      const mockTeams = [
+        {
+          uniqueId: 'NCAA-ALA',
+          label: 'Alabama',
+          league: 'NCAA',
+          color: '#9E1B32',
+          backgroundColor: '#FFFFFF',
+          teamLogo: 'http://logo.png',
+        },
+      ];
+
+      // Mock DB query
+      const findChain = {
+        sort: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(mockTeams),
+      };
+      (model.find as jest.Mock).mockReturnValue(findChain);
+      jest.spyOn(service, 'findAllLeagues').mockResolvedValue(['NCAA']);
+      (fs.promises.readFile as jest.Mock).mockResolvedValue('');
+      (fs.promises.writeFile as jest.Mock).mockResolvedValue(undefined);
+
+      await service['generateLeaguesTeamsAndColorsFiles']();
+
+      // Vérifie que les 6 écritures de fichiers (Leagues, Teams, 2x Colors, 2x Logos) ont eu lieu
+      expect(fs.promises.writeFile).toHaveBeenCalledTimes(6);
+    });
+  });
+
   describe('remove', () => {
     it('should remove a team by its uniqueId and return the deleted document', async () => {
       const uniqueId = 'NHL-BOS';
-      // Mock chain calls: findOneAndDelete(...).exec()
       (model.findOneAndDelete as jest.Mock).mockReturnValue({
         exec: jest.fn().mockResolvedValue(mockTeam),
       });
@@ -105,17 +259,39 @@ describe('TeamService', () => {
     });
   });
 
+  describe('deleteManyByIds', () => {
+    it('should return 0 deletedCount when ids array is empty', async () => {
+      const result = await service.deleteManyByIds([]);
+      expect(result).toEqual({ acknowledged: true, deletedCount: 0 });
+      expect(model.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('should call deleteMany with $or filter for uniqueId and _id', async () => {
+      const ids = ['NHL-BOS', '60c72b2f9b1d8b2b3c8e4f5a'];
+      const deleteResult = { deletedCount: 2, acknowledged: true };
+
+      (model.deleteMany as jest.Mock).mockReturnValue({
+        exec: jest.fn().mockResolvedValue(deleteResult),
+      });
+
+      const result = await service.deleteManyByIds(ids);
+
+      expect(model.deleteMany).toHaveBeenCalledWith({
+        $or: [{ uniqueId: { $in: ids } }, { _id: { $in: ids } }],
+      });
+      expect(result).toEqual(deleteResult);
+    });
+  });
+
   describe('removeByLeague', () => {
     it('should remove all teams from a league and return the operation result', async () => {
       const league = 'NHL';
       const deleteResult = { deletedCount: 15, acknowledged: true };
 
-      // Spy on console.log to avoid polluting test output
       const consoleSpy = jest
         .spyOn(console, 'log')
         .mockImplementation(() => {});
 
-      // Mock chain calls: deleteMany(...).exec()
       (model.deleteMany as jest.Mock).mockReturnValue({
         exec: jest.fn().mockResolvedValue(deleteResult),
       });
@@ -131,7 +307,6 @@ describe('TeamService', () => {
         `Removed ${deleteResult.deletedCount} teams`,
       );
 
-      // Restore console.log
       consoleSpy.mockRestore();
     });
   });
@@ -145,11 +320,8 @@ describe('TeamService', () => {
 
       const result = await service.removeAll();
 
-      // Check that deleteMany was called with an empty object
       expect(model.deleteMany).toHaveBeenCalledWith({});
-      // Check that find is no longer called
       expect(model.find).not.toHaveBeenCalled();
-      // Check that the operation result is correctly returned
       expect(result).toEqual(deleteResult);
     });
   });

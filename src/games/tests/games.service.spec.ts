@@ -20,6 +20,7 @@ describe('GameService', () => {
   const mockTeamService = {
     countByLeague: jest.fn(),
     findAll: jest.fn(),
+    deleteManyByIds: jest.fn(),
   };
 
   const mockRefreshTimestampService = {
@@ -263,7 +264,11 @@ describe('GameService', () => {
       expect(getLeagueGamesSpy).toHaveBeenCalledTimes(expectedYears.length);
       for (const year of expectedYears) {
         expect(getLeagueGamesSpy).toHaveBeenCalledWith(
-          expect.objectContaining({ league: League.NHL, season: year, addMissingOnly: true }),
+          expect.objectContaining({
+            league: League.NHL,
+            season: year,
+            addMissingOnly: true,
+          }),
         );
       }
       expect(result.message).toContain('History recovery');
@@ -282,12 +287,13 @@ describe('GameService', () => {
         expect.objectContaining({
           league: League.NHL,
           season: currentYear - 1,
-            addMissingOnly: true,
+          addMissingOnly: true,
         }),
       );
       expect(result.message).toContain(String(currentYear - 1));
     });
   });
+
   describe('getLeagueGames addMissingOnly (oldies recovery)', () => {
     it('should only create missing games, skipping existing ones and those without home/away team data', async () => {
       const currentYear = new Date().getFullYear();
@@ -304,12 +310,40 @@ describe('GameService', () => {
       // Pulled games: existing-1 (identical -> skip), new-2 (complete -> create),
       // existing-diff (same id but different scores -> refresh), new-3 (missing home team -> skip).
       (service as any)._fetchUniqueGames = jest.fn().mockResolvedValue([
-        { uniqueId: 'existing-1', league: League.NHL, homeTeamId: 'A', awayTeamId: 'B', homeTeamScore: 3, awayTeamScore: 1 },
-        { uniqueId: 'new-2', league: League.NHL, homeTeamId: 'A', awayTeamId: 'B', homeTeamScore: 2, awayTeamScore: 1 },
-        { uniqueId: 'existing-diff', league: League.NHL, homeTeamId: 'C', awayTeamId: 'D', homeTeamScore: 5, awayTeamScore: 2 },
-        { uniqueId: 'new-3', league: League.NHL, homeTeamId: null, awayTeamId: 'B' },
+        {
+          uniqueId: 'existing-1',
+          league: League.NHL,
+          homeTeamId: 'A',
+          awayTeamId: 'B',
+          homeTeamScore: 3,
+          awayTeamScore: 1,
+        },
+        {
+          uniqueId: 'new-2',
+          league: League.NHL,
+          homeTeamId: 'A',
+          awayTeamId: 'B',
+          homeTeamScore: 2,
+          awayTeamScore: 1,
+        },
+        {
+          uniqueId: 'existing-diff',
+          league: League.NHL,
+          homeTeamId: 'C',
+          awayTeamId: 'D',
+          homeTeamScore: 5,
+          awayTeamScore: 2,
+        },
+        {
+          uniqueId: 'new-3',
+          league: League.NHL,
+          homeTeamId: null,
+          awayTeamId: 'B',
+        },
       ]);
-      (service as any)._deleteUnlinkedTeams = jest.fn().mockResolvedValue(undefined);
+      (service as any)._deleteUnlinkedTeams = jest
+        .fn()
+        .mockResolvedValue(undefined);
 
       await service.getLeagueGames({
         league: League.NHL,
@@ -339,6 +373,27 @@ describe('GameService', () => {
       createSpy.mockRestore();
     });
   });
+
+  describe('_deleteUnlinkedTeams', () => {
+    it('should call teamService.deleteManyByIds when unlinked team IDs are provided', async () => {
+      const unlinkedIds = ['TEAM-1', 'TEAM-2'];
+      mockTeamService.deleteManyByIds.mockResolvedValue({
+        acknowledged: true,
+        deletedCount: 2,
+      });
+
+      await (service as any)._deleteUnlinkedTeams(unlinkedIds);
+
+      expect(mockTeamService.deleteManyByIds).toHaveBeenCalledWith(unlinkedIds);
+    });
+
+    it('should not call teamService.deleteManyByIds if no unlinked teams are provided', async () => {
+      await (service as any)._deleteUnlinkedTeams([]);
+
+      expect(mockTeamService.deleteManyByIds).not.toHaveBeenCalled();
+    });
+  });
+
   describe('removeStaleUnresolvedGames', () => {
     it('should remove active games unresolved for more than the max age', async () => {
       const removeSpy = jest
