@@ -35,7 +35,7 @@ const leagueConfigs = {
     league: 'mlb',
     startSeason: '03',
     endSeason: '09',
-    endPlayoffs: '10',
+    endPlayoffs: '11',
   },
   [League.NBA]: {
     sport: 'basketball',
