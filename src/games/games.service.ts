@@ -252,6 +252,7 @@ export class GameService {
       startDate,
       endDate,
       season,
+      addMissingOnly = false,
     } = params;
     const normalizedLeague = league.toUpperCase().trim();
     if (this.isFetchingGames[normalizedLeague]) {
@@ -395,15 +396,88 @@ export class GameService {
         season,
       );
       const games = uniqueGames;
-
+      
       if (uniqueGames && uniqueGames.length > 0) {
+        // Oldies recovery: only ever add missing games without overwriting an existing match.
+        // A game is considered "already present" (same game) only when its uniqueId matches
+        // AND both the home and the away scores match the stored ones.
+        // Otherwise we refresh it with the fresh (more complete) data.
+        let existingResults = new Map<
+          string,
+          { homeTeamScore?: number; awayTeamScore?: number }
+        >();
+        if (addMissingOnly) {
+          const ids = uniqueGames
+            .map((g) => g?.uniqueId)
+            .filter((id) => !!id);
+          if (ids.length > 0) {
+            const existing = await this.gameModel
+              .find(
+                { uniqueId: { $in: ids } },
+                { uniqueId:1, homeTeamScore:1, awayTeamScore:1, _id:0 },
+              )
+              .lean()
+              .exec();
+            for (const g of existing) {
+              existingResults.set(g?.uniqueId, {
+                homeTeamScore: g?.homeTeamScore,
+                awayTeamScore: g?.awayTeamScore,
+              });
+            }
+          }
+        }
+        
+        let added = 0;
+        let skippedExisting =0;
+        let skippedMissingTeamData =0;
         for (const game of uniqueGames) {
           game.updateDate = new Date().toISOString();
           game.isActive = true;
+        
+          if (addMissingOnly) {
+        
+            // Treat as "already present" only ifthe stored game has the same result
+            // (id AND home/away scores). Otherwise we refresh it with the fresh data.
+            const stored = game?.uniqueId ? existingResults.get(game?.uniqueId) : undefined;
+            const sameResult =
+              stored &&
+              (stored.homeTeamScore ?? null) === (game?.homeTeamScore ?? null) &&
+              (stored.awayTeamScore ?? null) === (game?.awayTeamScore ?? null);
+            if (game?.uniqueId && sameResult) {
+              skippedExisting++;
+              continue;
+            }
+        
+            // Do not inserta match without a well-defined home and away team (and their scores).
+            const hasHomeTeam =
+              game?.homeTeamId || game?.homeTeamShort || game?.homeTeam;
+            const hasAwayTeam =
+              game?.awayTeamId || game?.awayTeamShort || game?.awayTeam;
+            const hasHomeScore =
+              game?.homeTeamScore !== null && game?.homeTeamScore !== undefined;
+            const hasAwayScore =
+              game?.awayTeamScore !== null && game?.awayTeamScore !== undefined;
+        
+            if (!hasHomeTeam || !hasAwayTeam || !hasHomeScore || !hasAwayScore) {
+              skippedMissingTeamData++;
+              console.warn(
+                `[Oldies] Skipping ${game?.uniqueId} for ${normalizedLeague} because team/score data is incomplete (home: ${game?.homeTeamShort || game?.homeTeam || 'none'} score ${game?.homeTeamScore ?? 'none'}, away: ${game?.awayTeamShort || game?.awayTeam || 'none'} score ${game?.awayTeamScore ?? 'none'}).`,
+              );
+              continue;
+            }
+          }
+        
           await this.create(game);
+          added++;
+        }
+        
+        if (addMissingOnly) {
+          console.info(
+            `[Oldies] ${normalizedLeague} ${season ? `(season ${season})` : ''}: added ${added}, skipped (existing identical) ${skippedExisting}, skipped (missing team/score data) ${skippedMissingTeamData}.`,
+          );
         }
       }
-
+    
       await this._deleteUnlinkedTeams(normalizedLeague);
       return games;
     } finally {
@@ -2098,12 +2172,14 @@ export class GameService {
         );
 
         try {
-          // Call getLeagueGames passing the specific season parameter
+          // Call getLeagueGames passing the specific season parameter.
+          // addMissingOnly ensures we never overwrite existing matches (only insert missing ones..
           await this.getLeagueGames({
             league,
             forceUpdate: true,
             skipCascade: true, // true to avoid concurrent refresh conflicts
             season: year,
+            addMissingOnly: true, // Oldies: do not overwrite, only add missing games.
           });
         } catch (error) {
           console.error(`[Oldies] Error for ${league} in ${year}:`, error);

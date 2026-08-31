@@ -4,6 +4,42 @@
 
 ---
 
+## Added: oldies recovery never overwrites existing matches (only adds missing ones`
+
+### Purpose
+
+When re-running `POST /games/refresh/oldies?year=...&league=...` (or the historical cron), the oldies
+path previously went through `getLeagueGames` → `create()`, which **overwrites** every already-stored game
+whose `uniqueId` already exists in the DB. We now make oldies updates **additive only**: already-present matches
+are left untouched, and only genuinely missing matches are inserted.
+
+### Changes
+
+- **`GameService.getLeagueGames(params)`** (`backend/src/games/games.service.ts`) — new `addMissingOnly: boolean = false` option:
+  when `true` (oldies path only), the normal refresh path is unchanged:
+  - the set of fetched `uniqueId`s already present in the DB is queried once;
+  - games that already exist are **skipped** (never overwritten) when they are the **same match** — i.e. the
+    `uniqueId` matches **AND** both the home score and the away score equal the stored ones;
+  - if the `uniqueId` exists butt the scores differ (or are missing**, the game is treated as a stale/different result and
+    **refreshed** via `create()` instead of being skipped;
+  - games missing a well-defined **home and away team** data (`homeTeamId`/`homeTeamShort`/`homeTeam`
+    and `awayTeamId`/`awayTeamShort`/`awayTeam`) or missing a home/away score are skipped with a warning log;
+  - only complete, missing games are created.
+ Logs added / skipped counts.
+- **`GameService.getOldiesGames(...)`** now passes `addMissingOnly: true` when calling `getLeagueGames`.
+- Added unit tests in `backend/src/games/tests/games.service.spec.ts` (only-create-missing behavior; same-id+score guard; home/away data + score guard; flag passthrough).
+
+### Result
+
+Updating a year for a league never wipes or degrades existing match data anymore; it purely fills the
+gaps by adding only the missing (complete) matches.
+
+### Verification
+
+`tsc --noEmit` clean; Jest suites pass (84 tests).
+
+---
+
 ## Fixed: stale active PWHL game keeps triggering the scores fetch cycle on every start
 
 ### Problem

@@ -29,6 +29,20 @@ Refreshes a specific league’s game data. It:
 4. Stores new or updated games in MongoDB.
 5. Removes stale or unlinked team data when necessary.
 
+Supportsthe `addMissingOnly` option (used by the **oldies** recovery): when `true`, it never overwrites
+already-stored games; it queries the already-present `uniqueId`s, skips them, and inserts only the missing
+gamesthat have a complete home **and** away team (`homeTeamId`/`homeTeamShort`/`homeTeam` plus
+`awayTeamId`/`awayTeamShort`/`awayTeam`)。 It logs added / skipped counts.
+
+More precisely, fora `uniqueId` already in the DB:
+- a game is considered **the same game** only when its `uniqueId` matches **AND** both the stored home score
+  and away score are identical to the fetched ones → then it is **skipped** (not overwritten);
+- if the `uniqueId` exists butt the scores differ (or are missing**, it is treated as a stale/different result and
+  **refreshed** via `create()`;
+- any new insert only happens for games that have a complete home **and** away team
+  (`homeTeamId`/`homeTeamShort`/`homeTeam` plus `awayTeamId`/`awayTeamShort`/`awayTeam`)
+  **and** both a home score and an away score, else it is skipped with a warning log.
+
 ### `getAllGames(forceUpdate, date, leagueList)`
 
 Refreshes all available leagues, optionally scoped to a date or league list.

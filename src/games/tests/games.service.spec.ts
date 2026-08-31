@@ -263,7 +263,7 @@ describe('GameService', () => {
       expect(getLeagueGamesSpy).toHaveBeenCalledTimes(expectedYears.length);
       for (const year of expectedYears) {
         expect(getLeagueGamesSpy).toHaveBeenCalledWith(
-          expect.objectContaining({ league: League.NHL, season: year }),
+          expect.objectContaining({ league: League.NHL, season: year, addMissingOnly: true }),
         );
       }
       expect(result.message).toContain('History recovery');
@@ -282,9 +282,61 @@ describe('GameService', () => {
         expect.objectContaining({
           league: League.NHL,
           season: currentYear - 1,
+            addMissingOnly: true,
         }),
       );
       expect(result.message).toContain(String(currentYear - 1));
+    });
+  });
+  describe('getLeagueGames addMissingOnly (oldies recovery)', () => {
+    it('should only create missing games, skipping existing ones and those without home/away team data', async () => {
+      const currentYear = new Date().getFullYear();
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      // Known games already in the DB (we must not overwrite them).
+      mockGameModel.exec.mockResolvedValue([
+        { uniqueId: 'existing-1', homeTeamScore: 3, awayTeamScore: 1 },
+        { uniqueId: 'existing-diff', homeTeamScore: 0, awayTeamScore: 0 },
+      ]);
+
+      // Pulled games: existing-1 (identical -> skip), new-2 (complete -> create),
+      // existing-diff (same id but different scores -> refresh), new-3 (missing home team -> skip).
+      (service as any)._fetchUniqueGames = jest.fn().mockResolvedValue([
+        { uniqueId: 'existing-1', league: League.NHL, homeTeamId: 'A', awayTeamId: 'B', homeTeamScore: 3, awayTeamScore: 1 },
+        { uniqueId: 'new-2', league: League.NHL, homeTeamId: 'A', awayTeamId: 'B', homeTeamScore: 2, awayTeamScore: 1 },
+        { uniqueId: 'existing-diff', league: League.NHL, homeTeamId: 'C', awayTeamId: 'D', homeTeamScore: 5, awayTeamScore: 2 },
+        { uniqueId: 'new-3', league: League.NHL, homeTeamId: null, awayTeamId: 'B' },
+      ]);
+      (service as any)._deleteUnlinkedTeams = jest.fn().mockResolvedValue(undefined);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+        season: currentYear - 1,
+        addMissingOnly: true,
+      });
+
+      // new-2 (missing game) and existing-diff (same id, different scores -> refreshed) are created
+      expect(createSpy).toHaveBeenCalledTimes(2);
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ uniqueId: 'new-2' }),
+      );
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ uniqueId: 'existing-diff' }),
+      );
+      // The already-existing game with identical data was NOT overwritten
+      expect(createSpy).not.toHaveBeenCalledWith(
+        expect.objectContaining({ uniqueId: 'existing-1' }),
+      );
+      // The game missing home team data was NOT created
+      expect(createSpy).not.toHaveBeenCalledWith(
+        expect.objectContaining({ uniqueId: 'new-3' }),
+      );
+
+      createSpy.mockRestore();
     });
   });
   describe('removeStaleUnresolvedGames', () => {
