@@ -180,11 +180,40 @@ export class GameService {
 
     const games = Object.values(gamesObj).flat() as any[];
     const uniqueGamesMap = new Map<string, any>();
+
     for (const game of games) {
-      if (game?.uniqueId) {
-        uniqueGamesMap.set(game.uniqueId, game);
+      if (!game) continue;
+
+      // 1. Fallback unique key if uniqueId is missing from the API response
+      const fallbackKey = `${game.homeTeamId || game.homeTeam}-${game.awayTeamId || game.awayTeam}-${game.startTimeUTC || game.gameDate}`;
+      const uniqueKey = game.uniqueId || fallbackKey;
+
+      if (uniqueGamesMap.has(uniqueKey)) {
+        const existingGame = uniqueGamesMap.get(uniqueKey);
+
+        // Check if the already stored game has populated scores
+        const existingHasScore =
+          existingGame.homeTeamScore !== null &&
+          existingGame.homeTeamScore !== undefined &&
+          existingGame.awayTeamScore !== null &&
+          existingGame.awayTeamScore !== undefined;
+
+        const newHasScore =
+          game.homeTeamScore !== null &&
+          game.homeTeamScore !== undefined &&
+          game.awayTeamScore !== null &&
+          game.awayTeamScore !== undefined;
+
+        // 2. Overwrite only if the new game record contains scores while the existing one does not
+        if (!existingHasScore && newHasScore) {
+          uniqueGamesMap.set(uniqueKey, game);
+        }
+        // Otherwise, retain the existing entry
+      } else {
+        uniqueGamesMap.set(uniqueKey, game);
       }
     }
+
     return Array.from(uniqueGamesMap.values());
   }
 
@@ -248,7 +277,7 @@ export class GameService {
       league,
       forceUpdate = false,
       skipCascade = true,
-      maxRecall = 20,
+      maxRecall = 3,
       startDate,
       endDate,
       season,
@@ -448,7 +477,7 @@ export class GameService {
               continue;
             }
 
-            // Do not inserta match without a well-defined home and away team (and their scores).
+            // Do not insert a match without a well-defined home and away team (and their scores).
             const hasHomeTeam =
               game?.homeTeamId || game?.homeTeamShort || game?.homeTeam;
             const hasAwayTeam =

@@ -4,7 +4,43 @@
 
 ---
 
-## Added: oldies recovery never overwrites existing matches (only adds missing ones`
+## Changed: ColorsTeam / UniversityLogos regeneration is now additive-only (no deleted lines)
+
+### Purpose
+
+`generateLeaguesTeamsAndColorsFiles()` in `backend/src/teams/teams.service.ts` rewrote the
+`ColorsTeam.tsx`/`ColorsTeam.ts` and `UniversityLogos.tsx`/`UniversityLogos.ts` files from scratch,
+**overwriting** the whole file and therefore **deleting** any entry that was no longer produced by the
+current team data. The requirement is that updating either of these two files must never remove a line —
+only **add** new entries or **update** existing ones.
+
+### Changes
+
+- `backend/src/teams/teams.service.ts`:
+  - added small helpers `readExistingFile()`, a block parser, and `mergeGeneratedEntries()`;
+  - the ColorsTeam and UniversityLogos generation now merges freshly generated entries with the existing
+    file content (additive/update-only) instead of replacing the file wholesale;
+  - the same merge is applied to both the frontend mirrors (`frontend/constants/*.tsx`) and the backend
+    mirrors (`backend/src/utils/*.ts`).
+- `updateLeagues.js` (root): the `UniversityLogos.tsx` update now also merges with existing content so it
+  does not delete previously stored logos, only adding or updating entries.
+- Restored the previously-dropped `ColorsTeam` entries (`NCAAB-BUT`, `NCAAF-SIU`, `NCAAF-UND`) in both
+  `backend/src/utils/ColorsTeam.ts` and `frontend/constants/ColorsTeam.tsx`.
+
+### Result
+
+Regenerating `ColorsTeam` or `UniversityLogos` (from the backend generator or the `updateLeagues.js` script)
+no longer deletes lines: existing entries are preserved (or updated), and only new entries are added.
+
+### Verification
+
+- `tsc --noEmit` clean; Jest backend suite passes.
+- `git diff` confirms ColorsTeam has no removed entries (only adds/updates) and UniversityLogos contains no
+  truly-deleted keys (every removed line is an update).
+
+---
+
+## Added: oldies recovery never overwrites existing matches (only adds missing ones)
 
 ### Purpose
 

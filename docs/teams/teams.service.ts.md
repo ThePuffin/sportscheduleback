@@ -36,10 +36,14 @@ Writes generated frontend files such as:
 
 - `frontend/constants/Leagues.tsx`
 - `frontend/constants/Teams.tsx`
-- `frontend/constants/ColorsTeam.tsx`
-- `frontend/constants/UniversityLogos.tsx`
+- `frontend/constants/ColorsTeam.tsx` (+ mirror `backend/src/utils/ColorsTeam.ts`)
+- `frontend/constants/UniversityLogos.tsx` (+ mirror `backend/src/utils/UniversityLogos.ts`)
 
-This keeps the frontend constants synchronized with backend data.
+For the **ColorsTeam** and **UniversityLogos** files the generation is **additive/update-only**:
+instead of overwriting the whole file, it merges the freshly generated entries with the existing
+content so that an entry that already exists is never dropped (`mergeGeneratedEntries`). Existing keys
+that are no longer produced are kept, keys present in both are updated with the new value, and brand-new
+keys are appended. This guarantees a regeneration never deletes a previously stored line.
 
 ## Data Flow
 

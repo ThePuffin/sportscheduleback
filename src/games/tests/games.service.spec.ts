@@ -15,6 +15,7 @@ describe('GameService', () => {
     lean: jest.fn().mockReturnThis(),
     exec: jest.fn(),
     countDocuments: jest.fn(),
+    distinct: jest.fn(),
   };
 
   const mockTeamService = {
@@ -375,20 +376,32 @@ describe('GameService', () => {
   });
 
   describe('_deleteUnlinkedTeams', () => {
-    it('should call teamService.deleteManyByIds when unlinked team IDs are provided', async () => {
-      const unlinkedIds = ['TEAM-1', 'TEAM-2'];
-      mockTeamService.deleteManyByIds.mockResolvedValue({
-        acknowledged: true,
-        deletedCount: 2,
-      });
+    it('should call teamService.deleteManyByIds when unlinked team IDs are found', async () => {
+      const league = League.NHL;
+      mockGameModel.countDocuments.mockResolvedValue(5); // games exist for the league
+      mockTeamService.findAll.mockResolvedValue([
+        { uniqueId: 'NHL-T1' },
+        { uniqueId: 'NHL-T2' },
+      ]);
+      // teamSelectedId distinct only references T1, so T2 is unlinked.
+      mockGameModel.distinct.mockResolvedValue(['NHL-T1']);
 
-      await (service as any)._deleteUnlinkedTeams(unlinkedIds);
+      await (service as any)._deleteUnlinkedTeams(league);
 
-      expect(mockTeamService.deleteManyByIds).toHaveBeenCalledWith(unlinkedIds);
+      expect(mockTeamService.deleteManyByIds).toHaveBeenCalledWith(['NHL-T2']);
     });
 
-    it('should not call teamService.deleteManyByIds if no unlinked teams are provided', async () => {
-      await (service as any)._deleteUnlinkedTeams([]);
+    it('should not call teamService.deleteManyByIds if no unlinked teams are found', async () => {
+      const league = League.NHL;
+      mockGameModel.countDocuments.mockResolvedValue(5);
+      mockTeamService.findAll.mockResolvedValue([
+        { uniqueId: 'NHL-T1' },
+        { uniqueId: 'NHL-T2' },
+      ]);
+      // All teams are referenced, so nothing is unlinked.
+      mockGameModel.distinct.mockResolvedValue(['NHL-T1', 'NHL-T2']);
+
+      await (service as any)._deleteUnlinkedTeams(league);
 
       expect(mockTeamService.deleteManyByIds).not.toHaveBeenCalled();
     });

@@ -424,11 +424,13 @@ const getEachTeamSchedule = async (
       leagueName.includes('OLYMPICS') ||
       soccerLeagues.has(leagueName as League)
     ) {
-      const years = season ? [season] : [new Date().getFullYear()];
+      const currentYear = new Date().getFullYear();
 
-      if (soccerLeagues.has(leagueName as League) && !season) {
-        years.push(new Date().getFullYear() + 1);
-      }
+      const years = season
+        ? [season]
+        : soccerLeagues.has(leagueName as League)
+          ? [currentYear, currentYear + 1]
+          : [currentYear];
 
       for (const year of years) {
         try {
@@ -455,7 +457,7 @@ const getEachTeamSchedule = async (
             }
           }
         } catch (error) {
-          console.info('no games found' + leagueName, value, error);
+          console.info('no games found ' + leagueName, value, error);
         }
       }
     } else {

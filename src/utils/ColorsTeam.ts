@@ -411,6 +411,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#ffffff',
     backgroundColor: '#005bbb',
   },
+  'NCAAB-BUT': {
+    color: '#00a3e0',
+    backgroundColor: '#0d1361',
+  },
   'NCAAB-BYU': {
     color: '#0047ba',
     backgroundColor: '#002e5d',
@@ -1563,6 +1567,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#c29472',
     backgroundColor: '#a40012',
   },
+  'NCAAF-SIU': {
+    color: '#c2c3c0',
+    backgroundColor: '#85283D',
+  },
   'NCAAF-SJSU': {
     color: '#ffb81a',
     backgroundColor: '#0038a8',
@@ -1702,6 +1710,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   'NCAAF-UNCO': {
     color: '#ffc533',
     backgroundColor: '#13558D',
+  },
+  'NCAAF-UND': {
+    color: '#c2c3c0',
+    backgroundColor: '#00A26B',
   },
   'NCAAF-UNH': {
     color: '#c3c4c6',
