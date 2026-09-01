@@ -29,19 +29,20 @@ Refreshes a specific league’s game data. It:
 4. Stores new or updated games in MongoDB.
 5. Removes stale or unlinked team data when necessary.
 
-Supportsthe `addMissingOnly` option (used by the **oldies** recovery): when `true`, it never overwrites
+Supports the `addMissingOnly` option (used by the **oldies** recovery): when `true`, it never overwrites
 already-stored games; it queries the already-present `uniqueId`s, skips them, and inserts only the missing
-gamesthat have a complete home **and** away team (`homeTeamId`/`homeTeamShort`/`homeTeam` plus
-`awayTeamId`/`awayTeamShort`/`awayTeam`)。 It logs added / skipped counts.
+games that have a complete home **and** away team. It logs added / skipped counts.
 
-More precisely, fora `uniqueId` already in the DB:
-- a game is considered **the same game** only when its `uniqueId` matches **AND** both the stored home score
-  and away score are identical to the fetched ones → then it is **skipped** (not overwritten);
-- if the `uniqueId` exists butt the scores differ (or are missing**, it is treated as a stale/different result and
-  **refreshed** via `create()`;
-- any new insert only happens for games that have a complete home **and** away team
-  (`homeTeamId`/`homeTeamShort`/`homeTeam` plus `awayTeamId`/`awayTeamShort`/`awayTeam`)
-  **and** both a home score and an away score, else it is skipped with a warning log.
+**Validation for oldies recovery (`addMissingOnly: true`):**
+
+- **Team requirement** (strict): Both `homeTeamId`/`homeTeamShort`/`homeTeam` and `awayTeamId`/`awayTeamShort`/`awayTeam` must exist. Games without both teams are skipped.
+- **Score requirement** (flexible for past games):
+  - **Past games** (startTimeUTC < now): Null scores are allowed. The cron job's `fetchGamesScores()` will fill them later.
+  - **Future games** (startTimeUTC ≥ now): Rejected to prevent scheduled games from polluting historical data.
+- **Deduplication**: For a `uniqueId` already in the DB:
+  - If the `uniqueId` matches AND both stored home/away scores equal the fetched ones → **skipped** (not overwritten).
+  - If the `uniqueId` exists but scores differ → treated as a stale/different result and **refreshed**.
+  - Only complete, missing games are created.
 
 ### `getAllGames(forceUpdate, date, leagueList)`
 
@@ -79,9 +80,38 @@ Backfills games from recent dates to keep the database current.
 
 Performs availability checks and triggers a refresh if a league appears to have too few upcoming games.
 
+### `purgeOldestYearsIfNeeded()`
+
+**Capacity-based purge strategy**: Monitors disk usage and automatically purges entire years of games (oldest first) when
+storage exceeds 90%. This preserves as much historical data as possible while preventing disk space exhaustion.
+
+**Behavior:**
+
+- Runs every 6 hours (via cron job)
+- Calculates disk usage via `df` and MongoDB collection stats
+- Returns `{ action: 'none' | 'purged', diskUsage, purgedYears?, remainingYears? }`
+- Caches last check to avoid excessive I/O (1-hour interval minimum between checks)
+
+**Data Preservation:**
+
+- Games are deleted **year by year** (e.g., all 2020 games, then all 2019, etc.)
+- Only triggers when disk usage ≥ 90%
+- Stops purging once usage drops below 90%
+
+**Protected Data:**
+
+- No arbitrary "after N years" deletion — only deletes when capacity requires it
+- All years remain queryable via `findAll()`, `filterGames()`, `findByLeague()` until purged
+
 ## Data Flow
 
 1. The service receives a request from the controller.
 2. It selects the appropriate source provider (ESPN, hockey data, etc.).
 3. It normalizes and saves data into the `Game` model.
 4. The frontend can then query the enriched game payloads.
+
+## Capacity Management
+
+- **Disk monitoring**: Automatic every 6 hours (cron job)
+- **Manual trigger**: `POST /games/capacity/check` (requires API key)
+- **Reporting**: Each check logs current disk usage and purged years (if any)

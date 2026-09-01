@@ -6,7 +6,7 @@ import { TeamType } from '../../utils/interface/team';
 import { Team } from '../schemas/team.schema';
 import { TeamService } from '../teams.service';
 
-// Mock du module fs pour éviter d'écrire sur le disque pendant les tests
+// Mock the fs module to avoid writing to disk during tests
 jest.mock('node:fs', () => ({
   promises: {
     readFile: jest.fn(),
@@ -129,17 +129,17 @@ describe('TeamService', () => {
     it('should merge new entries without deleting old entries (additive-only)', () => {
       const existingContent = `  'NHL-BOS': {\n    color: '#000000',\n    backgroundColor: '#ffffff',\n  },`;
       const newEntries = [
-        { uniqueId: 'NHL-BOS', color: '#FFB81C', backgroundColor: '#000000' }, // Mise à jour
-        { uniqueId: 'NHL-MTL', color: '#AF1E2D', backgroundColor: '#192168' }, // Ajout
+        { uniqueId: 'NHL-BOS', color: '#FFB81C', backgroundColor: '#000000' }, // Update
+        { uniqueId: 'NHL-MTL', color: '#AF1E2D', backgroundColor: '#192168' }, // Add
       ];
 
       const merged = service['mergeColorsContent'](existingContent, newEntries);
 
-      // L'ancienne équipe (BOS) doit être mise à jour
+      // The old team (BOS) must be updated
       expect(merged).toContain(
         "'NHL-BOS': {\n    color: '#FFB81C',\n    backgroundColor: '#000000',\n  }",
       );
-      // La nouvelle équipe (MTL) doit être ajoutée
+      // The new team (MTL) must be added
       expect(merged).toContain(
         "'NHL-MTL': {\n    color: '#AF1E2D',\n    backgroundColor: '#192168',\n  }",
       );
@@ -173,13 +173,13 @@ describe('TeamService', () => {
     it('should preserve existing logo if new logo entry is empty', () => {
       const existingContent = `  'ALA': 'http://logo.com/existing_ala.png',`;
       const newLogos = new Map<string, string>([
-        ['ALA', ''], // Nouvelle valeur vide
-        ['TEX', 'http://logo.com/tex.png'], // Nouvel ajout
+        ['ALA', ''], // Empty value
+        ['TEX', 'http://logo.com/tex.png'], // New addition
       ]);
 
       const merged = service['mergeLogosContent'](existingContent, newLogos);
 
-      // Ne doit pas écraser le logo existant par une chaîne vide
+      // Must not overwrite the existing logo with an empty string
       expect(merged).toContain("'ALA': 'http://logo.com/existing_ala.png'");
       expect(merged).toContain("'TEX': 'http://logo.com/tex.png'");
     });
@@ -240,7 +240,7 @@ describe('TeamService', () => {
 
       await service['generateLeaguesTeamsAndColorsFiles']();
 
-      // Vérifie que les 6 écritures de fichiers (Leagues, Teams, 2x Colors, 2x Logos) ont eu lieu
+      // Verify that the 6 file writes (Leagues, Teams, 2x Colors, 2x Logos) took place
       expect(fs.promises.writeFile).toHaveBeenCalledTimes(6);
     });
   });

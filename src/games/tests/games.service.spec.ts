@@ -16,6 +16,11 @@ describe('GameService', () => {
     exec: jest.fn(),
     countDocuments: jest.fn(),
     distinct: jest.fn(),
+    aggregate: jest.fn(),
+    deleteMany: jest.fn(),
+    updateMany: jest.fn(),
+    findOneAndDelete: jest.fn(),
+    updateOne: jest.fn(),
   };
 
   const mockTeamService = {
@@ -373,6 +378,89 @@ describe('GameService', () => {
 
       createSpy.mockRestore();
     });
+
+    it('should accept past games with null scores (cron will fill them later)', async () => {
+      const currentYear = new Date().getFullYear();
+      const pastTime = new Date();
+      pastTime.setHours(pastTime.getHours() - 2); // 2 hours ago
+
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      mockGameModel.exec.mockResolvedValue([]); // No existing games
+
+      (service as any)._fetchUniqueGames = jest.fn().mockResolvedValue([
+        {
+          uniqueId: 'past-no-scores',
+          league: League.MLS,
+          homeTeamId: 'MLS-TOR',
+          awayTeamId: 'MLS-MTL',
+          homeTeamScore: null, // Missing scores
+          awayTeamScore: null,
+          startTimeUTC: pastTime.toISOString(), // Past game
+        },
+      ]);
+      (service as any)._deleteUnlinkedTeams = jest
+        .fn()
+        .mockResolvedValue(undefined);
+
+      await service.getLeagueGames({
+        league: League.MLS,
+        forceUpdate: true,
+        skipCascade: true,
+        season: currentYear - 1,
+        addMissingOnly: true,
+      });
+
+      // Past game with null scores should be created (cron will fill them)
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ uniqueId: 'past-no-scores' }),
+      );
+
+      createSpy.mockRestore();
+    });
+
+    it('should reject future scheduled games even if they have team data', async () => {
+      const currentYear = new Date().getFullYear();
+      const futureTime = new Date();
+      futureTime.setHours(futureTime.getHours() + 2); // 2 hours in future
+
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      mockGameModel.exec.mockResolvedValue([]);
+
+      (service as any)._fetchUniqueGames = jest.fn().mockResolvedValue([
+        {
+          uniqueId: 'future-scheduled',
+          league: League.MLS,
+          homeTeamId: 'MLS-TOR',
+          awayTeamId: 'MLS-MTL',
+          homeTeamScore: null,
+          awayTeamScore: null,
+          startTimeUTC: futureTime.toISOString(), // Future game
+        },
+      ]);
+      (service as any)._deleteUnlinkedTeams = jest
+        .fn()
+        .mockResolvedValue(undefined);
+
+      await service.getLeagueGames({
+        league: League.MLS,
+        forceUpdate: true,
+        skipCascade: true,
+        season: currentYear - 1,
+        addMissingOnly: true,
+      });
+
+      // Future game should NOT be created (prevent historical data pollution)
+      expect(createSpy).not.toHaveBeenCalled();
+
+      createSpy.mockRestore();
+    });
   });
 
   describe('_deleteUnlinkedTeams', () => {
@@ -443,6 +531,186 @@ describe('GameService', () => {
 
       expect(removeSpy).not.toHaveBeenCalled();
       removeSpy.mockRestore();
+    });
+  });
+
+  describe('purgeOldestYearsIfNeeded', () => {
+    it('should return "none" if disk usage is below threshold', async () => {
+      const getAvailableYearsSpy = jest
+        .spyOn(service as any, 'getAvailableYears')
+        .mockResolvedValue([
+          {
+            year: 2024,
+            count: 100,
+            oldestDate: '2024-01-01',
+            newestDate: '2024-12-31',
+          },
+          {
+            year: 2023,
+            count: 80,
+            oldestDate: '2023-01-01',
+            newestDate: '2023-12-31',
+          },
+        ]);
+
+      const getDiskUsageSpy = jest
+        .spyOn(service as any, 'getDiskUsage')
+        .mockResolvedValue({
+          usedMB: 50,
+          totalMB: 100,
+          percentage: 0.5, // 50% - below 90% threshold
+        });
+
+      const result = await service.purgeOldestYearsIfNeeded();
+
+      expect(result.action).toBe('none');
+      expect(result.diskUsage.percentage).toBe(0.5);
+      expect(result.remainingYears).toEqual([2024, 2023]);
+
+      getAvailableYearsSpy.mockRestore();
+      getDiskUsageSpy.mockRestore();
+    });
+
+    it('should purge oldest years when disk usage exceeds threshold', async () => {
+      const initialYears = [
+        {
+          year: 2020,
+          count: 50,
+          oldestDate: '2020-01-01',
+          newestDate: '2020-12-31',
+        },
+        {
+          year: 2023,
+          count: 80,
+          oldestDate: '2023-01-01',
+          newestDate: '2023-12-31',
+        },
+        {
+          year: 2024,
+          count: 100,
+          oldestDate: '2024-01-01',
+          newestDate: '2024-12-31',
+        },
+      ];
+
+      const afterPurgeYears = [
+        {
+          year: 2023,
+          count: 80,
+          oldestDate: '2023-01-01',
+          newestDate: '2023-12-31',
+        },
+        {
+          year: 2024,
+          count: 100,
+          oldestDate: '2024-01-01',
+          newestDate: '2024-12-31',
+        },
+      ];
+
+      const getAvailableYearsSpy = jest
+        .spyOn(service as any, 'getAvailableYears')
+        .mockResolvedValueOnce(initialYears) // First call for purge logic
+        .mockResolvedValueOnce(afterPurgeYears); // Second call for remainingYears
+
+      const deleteGamesForYearSpy = jest
+        .spyOn(service as any, 'deleteGamesForYear')
+        .mockResolvedValue(50); // Deletes 50 games
+
+      const getDiskUsageSpy = jest
+        .spyOn(service as any, 'getDiskUsage')
+        .mockResolvedValueOnce({
+          usedMB: 95,
+          totalMB: 100,
+          percentage: 0.95, // 95% - exceeds 90%
+        })
+        .mockResolvedValueOnce({
+          usedMB: 70,
+          totalMB: 100,
+          percentage: 0.7, // After purge: 70% - below threshold
+        })
+        .mockResolvedValueOnce({
+          usedMB: 70,
+          totalMB: 100,
+          percentage: 0.7,
+        });
+
+      const result = await service.purgeOldestYearsIfNeeded();
+
+      expect(result.action).toBe('purged');
+      expect(result.purgedYears).toEqual([2020]);
+      expect(deleteGamesForYearSpy).toHaveBeenCalledWith(2020);
+      expect(result.remainingYears).toEqual([2023, 2024]);
+
+      getAvailableYearsSpy.mockRestore();
+      deleteGamesForYearSpy.mockRestore();
+      getDiskUsageSpy.mockRestore();
+    });
+
+    it('should not re-check disk if within CHECK_INTERVAL_MS', async () => {
+      const getAvailableYearsSpy = jest
+        .spyOn(service as any, 'getAvailableYears')
+        .mockResolvedValue([
+          {
+            year: 2024,
+            count: 100,
+            oldestDate: '2024-01-01',
+            newestDate: '2024-12-31',
+          },
+        ]);
+
+      const getDiskUsageSpy = jest
+        .spyOn(service as any, 'getDiskUsage')
+        .mockResolvedValue({
+          usedMB: 50,
+          totalMB: 100,
+          percentage: 0.5,
+        });
+
+      // First call
+      await service.purgeOldestYearsIfNeeded();
+      expect(getDiskUsageSpy).toHaveBeenCalledTimes(1);
+
+      // Second call immediately after (should skip due to interval)
+      const result = await service.purgeOldestYearsIfNeeded();
+      expect(getDiskUsageSpy).toHaveBeenCalledTimes(1); // Still 1
+      expect(result.action).toBe('none');
+
+      getDiskUsageSpy.mockRestore();
+      getAvailableYearsSpy.mockRestore();
+    });
+  });
+
+  describe('getAvailableYears', () => {
+    it('should return years sorted from oldest to newest with game counts', async () => {
+      const aggregateSpy = jest.spyOn(mockGameModel, 'find' as any);
+      const mockAggregate = [
+        {
+          year: 2022,
+          count: 50,
+          oldestDate: '2022-01-01',
+          newestDate: '2022-12-31',
+        },
+        {
+          year: 2023,
+          count: 80,
+          oldestDate: '2023-01-01',
+          newestDate: '2023-12-31',
+        },
+        {
+          year: 2024,
+          count: 100,
+          oldestDate: '2024-01-01',
+          newestDate: '2024-12-31',
+        },
+      ];
+
+      mockGameModel.aggregate = jest.fn().mockResolvedValue(mockAggregate);
+
+      const result = await (service as any).getAvailableYears();
+
+      expect(result).toEqual(mockAggregate);
+      expect(mockGameModel.aggregate).toHaveBeenCalled();
     });
   });
 });

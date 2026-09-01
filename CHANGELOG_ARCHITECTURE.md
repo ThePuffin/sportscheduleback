@@ -4,6 +4,48 @@
 
 ---
 
+## Fixed: Oldies historical import now allows null scores for past games (cron fills them later)
+
+### Problem
+
+When recovering historical data via `POST /games/refresh/oldies?year=...&league=...`, games with null scores were rejected
+even though they were valid completed matches. The strict validation required both home and away scores to be present, which
+prevented leagues like MLS, NWSL, and Olympic games from being imported when score data was initially unavailable.
+The log showed: `[Oldies] Skipping MLS-TOR-693036 ... because team/score data is incomplete...`.
+
+### Solution
+
+Split the validation into two concerns:
+
+1. **Team requirement** (strict): Both home and away teams must be present. Games without proper team data are still rejected.
+2. **Score requirement** (flexible for past games):
+   - **Past games** (startTimeUTC < now): Null scores are allowed. The cron's `fetchGamesScores()` will fill them in later.
+   - **Future games** (startTimeUTC ≥ now): Rejected to prevent scheduled games from polluting historical data.
+
+### Changes
+
+- **`GameService.getLeagueGames(params)` with `addMissingOnly: true`** (`backend/src/games/games.service.ts`, lines 485–510):
+  - Removed strict score validation for past games;
+  - Added date-based filtering to reject future scheduled games;
+  - Allows historical matches with pending scores to be persisted and filled by the cron later.
+- **Unit tests** (`backend/src/games/tests/games.service.spec.ts`):
+  - Added regression test: past games with null scores are inserted;
+  - Added regression test: future scheduled games are rejected.
+- **Documentation** (`backend/docs/games/games.service.ts.md`):
+  - Updated `getLeagueGames()` section to document the new validation logic.
+
+### Result
+
+Historical oldies recovery now successfully imports valid matches from all leagues, even when score data is initially pending.
+The cron's `fetchGamesScores()` subsequently fills in the scores in a separate pass, eliminating the skip warnings.
+
+### Verification
+
+- Unit tests pass: 2 new regression tests confirm past-game insertion and future-game rejection.
+- `npm run test -- --testPathPattern=games.service.spec` passes all tests.
+
+---
+
 ## Changed: ColorsTeam / UniversityLogos regeneration is now additive-only (no deleted lines)
 
 ### Purpose
@@ -57,11 +99,11 @@ are left untouched, and only genuinely missing matches are inserted.
   - games that already exist are **skipped** (never overwritten) when they are the **same match** — i.e. the
     `uniqueId` matches **AND** both the home score and the away score equal the stored ones;
   - if the `uniqueId` exists butt the scores differ (or are missing**, the game is treated as a stale/different result and
-    **refreshed** via `create()` instead of being skipped;
+    **refreshed\*\* via `create()` instead of being skipped;
   - games missing a well-defined **home and away team** data (`homeTeamId`/`homeTeamShort`/`homeTeam`
     and `awayTeamId`/`awayTeamShort`/`awayTeam`) or missing a home/away score are skipped with a warning log;
   - only complete, missing games are created.
- Logs added / skipped counts.
+    Logs added / skipped counts.
 - **`GameService.getOldiesGames(...)`** now passes `addMissingOnly: true` when calling `getLeagueGames`.
 - Added unit tests in `backend/src/games/tests/games.service.spec.ts` (only-create-missing behavior; same-id+score guard; home/away data + score guard; flag passthrough).
 
@@ -144,7 +186,7 @@ that season, even when the DB already had every game. It is now aware of what it
   a season is the current/upcoming one when no `season` is given, or when `isCurrentSeason`
   matches for a representative date in that season (June 30). **For the current season the
   comparison is not trusted** (`complete` is always `true`) because a partial live DB is normal.
-- **`GameService._fetchUniqueGames(league, season?)** (new private helper): extracts the
+- **`GameService.\_fetchUniqueGames(league, season?)** (new private helper): extracts the
   fetch + flatten + `uniqueId` deduplication logic previously inlined in `getLeagueGames`, and
   is now shared by `getLeagueGames` (which saves) and `getSeasonStatus` (which doesn't).
 - **`CronService.getOldGames`** (`backend/src/cronJob/cronJob.service.ts`): now

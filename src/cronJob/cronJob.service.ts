@@ -167,4 +167,24 @@ export class CronService implements OnModuleInit {
       console.error('[Cron] Error running checkLeagueGamesAvailability:', err);
     }
   }
+
+  @Cron('0 */6 * * *') // EVERY 6 HOURS
+  async monitorDiskCapacity() {
+    try {
+      console.info('[Cron] Running disk capacity check...');
+      const result = await this.gameService.purgeOldestYearsIfNeeded();
+
+      if (result.action === 'purged') {
+        console.warn(
+          `[Cron] Purged years: ${result.purgedYears?.join(', ')}. Remaining years: ${result.remainingYears?.join(', ')}`,
+        );
+      } else {
+        console.info(
+          `[Cron] Disk usage: ${(result.diskUsage.percentage * 100).toFixed(1)}% - No purge needed.`,
+        );
+      }
+    } catch (err) {
+      console.error('[Cron] Error running disk capacity check:', err);
+    }
+  }
 }

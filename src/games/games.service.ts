@@ -38,10 +38,15 @@ export class GameService {
     private readonly refreshTimestampService: RefreshTimestampService,
   ) {}
 
-  maxYearBeforeDelete = 5;
+  maxYearBeforeDelete = 10;
   // Purge games that are still active/resolved-less several months after their start
   // (e.g. a PWHL game stuck on 2026-05-11 whose final result can never be fetched).
   staleGameMaxAgeDays = 90;
+
+  // Capacity-based purge configuration
+  private readonly DISK_USAGE_THRESHOLD = 0.9; // 90%
+  private readonly CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  private lastDiskCheck = 0;
 
   getTeams = (teamSelectedIds, games) => {
     if (teamSelectedIds) {
@@ -477,28 +482,36 @@ export class GameService {
               continue;
             }
 
-            // Do not insert a match without a well-defined home and away team (and their scores).
+            // Oldies recovery: require home/away teams.
+            // Scores can be null for past games (cron will fill them later);
+            // future scheduled games are skipped (to avoid polluting oldies with scheduling).
             const hasHomeTeam =
               game?.homeTeamId || game?.homeTeamShort || game?.homeTeam;
             const hasAwayTeam =
               game?.awayTeamId || game?.awayTeamShort || game?.awayTeam;
-            const hasHomeScore =
-              game?.homeTeamScore !== null && game?.homeTeamScore !== undefined;
-            const hasAwayScore =
-              game?.awayTeamScore !== null && game?.awayTeamScore !== undefined;
 
-            if (
-              !hasHomeTeam ||
-              !hasAwayTeam ||
-              !hasHomeScore ||
-              !hasAwayScore
-            ) {
+            if (!hasHomeTeam || !hasAwayTeam) {
               skippedMissingTeamData++;
               console.warn(
-                `[Oldies] Skipping ${game?.uniqueId} for ${normalizedLeague} because team/score data is incomplete (home: ${game?.homeTeamShort || game?.homeTeam || 'none'} score ${game?.homeTeamScore ?? 'none'}, away: ${game?.awayTeamShort || game?.awayTeam || 'none'} score ${game?.awayTeamScore ?? 'none'}).`,
+                `[Oldies] Skipping ${game?.uniqueId} for ${normalizedLeague} because team data is incomplete (home: ${game?.homeTeamShort || game?.homeTeam || 'none'}, away: ${game?.awayTeamShort || game?.awayTeam || 'none'}).`,
               );
               continue;
             }
+
+            // Reject future games (not yet played) to avoid storing scheduled games as historical
+            const gameStartTime = game?.startTimeUTC
+              ? new Date(game.startTimeUTC).getTime()
+              : null;
+            const isFutureGame = gameStartTime && gameStartTime > now.getTime();
+
+            if (isFutureGame) {
+              skippedMissingTeamData++;
+              console.warn(
+                `[Oldies] Skipping future game ${game?.uniqueId} for ${normalizedLeague} (scheduled for ${game?.startTimeUTC}, not yet played).`,
+              );
+              continue;
+            }
+            // Past games are accepted even with null scores; cron will fill them later via fetchGamesScores()
           }
 
           await this.create(game);
@@ -1212,7 +1225,7 @@ export class GameService {
               }
             } catch (error) {
               console.error(
-                `[fetchGamesScores] Erreur lors de la récupération PWHL pour ${date}:`,
+                `[fetchGamesScores] Error while fetching PWHL data for ${date}:`,
                 error,
               );
               // ignore fetch errors for PWHL
@@ -2083,6 +2096,208 @@ export class GameService {
       const idsToDelete = unlinkedTeams.map((t) => t.uniqueId);
       await this.teamService.deleteManyByIds(idsToDelete);
     }
+  }
+
+  /**
+   * Retrieves all years currently present in the database and counts games by year.
+   * Returns a list sorted from oldest to newest.
+   */
+  private async getAvailableYears(): Promise<
+    { year: number; count: number; oldestDate: string; newestDate: string }[]
+  > {
+    const result = await this.gameModel.aggregate([
+      {
+        $group: {
+          _id: {
+            $substrCP: ['$gameDate', 0, 4], // Extract the first 4 characters (YYYY)
+          },
+          count: { $sum: 1 },
+          oldestDate: { $min: '$gameDate' },
+          newestDate: { $max: '$gameDate' },
+        },
+      },
+      { $sort: { _id: 1 } }, // Years from oldest to newest
+      {
+        $project: {
+          _id: 0,
+          year: { $toInt: '$_id' },
+          count: 1,
+          oldestDate: 1,
+          newestDate: 1,
+        },
+      },
+    ]);
+
+    return result;
+  }
+
+  /**
+   * Calculates MongoDB disk usage inside Docker.
+   * Returns { usedMB, totalMB, percentage (0-1) }
+   */
+  private async getDiskUsage(): Promise<{
+    usedMB: number;
+    totalMB: number;
+    percentage: number;
+  }> {
+    try {
+      // Try to get the disk space of the Docker volume
+      const { exec } = require('child_process');
+      const { promisify } = require('util');
+      const execAsync = promisify(exec);
+
+      try {
+        // For Docker/Linux: check the persistent volume
+        const { stdout } = await execAsync(
+          'df -B1M /data/db 2>/dev/null || df -B1M .',
+        );
+        const lines = stdout.trim().split('\n');
+        const row = lines[1].split(/\s+/);
+        const totalMB = parseInt(row[1], 10);
+        const usedMBTotal = parseInt(row[2], 10);
+
+        return {
+          usedMB: usedMBTotal,
+          totalMB,
+          percentage: usedMBTotal / totalMB,
+        };
+      } catch {
+        // Fallback: estimate usage via aggregate
+        const sizeInfo = await (this.gameModel.collection as any)
+          .aggregate([
+            {
+              $collStats: { storageStats: {} },
+            },
+          ])
+          .toArray()
+          .catch(() => []);
+
+        if (sizeInfo && sizeInfo.length > 0) {
+          const sizeMB = (sizeInfo[0].storageStats?.size || 0) / (1024 * 1024);
+          return {
+            usedMB: Math.round(sizeMB),
+            totalMB: Math.round(sizeMB * 2), // Estimate
+            percentage: 0.5,
+          };
+        }
+
+        // Full fallback: return 0% (no purge if usage is uncertain)
+        return { usedMB: 0, totalMB: 1, percentage: 0 };
+      }
+    } catch (error) {
+      console.warn(
+        '[Capacity Manager] Could not check disk usage:',
+        error instanceof Error ? error.message : String(error),
+      );
+      // Full fallback: return 0% (no purge if usage is uncertain)
+      return { usedMB: 0, totalMB: 1, percentage: 0 };
+    }
+  }
+
+  /**
+   * Deletes all games from a given year.
+   * Returns the number of deleted games.
+   */
+  private async deleteGamesForYear(year: number): Promise<number> {
+    const yearStr = year.toString();
+    const startDate = `${yearStr}-01-01`;
+    const endDate = `${yearStr}-12-31`;
+
+    const result = await this.gameModel.deleteMany({
+      gameDate: { $gte: startDate, $lte: endDate },
+    });
+
+    console.info(
+      `[Capacity Manager] Deleted ${result.deletedCount} games from year ${year}`,
+    );
+    return result.deletedCount || 0;
+  }
+
+  /**
+   * Checks disk space and deletes the oldest years if needed.
+   * Returns a report with the action taken and the current disk usage.
+   */
+  async purgeOldestYearsIfNeeded(): Promise<{
+    action: 'none' | 'purged';
+    diskUsage: { usedMB: number; totalMB: number; percentage: number };
+    purgedYears?: number[];
+    remainingYears?: number[];
+  }> {
+    const now = Date.now();
+
+    // Avoid overly frequent checks (maximum once per hour)
+    if (now - this.lastDiskCheck < this.CHECK_INTERVAL_MS) {
+      return {
+        action: 'none',
+        diskUsage: { usedMB: 0, totalMB: 1, percentage: 0 },
+      };
+    }
+
+    this.lastDiskCheck = now;
+
+    const diskUsage = await this.getDiskUsage();
+    const purgedYears: number[] = [];
+
+    console.info(
+      `[Capacity Manager] Disk usage: ${(diskUsage.percentage * 100).toFixed(1)}% (${diskUsage.usedMB}MB / ${diskUsage.totalMB}MB)`,
+    );
+
+    // If the storage is full, purge years one by one
+    if (diskUsage.percentage >= this.DISK_USAGE_THRESHOLD) {
+      const years = await this.getAvailableYears();
+
+      if (years.length === 0) {
+        console.warn('[Capacity Manager] No games to delete!');
+        return {
+          action: 'none',
+          diskUsage,
+          remainingYears: [],
+        };
+      }
+
+      console.warn(
+        `[Capacity Manager] Disk usage exceeds ${(this.DISK_USAGE_THRESHOLD * 100).toFixed(0)}%! Starting purge...`,
+      );
+
+      // Delete years from oldest to newest until usage drops below the threshold
+      for (const { year, count } of years) {
+        console.info(
+          `[Capacity Manager] Purging year ${year} (${count} games)...`,
+        );
+
+        await this.deleteGamesForYear(year);
+        purgedYears.push(year);
+
+        // Re-check after each deletion
+        const updatedDiskUsage = await this.getDiskUsage();
+        console.info(
+          `[Capacity Manager] New disk usage: ${(updatedDiskUsage.percentage * 100).toFixed(1)}%`,
+        );
+
+        if (updatedDiskUsage.percentage < this.DISK_USAGE_THRESHOLD) {
+          console.info('[Capacity Manager] Disk usage back to normal.');
+          break;
+        }
+      }
+
+      const remainingYears = (await this.getAvailableYears()).map(
+        (y) => y.year,
+      );
+
+      return {
+        action: 'purged',
+        diskUsage: await this.getDiskUsage(),
+        purgedYears,
+        remainingYears,
+      };
+    }
+
+    const remainingYears = (await this.getAvailableYears()).map((y) => y.year);
+    return {
+      action: 'none',
+      diskUsage,
+      remainingYears,
+    };
   }
 
   async checkLeagueGamesAvailability() {

@@ -181,6 +181,12 @@ export class GamesController {
     return this.GameService.removeDuplicatesAndOlds();
   }
 
+  @Post('capacity/check')
+  @UseGuards(ApiKeyGuard)
+  async checkCapacity() {
+    return await this.GameService.purgeOldestYearsIfNeeded();
+  }
+
   @UseGuards(ApiKeyGuard)
   @Delete(':uniqueId')
   remove(@Param('uniqueId') uniqueId: string) {

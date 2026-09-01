@@ -16,7 +16,7 @@ const password = process?.env?.DATABASE_PASS || '';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      isGlobal: true, // Rend la config accessible partout sans réimporter ConfigModule
+      isGlobal: true, // Makes the config available everywhere without re-importing ConfigModule
     }),
     CronModule,
     MongooseModule.forRoot(databaseUri, {
