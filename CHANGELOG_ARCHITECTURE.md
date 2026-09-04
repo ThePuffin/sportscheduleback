@@ -2,8 +2,35 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+
 ---
 
+## Fixed: MLB/MLS future games disappeared after the data update (crash between deactivating and re-writing)
+
+### Problem
+
+When refreshing a league (MLB, MLS, ...), the `getLeagueGames` service first **deactivated all future games** (`isActive:false`)and *then* re-fetched/re-wrote the season. If the server **crashed/restarted** between these two steps (the very large oldies refreshes could trigger one), every upcoming game of that league was left `isActive:false` and never re-inserted. Result:the **Programme du jour** tab showed **No results** for 2026 in both MLB and MLS, until a manual league refresh succeeded.
+
+### Solution
+
+1. **Reordered the refresh**:the season is now fetched and the future games re-inserted `isActive:true` **before** any deactivation runs.
+2. **Selective deactivation** (safe-replace): only the stale future games absent from the fresh season (matched by `uniqueId`) are deactivated, never blindly per date range.
+
+3. **Empty-fetch guard**:if the fetch returns zero games, no deactivation happens (the league is never blanked on a crash or failed fetch..
+
+4. **Bound the oldies cron**:the daily oldies refresh now processes **one random year per tick** (instead of up to 11 years at once) and has an **anti-reentrancy guard**,cutting the per-tick work volume that could trigger Render restarts during the data update.
+
+
+
+### Files changed
+
+- `backend/src/games/games.service.ts` — crash-safe reordered / selective / empty-guarded deactivation in `getLeagueGames`.
+- `backend/src/cronJob/cronJob.service.ts` — one-random-year-per-tick oldies refresh + anti-reentrancy guard.
+
+
+
+
+---
 ## Fixed: Oldies historical import now allows null scores for past games (cron fills them later)
 
 ### Problem

@@ -23,7 +23,7 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 | `updateNBAGames()`               | Daily (3:00 AM)        | NBA only refresh                                    |
 | `updateNFLGames()`               | Daily (4:00 AM)        | NFL only refresh                                    |
 | `updateNHLGames()`               | Daily (5:00 AM)        | NHL only refresh                                    |
-| `getOldGames()`                  | Daily (10:00 AM)       | Historical season recovery (random league)          |
+| `getOldGames()`                  | Daily (10:00 AM)       | Historical season recovery (one random year per tick; anti-reentrancy)          |
 | `fetchAndApplyScores()`          | Every 10 minutes       | Live score updates (NY business hours 11 AM - 4 AM) |
 | `checkLeagueGamesAvailability()` | Every 12 minutes       | Availability checks (LA early hours 0-11 AM)        |
 | **`monitorDiskCapacity()`**      | **Every 6 hours**      | **Disk usage check & auto-purge old years**         |

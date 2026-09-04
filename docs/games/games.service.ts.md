@@ -29,6 +29,15 @@ Refreshes a specific league’s game data. It:
 4. Stores new or updated games in MongoDB.
 5. Removes stale or unlinked team data when necessary.
 
+
+**Crash-safe replace guard (future games:)**
+
+When refreshing a league's current data, upcoming games are **only deactivated AFTER** a successful, non-empty fetch. The previous order (deactivate-all-future-games, then re-write) could leave a league completely empty (all upcoming games marked `isActive:false`) if the server crashed/restarted between the two steps - exactly what happened for MLB and MLS during the data update. Now:
+
+1. The season is fetched and the upcoming games re-inserted with `isActive:true` first.
+2. Only stale future games absent from the fresh season get deactivated, matched by `uniqueId`.
+3. An empty fetch never triggers a deactivation (guard on `uniqueGames.length > 0`).
+
 Supports the `addMissingOnly` option (used by the **oldies** recovery): when `true`, it never overwrites
 already-stored games; it queries the already-present `uniqueId`s, skips them, and inserts only the missing
 games that have a complete home **and** away team. It logs added / skipped counts.

@@ -6,6 +6,8 @@ import { League } from '../utils/enum';
 
 @Injectable()
 export class CronService implements OnModuleInit {
+  private isFetchingOldiesInProgress: boolean = false;
+
   constructor(
     private readonly teamService: TeamService,
     private readonly gameService: GameService,
@@ -56,66 +58,58 @@ export class CronService implements OnModuleInit {
 
   @Cron('0 10 * * *') // EVERY DAY AT 10AM
   async getOldGames() {
-    const currentYear = new Date().getFullYear();
-    const maxYearsBeforeDelete = this.gameService.maxYearBeforeDelete; // 5
-    const minYear = currentYear - maxYearsBeforeDelete;
+    // Anti-reentrancy guard: only a single heavy oldies refresh at a time. A server
+    // restart can re-trigger crons while one is already running; this flag makes sure we
+    // never run two big refreshes concurrently (one of the restart causes).
+    if (this.isFetchingOldiesInProgress) {
+      console.info('[Cron] Oldies refresh already in progress - skipping this tick (reentrancy guard).');
+      return;
+    }
 
-    // 1. Pick a random league from the League enum
-    const leagueValues = Object.values(League);
-    const randomLeague =
-      leagueValues[Math.floor(Math.random() * leagueValues.length)];
+    this.isFetchingOldiesInProgress = true;
+    try {
+      const currentYear = new Date().getFullYear();
+      const maxYearsBeforeDelete = this.gameService.maxYearBeforeDelete; // 10
+      const minYear = currentYear - maxYearsBeforeDelete;
 
-    console.info(
-      `[Cron] Oldies refresh: checking league ${randomLeague} for the last ${maxYearsBeforeDelete} years...`,
-    );
+      // 1. Pick a random league from the League enum
+      const leagueValues = Object.values(League);
+      const randomLeague =
+        leagueValues[Math.floor(Math.random() * leagueValues.length)];
 
-    let allYearsComplete = true;
+      // 2. Pick a single random year to refresh per run, instead of looping over all
+      // 11 years at once. This dramatically limits the per-tick work volume, which was
+      // one of the causes of the Render restarts during the data update. It will take up to
+      // ~11 days to cover the whole window, one year per day.
+      const randomYear =
+        minYear + Math.floor(Math.random() * (currentYear - minYear + 1));
 
-    // 2. Loop over the last N years, from the most recent to the oldest
-    for (let year = currentYear; year > minYear; year--) {
+      console.info(
+        `[Cron] Oldies refresh: checking league ${randomLeague} for year ${randomYear} (1 of up to ${maxYearsBeforeDelete + 1} years, one per tick).`,
+      );
+
       try {
         // Dry-run comparison: API games vs games already in DB (nothing saved)
         const status = await this.gameService.getSeasonStatus(
           randomLeague,
-          year,
+          randomYear,
         );
 
         // The current season (or upcoming) is still in progress: always refresh it.
         if (status.isCurrentSeason) {
-          console.info(
-            `[Cron] ${randomLeague} ${year}: current season - refreshing it.`,
-          );
-          allYearsComplete = false;
-          await this.gameService.getOldiesGames(year.toString(), randomLeague);
-          continue;
+          console.info(`[Cron] ${randomLeague} ${randomYear}: current season - refreshing it.`);
+          await this.gameService.getOldiesGames(randomYear.toString(), randomLeague);
+        } else if (status.complete) {
+          console.info(`[Cron] ${randomLeague} ${randomYear}: ${status.obtained} games already in DB (${status.stored}/${status.obtained}) - skipping (no modification; will be retried on a later day].`);
+        } else {
+          console.info(`[Cron] ${randomLeague} ${randomYear}: DB has ${status.stored}/${status.obtained} games - refreshing this season.;`);
+          await this.gameService.getOldiesGames(randomYear.toString(), randomLeague);
         }
-
-        if (status.complete) {
-          console.info(
-            `[Cron] ${randomLeague} ${year}: ${status.obtained} games already in DB (${status.stored}/${status.obtained}) - skipping (no modification).`,
-          );
-          continue;
-        }
-
-        console.info(
-          `[Cron] ${randomLeague} ${year}: DB has ${status.stored}/${status.obtained} games - refreshing this season.`,
-        );
-        allYearsComplete = false;
-        await this.gameService.getOldiesGames(year.toString(), randomLeague);
       } catch (error) {
-        console.error(
-          `[Cron] Error checking ${randomLeague} for ${year}:`,
-          error,
-        );
+        console.error(`[Cron] Error checking ${randomLeague} for ${randomYear}:`, error);
       }
-    }
-
-    if (allYearsComplete) {
-      console.info(
-        `[Cron] All the last ${maxYearsBeforeDelete} years are already complete for ${randomLeague} - finishing without any modification.`,
-      );
-    } else {
-      console.info('[Cron] Oldies games refresh completed successfully.');
+    } finally {
+      this.isFetchingOldiesInProgress = false;
     }
   }
 
@@ -133,14 +127,9 @@ export class CronService implements OnModuleInit {
         return;
       }
 
-      console.info(
-        `[Cron] Running fetchGamesScores cron job (NY hour=${hour})`,
-      );
+      console.info(`[Cron] Running fetchGamesScores cron job (NY hour=${hour})`);
       const updates = await this.gameService.fetchGamesScores();
-      console.info(
-        '[Cron] fetchGamesScores result count:',
-        updates?.length ?? 0,
-      );
+      console.info('[Cron] fetchGamesScores result count:', updates?.length ?? 0);
     } catch (err) {
       console.error('[Cron] Error running fetchGamesScores:', err);
     }
@@ -159,9 +148,7 @@ export class CronService implements OnModuleInit {
         return;
       }
 
-      console.info(
-        `[Cron] Running checkLeagueGamesAvailability cron job (LA hour=${hour})`,
-      );
+      console.info(`[Cron] Running checkLeagueGamesAvailability cron job (LA hour=${hour})`);
       await this.gameService.checkLeagueGamesAvailability();
     } catch (err) {
       console.error('[Cron] Error running checkLeagueGamesAvailability:', err);
@@ -175,13 +162,9 @@ export class CronService implements OnModuleInit {
       const result = await this.gameService.purgeOldestYearsIfNeeded();
 
       if (result.action === 'purged') {
-        console.warn(
-          `[Cron] Purged years: ${result.purgedYears?.join(', ')}. Remaining years: ${result.remainingYears?.join(', ')}`,
-        );
+        console.warn(`[Cron] Purged years: ${result.purgedYears?.join(', ')}. Remaining years: ${result.remainingYears?.join(', ')}`);
       } else {
-        console.info(
-          `[Cron] Disk usage: ${(result.diskUsage.percentage * 100).toFixed(1)}% - No purge needed.`,
-        );
+        console.info(`[Cron] Disk usage: ${(result.diskUsage.percentage * 100).toFixed(1)}% - No purge needed.`);
       }
     } catch (err) {
       console.error('[Cron] Error running disk capacity check:', err);

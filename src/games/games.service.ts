@@ -410,18 +410,8 @@ export class GameService {
       }
 
       const todayStr = readableDate(now);
-      // Only deactivate future games if we are not fetching an old season
-      if (!season) {
-        await this.gameModel.updateMany(
-          {
-            league: normalizedLeague,
-            gameDate: { $gte: todayStr },
-            isActive: true,
-            startTimeUTC: { $gt: now.toISOString() },
-          },
-          { $set: { isActive: false } },
-        );
-      }
+      // Only deactivate future games (done AFTER the fetch but: never blank the league on a crash.)
+      // (Details in the safe-replace guard below,the fetch, and empty-fetch guard.)
 
       // Fetch teams and logos for the league, then fetch + deduplicate the
       // season's games (same pipeline used by getSeasonStatus, without saving).
@@ -430,6 +420,52 @@ export class GameService {
         season,
       );
       const games = uniqueGames;
+// Only deactivate future games if we are not fetching an old season, and only the
+      // ones that are absent from the freshly fetched season. This turns the previous
+      // "deactivate everything, then rewrite" into a safe "replace" that cannot lose the
+      // league's upcoming games if the process dies before saving (see empty fetch guardabove)..
+      // A fetch returning 0 games never triggers a deactivation (guard below)..
+      if (!season && uniqueGames && uniqueGames.length > 0) {
+        const freshIds = new Set(
+          uniqueGames
+            .map((g: any) => g?.uniqueId)
+            .filter((id: any) => !!id),
+        );
+
+        if (freshIds.size > 0) {
+          const existingFuture = (await this.gameModel
+            .find(
+              {
+                league: normalizedLeague,
+                gameDate: { $gte: todayStr },
+                isActive: true,
+                startTimeUTC: { $gt: now.toISOString() },
+              },
+              { uniqueId: 1, _id: 0 },
+            )
+            .lean()
+            .exec()) as Array<{ uniqueId?: string }>;
+
+          const staleFutureIds = existingFuture
+            .map((g) => g.uniqueId)
+            .filter((id) => id && !freshIds.has(id));
+
+          if (staleFutureIds.length > 0) {
+            await this.gameModel.updateMany(
+              {
+                league: normalizedLeague,
+                uniqueId: { $in: staleFutureIds },
+                isActive: true,
+                startTimeUTC: { $gt: now.toISOString() },
+              },
+              { $set: { isActive: false } },
+            );
+            console.info(
+              `[Games] Deactivated ${staleFutureIds.length} stale future games for ${normalizedLeague} (no longer in freshly fetched season).`,
+            );
+          }
+        }
+      }
 
       if (uniqueGames && uniqueGames.length > 0) {
         // Oldies recovery: only ever add missing games without overwriting an existing match.
