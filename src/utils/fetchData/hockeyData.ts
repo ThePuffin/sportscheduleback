@@ -414,17 +414,12 @@ export class HockeyData {
           visiting_goal_count,
           venue_location,
         } = game;
-        const homeGoalCount = home_goal_count;
-        const visitingGoalCount = visiting_goal_count;
-        let status = null;
-        if (
-          homeGoalCount !== '0' &&
-          homeGoalCount !== '' &&
-          visitingGoalCount !== '0' &&
-          visitingGoalCount !== ''
-        ) {
-          status = 'FINISHED';
-        }
+        const isFinished = Boolean(
+          game.final === '1' ||
+            game.status === '4' ||
+            game.game_status?.toUpperCase().startsWith('FINAL'),
+        );
+        const status = isFinished ? 'FINISHED' : null;
         const now = new Date();
         const isActive = true;
 
@@ -464,9 +459,8 @@ export class HockeyData {
           homeTeamLogo: leagueLogos[home_team_code],
           homeTeamLogoDark: leagueLogos[home_team_code],
           homeTeamShort: home_team_code,
-          homeTeamScore: status === 'FINISHED' ? Number(home_goal_count) : null,
-          awayTeamScore:
-            status === 'FINISHED' ? Number(visiting_goal_count) : null,
+          homeTeamScore: isFinished ? Number(home_goal_count) : null,
+          awayTeamScore: isFinished ? Number(visiting_goal_count) : null,
           gameStatus: status,
           league: leagueName,
           placeName: capitalize(venue_location),

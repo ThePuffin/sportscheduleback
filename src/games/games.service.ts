@@ -43,6 +43,12 @@ export class GameService {
   // (e.g. a PWHL game stuck on 2026-05-11 whose final result can never be fetched).
   staleGameMaxAgeDays = 90;
 
+  // Grace period before a *future* game that disappears from the external source (e.g. a
+  // playoff game 5/6/7 that is "if necessary") is deactivated. Prevents flicker when the
+  // source data is transient: the game is marked `missingSince` and only deactivated after
+  // it has been continuously missing for this many hours (default 48h, ~2 daily refresh cycles).
+  gracePeriodHours = 48;
+
   // Capacity-based purge configuration
   private readonly DISK_USAGE_THRESHOLD = 0.9; // 90%
   private readonly CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
@@ -420,16 +426,14 @@ export class GameService {
         season,
       );
       const games = uniqueGames;
-// Only deactivate future games if we are not fetching an old season, and only the
+      // Only deactivate future games if we are not fetching an old season, and only the
       // ones that are absent from the freshly fetched season. This turns the previous
       // "deactivate everything, then rewrite" into a safe "replace" that cannot lose the
-      // league's upcoming games if the process dies before saving (see empty fetch guardabove)..
-      // A fetch returning 0 games never triggers a deactivation (guard below)..
+      // league's upcoming games if the process dies before saving (see empty fetch guard above).
+      // A fetch returning 0 games never triggers a deactivation (guard below).
       if (!season && uniqueGames && uniqueGames.length > 0) {
         const freshIds = new Set(
-          uniqueGames
-            .map((g: any) => g?.uniqueId)
-            .filter((id: any) => !!id),
+          uniqueGames.map((g: any) => g?.uniqueId).filter((id: any) => !!id),
         );
 
         if (freshIds.size > 0) {
@@ -441,32 +445,86 @@ export class GameService {
                 isActive: true,
                 startTimeUTC: { $gt: now.toISOString() },
               },
-              { uniqueId: 1, _id: 0 },
+              { uniqueId: 1, missingSince: 1, _id: 0 },
             )
             .lean()
-            .exec()) as Array<{ uniqueId?: string }>;
+            .exec()) as Array<{ uniqueId?: string; missingSince?: string }>;
 
-          const staleFutureIds = existingFuture
-            .map((g) => g.uniqueId)
-            .filter((id) => id && !freshIds.has(id));
+          const graceMs = this.gracePeriodHours * 60 * 60 * 1000;
+          const nowIso = now.toISOString();
+          const nowMs = now.getTime();
 
-          if (staleFutureIds.length > 0) {
+          const toMarkMissing: string[] = [];
+          const toDeactivate: string[] = [];
+          const toConfirm: string[] = [];
+
+          for (const g of existingFuture) {
+            const id = g.uniqueId;
+            if (!id) continue;
+
+            if (freshIds.has(id)) {
+              // Game is back in the source data: clear any pending grace marker.
+              if (g.missingSince) toConfirm.push(id);
+              continue;
+            }
+
+            // Game absent from the freshly fetched source.
+            if (!g.missingSince) {
+              // First time it is seen missing: start the grace period, keep it active.
+              toMarkMissing.push(id);
+            } else {
+              const missingMs = new Date(g.missingSince).getTime();
+              if (!Number.isFinite(missingMs) || nowMs - missingMs >= graceMs) {
+                toDeactivate.push(id);
+              }
+              // else: still within the grace period, leave it active (no flicker).
+            }
+          }
+
+          if (toMarkMissing.length > 0) {
             await this.gameModel.updateMany(
               {
                 league: normalizedLeague,
-                uniqueId: { $in: staleFutureIds },
+                uniqueId: { $in: toMarkMissing },
                 isActive: true,
-                startTimeUTC: { $gt: now.toISOString() },
+                startTimeUTC: { $gt: nowIso },
               },
-              { $set: { isActive: false } },
+              { $set: { missingSince: nowIso } },
             );
             console.info(
-              `[Games] Deactivated ${staleFutureIds.length} stale future games for ${normalizedLeague} (no longer in freshly fetched season).`,
+              `[Games] ${toMarkMissing.length} future game(s) missing from source for ${normalizedLeague}; grace period started (kept active pending confirmation).`,
+            );
+          }
+
+          if (toDeactivate.length > 0) {
+            await this.gameModel.updateMany(
+              {
+                league: normalizedLeague,
+                uniqueId: { $in: toDeactivate },
+                isActive: true,
+                startTimeUTC: { $gt: nowIso },
+              },
+              { $set: { isActive: false }, $unset: { missingSince: 1 } },
+            );
+            console.info(
+              `[Games] Deactivated ${toDeactivate.length} future game(s) for ${normalizedLeague} missing from source for more than ${this.gracePeriodHours}h.`,
+            );
+          }
+
+          if (toConfirm.length > 0) {
+            await this.gameModel.updateMany(
+              {
+                league: normalizedLeague,
+                uniqueId: { $in: toConfirm },
+              },
+              { $unset: { missingSince: 1 } },
+            );
+            console.info(
+              `[Games] ${toConfirm.length} future game(s) for ${normalizedLeague} reappeared in source; grace marker cleared.`,
             );
           }
         }
       }
-
       if (uniqueGames && uniqueGames.length > 0) {
         // Oldies recovery: only ever add missing games without overwriting an existing match.
         // A game is considered "already present" (same game) only when its uniqueId matches

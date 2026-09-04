@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { CronService } from '../cronJob.service';
 import { GameService } from '../../games/games.service';
 import { TeamService } from '../../teams/teams.service';
+import { CronService } from '../cronJob.service';
 
 describe('CronService', () => {
   let service: CronService;
@@ -36,8 +36,11 @@ describe('CronService', () => {
   describe('getOldGames', () => {
     it('should refresh the current season even when status is complete', async () => {
       const currentYear = new Date().getFullYear();
-      // Force a deterministic league
-      jest.spyOn(Math, 'random').mockReturnValue(0);
+      // Select the first league and the current year (the last year in the range).
+      jest
+        .spyOn(Math, 'random')
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(0.999999);
 
       // getSeasonStatus returns isCurrentSeason=true for the current year
       mockGameService.getSeasonStatus.mockImplementation(
@@ -74,7 +77,8 @@ describe('CronService', () => {
     });
 
     it('should skip a past complete season without refreshing it', async () => {
-      (Math.random as any) = jest.spyOn(Math, 'random').mockReturnValue(0);
+      // Select the first league and the first (past) year in the range.
+      jest.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0);
 
       // All seasons complete (including past ones) -> nothing to refresh
       mockGameService.getSeasonStatus.mockResolvedValue({
@@ -92,16 +96,22 @@ describe('CronService', () => {
       // No season was refreshed because all years are already complete & past
       expect(mockGameService.getOldiesGames).not.toHaveBeenCalled();
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('finishing without any modification'),
+        expect.stringContaining(
+          'no modification; will be retried on a later day',
+        ),
       );
 
       consoleSpy.mockRestore();
-      (Math.random as any).mockRestore();
+      (Math.random as jest.Mock).mockRestore();
     });
 
     it('should refresh a past incomplete season', async () => {
       const currentYear = new Date().getFullYear();
-      (Math.random as any) = jest.spyOn(Math, 'random').mockReturnValue(0);
+      // Select the first league and the year immediately before the current one.
+      jest
+        .spyOn(Math, 'random')
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(0.7);
 
       // One past season incomplete -> it is refreshed
       mockGameService.getSeasonStatus.mockImplementation(
@@ -133,7 +143,7 @@ describe('CronService', () => {
         String(currentYear - 1),
         expect.any(String),
       );
-      (Math.random as any).mockRestore();
+      (Math.random as jest.Mock).mockRestore();
     });
   });
 });

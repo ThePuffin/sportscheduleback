@@ -30,6 +30,13 @@ Expose team lookup helpers for the controller and other services.
 
 Updates team records such as wins/losses and ties/OT losses.
 
+### `deleteManyByIds(ids)`
+
+Deletes teams by `uniqueId`. To be safe it also matches by `_id`, but **only** for ids that are valid
+24-char hex ObjectIds. Plain textual ids such as `"PWHL-DET"` are matched via `uniqueId` only — passing
+them into an `$in` on the ObjectId `_id` field used to throw a Mongoose `CastError`
+(`Cast to ObjectId failed ... at path "_id"`).
+
 ### `generateLeaguesTeamsAndColorsFiles()`
 
 Writes generated frontend files such as:

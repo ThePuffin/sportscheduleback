@@ -259,11 +259,23 @@ export class TeamService {
     if (!ids || ids.length === 0) {
       return { acknowledged: true, deletedCount: 0 };
     }
-    return this.teamModel
-      .deleteMany({
-        $or: [{ uniqueId: { $in: ids } }, { _id: { $in: ids } }],
-      })
-      .exec();
+
+    // Only include the `_id` (Mongo ObjectId) branch for ids that are actually valid
+    // 24-char hex ObjectIds. Passing plain strings like "PWHL-DET" into $in on the
+    // `_id` field makes Mongoose throw a CastError ("Cast to ObjectId failed ... at
+    // path \"_id\""). The textual key is handled by `uniqueId` below.
+    const validObjectIds = ids.filter(
+      (id) => typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id),
+    );
+
+    const conditions: Array<Record<string, unknown>> = [
+      { uniqueId: { $in: ids } },
+    ];
+    if (validObjectIds.length > 0) {
+      conditions.push({ _id: { $in: validObjectIds } });
+    }
+
+    return this.teamModel.deleteMany({ $or: conditions }).exec();
   }
 
   async removeByLeague(league: string): Promise<DeleteResult> {

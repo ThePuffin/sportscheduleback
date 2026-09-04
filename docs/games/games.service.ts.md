@@ -29,6 +29,14 @@ Refreshes a specific league’s game data. It:
 4. Stores new or updated games in MongoDB.
 5. Removes stale or unlinked team data when necessary.
 
+**Playoff missing-game grace period:**
+
+For a current-season refresh with a successful non-empty fetch, future active games
+that are absent from the external source are not deactivated immediately. The first
+missing refresh stores `missingSince` and keeps the game active for the 48-hour grace
+period. A game still absent after that period is deactivated and the marker is removed.
+When the game reappears, it is saved as active again and `missingSince` is cleared.
+An empty fetch still causes no deactivation.
 
 **Crash-safe replace guard (future games:)**
 

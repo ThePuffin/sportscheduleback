@@ -266,7 +266,7 @@ describe('TeamService', () => {
       expect(model.deleteMany).not.toHaveBeenCalled();
     });
 
-    it('should call deleteMany with $or filter for uniqueId and _id', async () => {
+    it('should call deleteMany with $or filter: uniqueId for all, _id only for valid ObjectIds', async () => {
       const ids = ['NHL-BOS', '60c72b2f9b1d8b2b3c8e4f5a'];
       const deleteResult = { deletedCount: 2, acknowledged: true };
 
@@ -277,7 +277,28 @@ describe('TeamService', () => {
       const result = await service.deleteManyByIds(ids);
 
       expect(model.deleteMany).toHaveBeenCalledWith({
-        $or: [{ uniqueId: { $in: ids } }, { _id: { $in: ids } }],
+        $or: [
+          { uniqueId: { $in: ids } },
+          { _id: { $in: ['60c72b2f9b1d8b2b3c8e4f5a'] } },
+        ],
+      });
+      expect(result).toEqual(deleteResult);
+    });
+
+    it('should not include the _id branch when ids are plain text uniqueIds (no ObjectId)', async () => {
+      // Regression test: "PWHL-DET" (and similar textual ids) used to trigger a
+      // CastError because they were pushed into $in on the `_id` ObjectId field.
+      const ids = ['PWHL-DET', 'PWHL-MTL'];
+      const deleteResult = { deletedCount: 4, acknowledged: true };
+
+      (model.deleteMany as jest.Mock).mockReturnValue({
+        exec: jest.fn().mockResolvedValue(deleteResult),
+      });
+
+      const result = await service.deleteManyByIds(ids);
+
+      expect(model.deleteMany).toHaveBeenCalledWith({
+        $or: [{ uniqueId: { $in: ids } }],
       });
       expect(result).toEqual(deleteResult);
     });

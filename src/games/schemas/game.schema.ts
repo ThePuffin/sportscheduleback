@@ -107,6 +107,16 @@ export class Game extends Document {
 
   @Prop()
   seriesStatus: string;
+
+  /**
+   * Internal guard for the grace period: set when a *future* game (e.g. a playoff
+   * game 5/6/7 that is "if necessary") temporarily disappears from the external
+   * source. The game stays active until it has been missing for `gracePeriodHours`,
+   * avoiding a flicker (disappear then reappear) when the source data is transient.
+   * ISO-8601 string (UTC) of when it was first observed missing.
+   */
+  @Prop()
+  missingSince?: string;
 }
 
 export const GameSchema = SchemaFactory.createForClass(Game);

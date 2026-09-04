@@ -2,6 +2,53 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: Playoff future-game grace period
+
+Future playoff games that temporarily disappear from an external schedule source are
+now protected from flickering. `getLeagueGames()` records the first missing time in
+`missingSince`, keeps the game active for 48 hours, and deactivates it only when it
+remains absent beyond that period. When the game reappears, the refresh confirms it,
+restores `isActive: true`, and clears `missingSince`.
+
+The behavior is limited to current-season refreshes with a successful non-empty fetch;
+empty or historical fetches do not deactivate future games.
+
+### Files changed
+
+- `backend/src/games/schemas/game.schema.ts` — added the internal `missingSince` field.
+- `backend/src/games/games.service.ts` — added delayed deactivation and reappearance handling.
+- `backend/src/games/tests/games.service.spec.ts` — added lifecycle regression tests.
+- `backend/docs/games/games.service.ts.md` — documented the grace-period behavior.
+
+## Fixed: PWHL oldies lost shutout scores
+
+PWHL historical imports inferred `FINISHED` only when both scores were different from `0`.
+That incorrectly treated valid results such as `0-4` as unfinished and stored null scores.
+The importer now uses HockeyTech's official final indicators (`final`, status `4`, or a `Final`
+game status), so shutouts and overtime results retain their scores.
+
+---
+
+## Fixed: Oldies refresh crashed on team cleanup (CastError on ObjectId \_id)
+
+### Problem
+
+During the historical oldies refresh, `_deleteUnlinkedTeams` called `teamService.deleteManyByIds` with a
+list of textual `uniqueId`s such as `"PWHL-DET"`. The query built `$or: [{ uniqueId: { $in: ids } }, { _id: { $in: ids } }]`,
+so those plain strings were also pushed into `$in` on the ObjectId `_id` field. Mongoose then threw
+`CastError: Cast to ObjectId failed for value "PWHL-DET" at path "_id" for model "Team"`, aborting the
+cleanup right after teams were detected as unlinked (reproduced on every season 2026 down to 2019 in the logs).
+
+### Solution
+
+`deleteManyByIds` now only includes the `_id` branch for ids that are valid 24-char hex ObjectIds.
+Plain textual uniqueIds (`"PWHL-DET"`, `"NHL-BOS"`, ...) are matched via `uniqueId` only, so the query
+never casts a non-hex string into an ObjectId.
+
+### Files changed
+
+- `backend/src/teams/teams.service.ts` — filter valid ObjectIds before adding the `_id` branch in `deleteManyByIds`.
+- `backend/src/teams/tests/teams.service.spec.ts` — updated `deleteManyByIds` tests + new regression test for textual ids.
 
 ---
 
@@ -9,7 +56,7 @@
 
 ### Problem
 
-When refreshing a league (MLB, MLS, ...), the `getLeagueGames` service first **deactivated all future games** (`isActive:false`)and *then* re-fetched/re-wrote the season. If the server **crashed/restarted** between these two steps (the very large oldies refreshes could trigger one), every upcoming game of that league was left `isActive:false` and never re-inserted. Result:the **Programme du jour** tab showed **No results** for 2026 in both MLB and MLS, until a manual league refresh succeeded.
+When refreshing a league (MLB, MLS, ...), the `getLeagueGames` service first **deactivated all future games** (`isActive:false`)and _then_ re-fetched/re-wrote the season. If the server **crashed/restarted** between these two steps (the very large oldies refreshes could trigger one), every upcoming game of that league was left `isActive:false` and never re-inserted. Result:the **Programme du jour** tab showed **No results** for 2026 in both MLB and MLS, until a manual league refresh succeeded.
 
 ### Solution
 
@@ -20,17 +67,13 @@ When refreshing a league (MLB, MLS, ...), the `getLeagueGames` service first **d
 
 4. **Bound the oldies cron**:the daily oldies refresh now processes **one random year per tick** (instead of up to 11 years at once) and has an **anti-reentrancy guard**,cutting the per-tick work volume that could trigger Render restarts during the data update.
 
-
-
 ### Files changed
 
 - `backend/src/games/games.service.ts` — crash-safe reordered / selective / empty-guarded deactivation in `getLeagueGames`.
 - `backend/src/cronJob/cronJob.service.ts` — one-random-year-per-tick oldies refresh + anti-reentrancy guard.
 
-
-
-
 ---
+
 ## Fixed: Oldies historical import now allows null scores for past games (cron fills them later)
 
 ### Problem

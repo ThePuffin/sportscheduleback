@@ -463,6 +463,129 @@ describe('GameService', () => {
     });
   });
 
+  describe('getLeagueGames playoff grace period', () => {
+    const futureGame = {
+      uniqueId: 'NHL-playoff-if-necessary',
+      league: League.NHL,
+      startTimeUTC: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      homeTeamId: 'NHL-HOME',
+      awayTeamId: 'NHL-AWAY',
+    };
+
+    beforeEach(() => {
+      mockRefreshTimestampService.getTodayManualTimestamps.mockResolvedValue(
+        [],
+      );
+      (service as any)._deleteUnlinkedTeams = jest
+        .fn()
+        .mockResolvedValue(undefined);
+      (service as any)._fetchUniqueGames = jest.fn().mockResolvedValue([
+        {
+          ...futureGame,
+          uniqueId: 'NHL-other-game',
+        },
+      ]);
+    });
+
+    it('starts the grace period without deactivating a newly missing game', async () => {
+      mockGameModel.exec.mockResolvedValue([{ ...futureGame }]);
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+      });
+
+      expect(mockGameModel.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ uniqueId: { $in: [futureGame.uniqueId] } }),
+        { $set: { missingSince: expect.any(String) } },
+      );
+      expect(mockGameModel.updateMany).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ $set: { isActive: false } }),
+      );
+      createSpy.mockRestore();
+    });
+
+    it('keeps a missing game active while it is within the grace period', async () => {
+      const missingSince = new Date(
+        Date.now() - 24 * 60 * 60 * 1000,
+      ).toISOString();
+      mockGameModel.exec.mockResolvedValue([{ ...futureGame, missingSince }]);
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+      });
+
+      expect(mockGameModel.updateMany).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ $set: { isActive: false } }),
+      );
+      createSpy.mockRestore();
+    });
+
+    it('deactivates a game missing beyond the grace period', async () => {
+      const missingSince = new Date(
+        Date.now() - 49 * 60 * 60 * 1000,
+      ).toISOString();
+      mockGameModel.exec.mockResolvedValue([{ ...futureGame, missingSince }]);
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+      });
+
+      expect(mockGameModel.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ uniqueId: { $in: [futureGame.uniqueId] } }),
+        { $set: { isActive: false }, $unset: { missingSince: 1 } },
+      );
+      createSpy.mockRestore();
+    });
+
+    it('clears the grace marker when the game reappears', async () => {
+      const missingSince = new Date(
+        Date.now() - 24 * 60 * 60 * 1000,
+      ).toISOString();
+      mockGameModel.exec.mockResolvedValue([{ ...futureGame, missingSince }]);
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+      (service as any)._fetchUniqueGames = jest
+        .fn()
+        .mockResolvedValue([{ ...futureGame }]);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+      });
+
+      expect(mockGameModel.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ uniqueId: { $in: [futureGame.uniqueId] } }),
+        { $unset: { missingSince: 1 } },
+      );
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          uniqueId: futureGame.uniqueId,
+          isActive: true,
+        }),
+      );
+      createSpy.mockRestore();
+    });
+  });
+
   describe('_deleteUnlinkedTeams', () => {
     it('should call teamService.deleteManyByIds when unlinked team IDs are found', async () => {
       const league = League.NHL;

@@ -13,6 +13,11 @@ const formatSeriesSummary = (summary?: string): string => {
   return summary;
 };
 
+const getScore = (competitor) => {
+  const score = competitor?.score;
+  return score?.value ?? (score != null ? Number(score) : null);
+};
+
 const getNormalizedLeagueName = (leagueName: string) => {
   if (leagueName.includes('OLYMPICS')) {
     if (leagueName.includes('WOMEN')) return 'OLYMPICS-WOMEN';
@@ -521,8 +526,8 @@ const getEachTeamSchedule = async (
 
         const homeCompetitor = competitors.find((c) => c.homeAway === 'home');
         const awayCompetitor = competitors.find((c) => c.homeAway === 'away');
-        const homeTeamScore = homeCompetitor?.score?.value ?? null;
-        const awayTeamScore = awayCompetitor?.score?.value ?? null;
+        const homeTeamScore = getScore(homeCompetitor);
+        const awayTeamScore = getScore(awayCompetitor);
 
         const venueTimezone = 'America/Los_Angeles';
         const currentDate = new Date(
