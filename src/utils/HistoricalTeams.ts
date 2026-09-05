@@ -1,18 +1,19 @@
 /**
- * Fichier statique de fallback pour les équipes historiques (disparues,
- * déménagées ou renommées). Même rôle que `UniversityLogos`, mais ici la clé
- * est le `uniqueId` complet `'{LIGUE}-{ABBREV}'`, identique au format utilisé
- * par `homeTeamId` / `awayTeamId` des matchs (`ESPN-...`).
+ * Static fallback file for historical teams (defunct, relocated, or renamed).
+ * Same purpose as `UniversityLogos`, but here the key is the full `uniqueId`
+ * `'{LEAGUE}-{ABBREV}'`, identical to the format used by `homeTeamId` / `awayTeamId`
+ * in games (`ESPN-...`).
  *
- * Il sert dans `GameService._enrichGameWithTeamData` : quand une équipe d'un
- * vieux match n'a plus de fiche en base, on retombe ici pour récupérer son
- * nom, son logo et ses couleurs afin que l'affichage des "oldies" soit correct.
+ * It is used in `GameService._enrichGameWithTeamData`: when a team from an
+ * old game no longer has an entry in the database, it falls back here to retrieve
+ * its name, logo, and colors so that the display for "oldies" remains correct.
  *
- * ⚠️ Pour RÉCUPÉRER de nouveaux matchs impliquant d'anciennes équipes, ce
- * fichier ne suffit pas : le fetch des calendriers ESPN a besoin de l'`id`
- * numérique de l'équipe (voir le sync `seasons/{year}/teams` du Core API).
- * Ce fichier ne résout que l'ENRICHISSEMENT/affichage des matchs déjà en base.
+ * ⚠️ To FETCH new games involving former teams, this file is not enough:
+ * fetching ESPN schedules requires the team's numeric `id` (see the
+ * `seasons/{year}/teams` sync in the Core API).
+ * This file only resolves the ENRICHMENT/display of games already stored in the database.
  */
+
 export interface HistoricalTeamEntry {
   abbrev: string;
   label: string;
@@ -20,170 +21,185 @@ export interface HistoricalTeamEntry {
   teamLogoDark?: string;
   color?: string;
   backgroundColor?: string;
-  // Optionnel : bilan affiché sur le match (ex. "57-25").
-  record?: string;
-  // Toujours false pour une équipe historique : ne doit jamais apparaître dans
-  // les constantes front (Teams.tsx / favoris / filtre).
   isActive?: boolean;
+  record: string;
 }
 
-const combo = (sport: string, abbrev: string) =>
-  `https://a.espncdn.com/combiner/i?img=/i/teamlogos/${sport}/500/${abbrev}.png&w=256&h=256&transparent=true`;
-
 export const HistoricalTeams: Record<string, HistoricalTeamEntry> = {
-  // ---------- NBA ----------
-  'NBA-SEA': {
-    abbrev: 'SEA',
-    label: 'Seattle SuperSonics',
-    teamLogo: combo('nba', 'seattle'),
-    color: '#005083',
-    backgroundColor: '#C8102E',
-    isActive: false,
-  },
-  'NBA-VAN': {
-    abbrev: 'VAN',
-    label: 'Vancouver Grizzlies',
-    teamLogo: combo('nba', 'vancouver'),
-    color: '#001E62',
-    backgroundColor: '#0072CE',
-    isActive: false,
-  },
-  'NBA-CHH': {
-    abbrev: 'CHH',
-    label: 'Charlotte Hornets',
-    teamLogo: combo('nba', 'hornets'),
-    color: '#1D1160',
-    backgroundColor: '#00788C',
-    isActive: false,
-  },
-  'NBA-NJN': {
-    abbrev: 'NJN',
-    label: 'New Jersey Nets',
-    teamLogo: combo('nba', 'nets'),
-    color: '#003C71',
-    backgroundColor: '#000000',
-    isActive: false,
-  },
-  'NBA-NOH': {
-    abbrev: 'NOH',
-    label: 'New Orleans Hornets',
-    teamLogo: combo('nba', 'hornets'),
-    color: '#C8102E',
-    backgroundColor: '#00778B',
-    isActive: false,
-  },
   // ---------- NHL ----------
   'NHL-ATL': {
     abbrev: 'ATL',
     label: 'Atlanta Thrashers',
-    teamLogo: combo('nhl', 'atl'),
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/nhl/500/atl.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/nhl/500/atl.png',
     color: '#BA9653',
     backgroundColor: '#041E42',
     isActive: false,
-  },
-  'NHL-QUE': {
-    abbrev: 'QUE',
-    label: 'Quebec Nordiques',
-    teamLogo: combo('nhl', 'que'),
-    color: '#003DA5',
-    backgroundColor: '#C8102E',
-    isActive: false,
-  },
-  'NHL-HAR': {
-    abbrev: 'HAR',
-    label: 'Hartford Whalers',
-    teamLogo: combo('nhl', 'har'),
-    color: '#006B54',
-    backgroundColor: '#000000',
-    isActive: false,
-  },
-  'NHL-WIN': {
-    abbrev: 'WIN',
-    label: 'Winnipeg Jets',
-    teamLogo: combo('nhl', 'win'),
-    color: '#003778',
-    backgroundColor: '#0047AB',
-    isActive: false,
+    record: '0-0-0',
   },
   'NHL-PHX': {
     abbrev: 'PHX',
     label: 'Phoenix Coyotes',
-    teamLogo: combo('nhl', 'phx'),
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/nhl/500/phx.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/nhl/500/phx.png',
     color: '#8A1C1C',
     backgroundColor: '#B4975A',
     isActive: false,
+    record: '0-0-0',
   },
-  // ---------- MLB ----------
-  'MLB-MON': {
-    abbrev: 'MON',
-    label: 'Montreal Expos',
-    teamLogo: combo('mlb', 'mon'),
-    color: '#003087',
-    backgroundColor: '#E81828',
+  'NHL-ARI': {
+    abbrev: 'ARI',
+    label: 'Arizona Coyotes',
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/nhl/500/ari.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/nhl/500/ari.png',
+    color: '#8C2633',
+    backgroundColor: '#E2D6B5',
     isActive: false,
+    record: '0-0-0',
   },
-  'MLB-BRO': {
-    abbrev: 'BRO',
-    label: 'Brooklyn Dodgers',
-    teamLogo: combo('mlb', 'bro'),
-    color: '#003399',
-    backgroundColor: '#FFFFFF',
+
+  // ---------- NBA ----------
+  'NBA-NJN': {
+    abbrev: 'NJN',
+    label: 'New Jersey Nets',
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/nba/500-dark/nj.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/nba/500-dark/nj.png',
+    color: '#003C71',
+    backgroundColor: '#000000',
     isActive: false,
+    record: '0-0-0',
   },
-  'MLB-PHA': {
-    abbrev: 'PHA',
-    label: 'Philadelphia Athletics',
-    teamLogo: combo('mlb', 'pha'),
-    color: '#0A2342',
-    backgroundColor: '#FFFFFF',
+  'NBA-NOH': {
+    abbrev: 'NOH',
+    label: 'New Orleans Hornets',
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/nba/500/noh.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/nba/500/noh.png',
+    color: '#C8102E',
+    backgroundColor: '#00778B',
     isActive: false,
+    record: '0-0-0',
   },
-  'MLB-SEP': {
-    abbrev: 'SEP',
-    label: 'Seattle Pilots',
-    teamLogo: combo('mlb', 'sea'),
-    color: '#004C93',
-    backgroundColor: '#F5A623',
-    isActive: false,
-  },
+
   // ---------- NFL ----------
-  'NFL-HOU': {
-    abbrev: 'HOU',
-    label: 'Houston Oilers',
-    teamLogo: combo('nfl', 'hou'),
-    color: '#0C2340',
-    backgroundColor: '#A71930',
-    isActive: false,
-  },
   'NFL-STL': {
     abbrev: 'STL',
     label: 'St. Louis Rams',
-    teamLogo: combo('nfl', 'stl'),
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/nfl/500/stl.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/nfl/500/stl.png',
     color: '#002244',
     backgroundColor: '#C7A252',
     isActive: false,
-  },
-  'NFL-OAK': {
-    abbrev: 'OAK',
-    label: 'Oakland Raiders',
-    teamLogo: combo('nfl', 'oak'),
-    color: '#000000',
-    backgroundColor: '#A5ACAF',
-    isActive: false,
+    record: '0-0-0',
   },
   'NFL-SDG': {
     abbrev: 'SDG',
     label: 'San Diego Chargers',
-    teamLogo: combo('nfl', 'sdg'),
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/nfl/500/sdg.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/nfl/500/sdg.png',
     color: '#0072CE',
     backgroundColor: '#FFC20E',
     isActive: false,
+    record: '0-0-0',
+  },
+  'NFL-OAK': {
+    abbrev: 'OAK',
+    label: 'Oakland Raiders',
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/nfl/500/oak.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/nfl/500/oak.png',
+    color: '#000000',
+    backgroundColor: '#A5ACAF',
+    isActive: false,
+    record: '0-0-0',
+  },
+  'NFL-WAS': {
+    abbrev: 'WAS',
+    label: 'Washington Redskins',
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/nfl/500/was.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/nfl/500/was.png',
+    color: '#5A1414',
+    backgroundColor: '#FFC20E',
+    isActive: false,
+    record: '0-0-0',
+  },
+
+  // ---------- MLB ----------
+  'MLB-OAK': {
+    abbrev: 'OAK',
+    label: 'Oakland Athletics',
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/mlb/500/oak.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/mlb/500/oak.png',
+    color: '#003831',
+    backgroundColor: '#EFB21E',
+    isActive: false,
+    record: '0-0-0',
+  },
+
+  // ---------- MLS ----------
+  'MLS-CHV': {
+    abbrev: 'CHV',
+    label: 'Chivas USA',
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/chv.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/soccer/500/chv.png',
+    color: '#C8102E',
+    backgroundColor: '#002D62',
+    isActive: false,
+    record: '0-0-0',
+  },
+
+  // ---------- WNBA ----------
+  'WNBA-TUL': {
+    abbrev: 'TUL',
+    label: 'Tulsa Shock',
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/wnba/500/tul.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/wnba/500/tul.png',
+    color: '#C4D600',
+    backgroundColor: '#002B5C',
+    isActive: false,
+    record: '0-0-0',
+  },
+  'WNBA-SAS': {
+    abbrev: 'SAS',
+    label: 'San Antonio Stars',
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/wnba/500/sas.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/wnba/500/sas.png',
+    color: '#000000',
+    backgroundColor: '#BAC0E6',
+    isActive: false,
+    record: '0-0-0',
+  },
+
+  // ---------- NWSL ----------
+  'NWSL-WNY': {
+    abbrev: 'WNY',
+    label: 'Western New York Flash',
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/wny.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/soccer/500/wny.png',
+    color: '#C8102E',
+    backgroundColor: '#002D62',
+    isActive: false,
+    record: '0-0-0',
+  },
+  'NWSL-FCKC': {
+    abbrev: 'KC',
+    label: 'FC Kansas City',
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/fckc.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/soccer/500/fckc.png',
+    color: '#00A3E0',
+    backgroundColor: '#002B49',
+    isActive: false,
+    record: '0-0-0',
+  },
+  'NWSL-BOS': {
+    abbrev: 'BOS',
+    label: 'Boston Breakers',
+    teamLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/bos.png',
+    teamLogoDark: 'https://a.espncdn.com/i/teamlogos/soccer/500/bos.png',
+    color: '#002B5C',
+    backgroundColor: '#C8102E',
+    isActive: false,
+    record: '0-0-0',
   },
 };
 
-/**
- * Retourne la portion d'une clé `uniqueId` qui désigne la ligue
- * (partie avant le premier '-'), ex. `NBA-SEA` -> `NBA`.
- */
 export const historicalTeamLeagueOf = (uniqueId: string): string =>
   (uniqueId || '').split('-')[0] || '';
