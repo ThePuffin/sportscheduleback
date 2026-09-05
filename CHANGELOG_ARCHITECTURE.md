@@ -2,7 +2,41 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
-## Added: Playoff future-game grace period
+## Added: Historical teams fallback for enrichment (`HistoricalTeams.ts`)
+
+Old ("oldies") games involving defunct, relocated or renamed franchises previously
+rendered with empty team data because those teams no longer have a living record in the
+database. We now provide a **static fallback map** (same pattern as `UniversityLogos`)
+keyed by the full `uniqueId` (`'{LIGUE}-{ABBREV}'`, e.g. `'NBA-SEA'`) that carries the
+team `label`, `abbrev`, logo, dark logo, colors and optional `record`.
+
+### Behavior
+
+- `GameService._enrichGameWithTeamData` falls back to `HistoricalTeams[id]` when a
+  game's `homeTeamId` / `awayTeamId` is not found in the DB `teamsMap`, so old games
+  render correct name / logo / colors again.
+- This file resolves **enrichment only**. Fetching *new* historical games still needs the
+  numeric ESPN team `id` (a Core API `seasons/{year}/teams` sync) and is out of scope.
+
+### Guards / non-regression
+
+- `GameService._deleteUnlinkedTeams` never deletes teams referenced by `HistoricalTeams`,
+  nor teams marked `isActive === false` (they are required to enrich old games).
+- `TeamService.generateLeaguesTeamsAndColorsFiles` excludes `HistoricalTeams` keys and
+  `isActive === false` teams from `Teams.tsx`, keeping the frontend filter/favorites clean.
+- The `Team` schema / `TeamType` / DTOs now expose `isActive?: boolean` (default `true`)
+  to support future Core-API import of inactive teams with the same protections.
+
+### Files changed
+
+- `backend/src/utils/HistoricalTeams.ts` — new static fallback map + `HistoricalTeamEntry`.
+- `backend/src/games/games.service.ts` — enrichment fallback; `_deleteUnlinkedTeams` guard.
+- `backend/src/teams/teams.service.ts` — `Teams.tsx` generation excludes inactive/historical.
+- `backend/src/teams/schemas/team.schema.ts`, `backend/src/teams/dto/*.ts`,
+  `backend/src/utils/interface/team.ts` — added `isActive?: boolean`.
+- `backend/docs/utils/HistoricalTeams.ts.md` — documentation of the new module.
+
+---
 
 Future playoff games that temporarily disappear from an external schedule source are
 now protected from flickering. `getLeagueGames()` records the first missing time in

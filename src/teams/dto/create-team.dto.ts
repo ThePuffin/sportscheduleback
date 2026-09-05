@@ -37,6 +37,9 @@ export class CreateTeamDto {
   @ApiProperty()
   abbrev: string;
 
+  @ApiProperty({ required: false, default: true })
+  isActive?: boolean;
+
   @ApiProperty()
   updateDate: string;
 

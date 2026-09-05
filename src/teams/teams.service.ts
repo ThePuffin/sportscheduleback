@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import { CollegeLeague, League } from '../utils/enum';
 import { getESPNTeams } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
+import { HistoricalTeams } from '../utils/HistoricalTeams';
 import { TeamType } from '../utils/interface/team';
 import { UniversityLogos } from '../utils/UniversityLogos';
 import { CreateTeamDto } from './dto/create-team.dto';
@@ -402,7 +403,13 @@ export class TeamService {
         .sort({ uniqueId: 1 })
         .lean()
         .exec();
-      const lines = allTeams.map(
+      // Ne jamais exposer les équipes inactives/historiques dans le fichier de
+      // sélection du frontend : seules les équipes actives apparaissent dans
+      // Teams.tsx (filtres / favoris).
+      const visibleTeams = allTeams.filter(
+        (team: any) => team.isActive !== false && !HistoricalTeams[team.uniqueId],
+      );
+      const lines = visibleTeams.map(
         (team) => `  '${team.uniqueId}': '${team.label.replace(/'/g, "\\'")}',`,
       );
       const fileContent = `export const TeamsEnum: Record<string, string> = {\n${lines.join(

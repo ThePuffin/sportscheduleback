@@ -10,6 +10,7 @@ export interface TeamType {
   league: string;
   updateDate?: string;
   abbrev?: string;
+  isActive?: boolean;
   color?: string;
   backgroundColor?: string;
   record?: string;

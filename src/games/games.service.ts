@@ -12,6 +12,7 @@ import {
   getTeamsSchedule,
 } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
+import { HistoricalTeams } from '../utils/HistoricalTeams';
 import { TeamType } from '../utils/interface/team';
 import { UniversityLogos } from '../utils/UniversityLogos';
 import {
@@ -76,8 +77,12 @@ export class GameService {
   }
 
   private _enrichGameWithTeamData(game: any, teamsMap: Map<string, TeamType>) {
-    const homeTeam = teamsMap.get(game.homeTeamId);
-    const awayTeam = teamsMap.get(game.awayTeamId);
+    // Fallback sur le fichier statique `HistoricalTeams` pour les équipes
+    // disparues/déménagées/renommées absentes de la base (vieux matchs).
+    const homeTeam =
+      teamsMap.get(game.homeTeamId) ?? HistoricalTeams[game.homeTeamId];
+    const awayTeam =
+      teamsMap.get(game.awayTeamId) ?? HistoricalTeams[game.awayTeamId];
     const isPlayoffs =
       (game.seriesSummary || game.seriesStatus) &&
       !game.seriesSummary?.toLowerCase().includes('regular season');
@@ -2177,9 +2182,14 @@ export class GameService {
       ...awayTeamIds,
     ]);
 
-    // 5. Identify unlinked teams (pro leagues only) with zero existing games
+    // 5. Identify unlinked teams (pro leagues only) with zero existing games.
+    //    Teams marked as inactive (`HistoricalTeams` ou `isActive:false`) are
+    //    never deleted: they are needed to enrich historical/oldies games.
     const unlinkedTeams = teams.filter(
-      (team) => !usedTeamIds.has(team.uniqueId),
+      (team) =>
+        !usedTeamIds.has(team.uniqueId) &&
+        team.isActive !== false &&
+        !HistoricalTeams[team.uniqueId],
     );
 
     if (unlinkedTeams.length > 0) {
