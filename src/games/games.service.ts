@@ -626,6 +626,17 @@ export class GameService {
 
       await this._deleteUnlinkedTeams(normalizedLeague);
       return games;
+    } catch (err) {
+      // Never let a failing third-party API (ESPN / PWHL) propagate to the
+      // caller: routes that call this (getAllGames, findByTeam, empty-DB paths
+      // of findByDate / findByDateHour) would otherwise return a 500 for a
+      // single-league configuration whenever the provider hiccups, e.g. during
+      // the off-season. Log and leave the DB untouched instead.
+      console.error(
+        `[getLeagueGames] Error refreshing ${normalizedLeague}:`,
+        (err as any)?.message || err,
+      );
+      return;
     } finally {
       this.isFetchingGames[normalizedLeague] = false;
       if (skipCascade) {
@@ -749,7 +760,15 @@ export class GameService {
             (game) => game.awayTeamShort,
           );
         });
-        if (games.length) {
+        // Only refresh the league when it is actually in season (regular season
+        // or playoffs). Off-season requests return the (legitimately) empty
+        // result without hitting third-party APIs; the monthly/daily cron jobs
+        // keep the data up to date all year round instead.
+        const inSeason =
+          games.length > 0 &&
+          ((await isCurrentSeason(league, new Date())) ||
+            (await isPlayoffsPeriod(league, new Date())));
+        if (inSeason) {
           await this.getLeagueGames({
             league,
             forceUpdate: false,
@@ -1040,7 +1059,10 @@ export class GameService {
     if (games.length === 0) {
       const allGames = await this.findAll();
       if (!allGames.length) {
-        this.getAllGames();
+        // Pass the requested date so getAllGames only refreshes the leagues
+        // whose season or playoffs cover this specific date, instead of
+        // fetching every league's schedule from third-party APIs.
+        await this.getAllGames(false, new Date(gameDate));
       }
       return [];
     } else {

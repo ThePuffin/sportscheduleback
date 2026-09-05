@@ -2,6 +2,33 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Changed: Season-aware refresh gating for on-demand endpoints (`games.service.ts`)
+
+Avoids calling third-party APIs (ESPN, PWHL) for leagues that are off-season:
+
+- **`GET /games/team/:teamSelectedId` (`findByTeam`)**: when the team has no games, the
+  league refresh now only runs if `isCurrentSeason(league, new Date())` or
+  `isPlayoffsPeriod(league, new Date())` is true (league dates come from a 10-day cache).
+- **`GET /games/date/:gameDate` (`findByDate`)**: on a totally empty DB, it now calls
+  `await this.getAllGames(false, new Date(gameDate))` instead of `this.getAllGames()`,
+  so `getAllGames` only refreshes leagues whose season/playoffs cover that date (same
+  pattern as `findByDateHour`).
+- **Cron jobs unchanged**: `cronJob.service.ts` calls `getAllGames()` without a date, so
+  no season check applies and monthly/daily crons keep running all year round.
+- **`getLeagueGames` no longer propagates provider errors**: the `try/finally` now has a
+  `catch` that logs and returns. Without it, a single failing third-party API call
+  (timeout / malformed response, common off-season) made `getAllGames` reject and turned
+  every dependent route (`/games`, `/games/date/...`, `/games/hour/...`, `/games/team/...`)
+  into a 500 — very visible when the frontend config contains a single off-season league.
+
+### Files changed
+
+- `backend/src/games/games.service.ts` — season gate in `findByTeam`; dated refresh in `findByDate`; error swallowing in `getLeagueGames`.
+- `backend/docs/games/games.service.ts.md` — documentation updated.
+
+---
+
+
 ## Added: Historical teams fallback for enrichment (`HistoricalTeams.ts`)
 
 Old ("oldies") games involving defunct, relocated or renamed franchises previously

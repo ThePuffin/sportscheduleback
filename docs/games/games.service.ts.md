@@ -63,7 +63,10 @@ games that have a complete home **and** away team. It logs added / skipped count
 
 ### `getAllGames(forceUpdate, date, leagueList)`
 
-Refreshes all available leagues, optionally scoped to a date or league list.
+Refreshes all available leagues, optionally scoped to a date or league list. When a
+`date` is provided, only leagues whose regular season or playoffs window covers that
+date are refreshed (`isCurrentSeason` / `isPlayoffsPeriod`); without a date (e.g. cron
+jobs) every league is refreshed all year round regardless of season status.
 
 ### `findAll()`
 
@@ -75,11 +78,16 @@ Builds a filtered game view by league, date range, team selection, and home/away
 
 ### `findByTeam()` / `findResultsByTeam()`
 
-Returns upcoming or completed games for a selected team.
+Returns upcoming or completed games for a selected team. When no games are found for the
+team, the league refresh is only triggered if the league is actually in season (regular
+season or playoffs); off-season requests return the legitimately empty result without
+hitting third-party APIs — the cron jobs keep data fresh all year round instead.
 
 ### `findByLeague()` / `findByDate()` / `findByDateHour()`
 
-Provides schedule views used by the frontend tabs.
+Provides schedule views used by the frontend tabs. When the DB is empty, `findByDate()`
+passes the requested date to `getAllGames(false, new Date(gameDate))` so only leagues
+covering that specific date are refreshed (same pattern as `findByDateHour()`).
 
 ### `fetchGamesScores()`
 
