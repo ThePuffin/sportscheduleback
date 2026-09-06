@@ -39,7 +39,7 @@ export class GameService {
     private readonly refreshTimestampService: RefreshTimestampService,
   ) {}
 
-  maxYearBeforeDelete = 15;
+  maxYearBeforeDelete = 12;
   // Purge games that are still active/resolved-less several months after their start
   // (e.g. a PWHL game stuck on 2026-05-11 whose final result can never be fetched).
   staleGameMaxAgeDays = 90;
@@ -661,7 +661,12 @@ export class GameService {
         ? leagues.filter((l) => leagueList.includes(l))
         : leagues;
 
-    for (const league of leaguesToRefresh) {
+    const total = leaguesToRefresh.length;
+    let lastMilestone = 0; // next 20% milestone to log (20, 40, 60, 80, 100)
+    console.info(`[getAllGames] refreshing ${total} league(s): ${leaguesToRefresh.join(', ')}`);
+    for (let i = 0; i < total; i++) {
+      const league = leaguesToRefresh[i];
+      console.info(`[getAllGames] refreshing ${league} (${i + 1}/${total})`);
       let needRefresh = true;
       if (date) {
         needRefresh =
@@ -671,7 +676,13 @@ export class GameService {
       if (needRefresh) {
         await this.getLeagueGames({ league, forceUpdate, skipCascade: false });
       }
+      const pct = Math.round(((i + 1) / total) * 100);
+      if (pct >= lastMilestone + 20) {
+        lastMilestone = Math.floor(pct / 20) * 20;
+        console.info(`[getAllGames] progress: ${pct}% (${i + 1}/${total}) — last: ${league}`);
+      }
     }
+    console.info('[getAllGames] done');
     return this.findAll();
   }
 

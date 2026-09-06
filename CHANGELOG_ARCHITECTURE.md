@@ -2,6 +2,13 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: Progress logging during full league refresh (`games.service.ts`)
+
+`getAllGames` now emits a `console.info` line at every 20 % of leagues processed
+(`[getAllGames] progress: 20% (2/10)`), plus the initial list of leagues and a final
+`[getAllGames] done`. If a league blocks mid-refresh, the last log line points
+directly to it.
+
 ## Changed: Season-aware refresh gating for on-demand endpoints (`games.service.ts`)
 
 Avoids calling third-party APIs (ESPN, PWHL) for leagues that are off-season:

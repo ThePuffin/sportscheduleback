@@ -68,6 +68,11 @@ Refreshes all available leagues, optionally scoped to a date or league list. Whe
 date are refreshed (`isCurrentSeason` / `isPlayoffsPeriod`); without a date (e.g. cron
 jobs) every league is refreshed all year round regardless of season status.
 
+**Progress logging**: logs the list of leagues to refresh, then for each league logs
+`[getAllGames] refreshing <LEAGUE> (<i>/<total>)` before it starts, plus a milestone
+line every 20 % (`[getAllGames] progress: 20% (2/10) — last: <LEAGUE>`), and a final
+`[getAllGames] done`. If a league blocks mid-refresh, the last line points directly to it.
+
 ### `findAll()`
 
 Returns all active games, enriched with team metadata.
