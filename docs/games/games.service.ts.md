@@ -81,6 +81,13 @@ Returns all active games, enriched with team metadata.
 
 Builds a filtered game view by league, date range, team selection, and home/away criteria. It also fills placeholder rows for UI display when needed.
 
+### `getDateRange(leagues?)`
+
+Returns `{ minDate, maxDate }` from the active games aggregate. When a `leagues`
+string is provided (comma/space/plus separated, uppercased) the min/max is scoped
+to those leagues via `league: { $in }`; otherwise it spans every league. Returns
+`{ minDate: null, maxDate: null }` when no active games match.
+
 ### `findByTeam()` / `findResultsByTeam()`
 
 Returns upcoming or completed games for a selected team. When no games are found for the

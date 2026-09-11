@@ -19,7 +19,7 @@ This controller exposes the HTTP API for game data operations.
 - `GET /games/team/:teamSelectedId/results` — returns completed results for a team
 - `GET /games/league/:league/results` — returns completed results for a league
 - `GET /games/filter` — filters games by date range and team selection
-- `GET /games/dates/range` — returns min/max game dates
+- `GET /games/dates/range` — returns min/max game dates (optional `leagues` query param scopes the range to the given league list)
 - `GET /games/date/:gameDate` — returns games for a specific date
 - `GET /games/hour/:gameDate` — returns games grouped by hour slots
 - `GET /games/league/:league` — returns games for a league

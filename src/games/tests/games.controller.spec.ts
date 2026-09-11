@@ -110,7 +110,13 @@ describe('GamesController', () => {
   describe('getDateRange', () => {
     it('should return the date range', async () => {
       await controller.getDateRange();
-      expect(service.getDateRange).toHaveBeenCalled();
+      expect(service.getDateRange).toHaveBeenCalledWith(undefined);
+    });
+
+    it('should forward the leagues query parameter', async () => {
+      const leagues = 'NHL,NBA';
+      await controller.getDateRange(leagues);
+      expect(service.getDateRange).toHaveBeenCalledWith(leagues);
     });
   });
 

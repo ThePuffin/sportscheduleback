@@ -2,6 +2,17 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: League-scoped date range limits (`games.service.ts`, `games.controller.ts`)
+
+`GET /games/dates/range` now accepts an optional `leagues` query param
+(comma/space/plus separated, uppercased). When provided, the min/max dates returned
+by `GameService.getDateRange(leagues)` are scoped to those leagues via
+`league: { $in }` instead of spanning every league.
+
+- `backend/src/games/games.controller.ts` — added `@Query('leagues')` to `getDateRange`.
+- `backend/src/games/games.service.ts` — `getDateRange(leagues?)` builds a league-scoped `$match`.
+- `backend/src/games/tests/games.controller.spec.ts` — forwards the `leagues` param.
+
 ## Added: Progress logging during full league refresh (`games.service.ts`)
 
 `getAllGames` now emits a `console.info` line at every 20 % of leagues processed

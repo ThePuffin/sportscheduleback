@@ -711,13 +711,27 @@ export class GameService {
     return game;
   }
 
-  async getDateRange() {
+  async getDateRange(leagues?: string) {
+    const match: any = {
+      isActive: true,
+      $expr: { $eq: ['$homeTeamId', '$teamSelectedId'] },
+    };
+
+    // Optionally scope the min/max dates to a specific set of leagues
+    // (comma/space/plus separated, same convention as `findByDateHour`).
+    if (leagues) {
+      const leaguesList = leagues
+        .split(/[ ,+]+/)
+        .filter((l) => l.trim().length > 0)
+        .map((l) => l.trim().toUpperCase());
+      if (leaguesList.length > 0) {
+        match.league = { $in: leaguesList };
+      }
+    }
+
     const result = await this.gameModel.aggregate([
       {
-        $match: {
-          isActive: true,
-          $expr: { $eq: ['$homeTeamId', '$teamSelectedId'] },
-        },
+        $match: match,
       },
       {
         $group: {

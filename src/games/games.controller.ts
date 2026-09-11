@@ -65,8 +65,8 @@ export class GamesController {
   }
 
   @Get('/dates/range')
-  getDateRange() {
-    return this.GameService.getDateRange();
+  getDateRange(@Query('leagues') leagues?: string) {
+    return this.GameService.getDateRange(leagues);
   }
 
   @Get('/date/:gameDate')
