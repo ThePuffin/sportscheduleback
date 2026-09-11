@@ -4139,6 +4139,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#EEE9D8',
     backgroundColor: '#0F4777',
   },
+  'PWHL-VEG': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
   'WNBA-ATL': {
     color: '#5091cc',
     backgroundColor: '#e31837',

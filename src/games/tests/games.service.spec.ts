@@ -836,4 +836,86 @@ describe('GameService', () => {
       expect(mockGameModel.aggregate).toHaveBeenCalled();
     });
   });
+describe('getDateRange', () => {
+    it('should return min/max dates from the aggregate', async () => {
+      mockGameModel.aggregate.mockResolvedValue([
+        { minDate: '2024-01-01', maxDate: '2024-12-31' },
+      ]);
+
+      const result = await service.getDateRange();
+
+      expect(result).toEqual({ minDate: '2024-01-01', maxDate: '2024-12-31' });
+    });
+
+    it('should return null dates when no active games match', async () => {
+      mockGameModel.aggregate.mockResolvedValue([]);
+
+      const result = await service.getDateRange();
+
+      expect(result).toEqual({ minDate: null, maxDate: null });
+    });
+
+    it('should scope the match to the requested leagues (uppercased/trimmed)', async () => {
+      mockGameModel.aggregate.mockResolvedValue([
+        { minDate: '2025-01-01', maxDate: '2025-12-31' },
+      ]);
+
+      await service.getDateRange('NHL, nba,  ');
+
+      const match = mockGameModel.aggregate.mock.calls[0][0][0].$match;
+      expect(match.isActive).toBe(true);
+      expect(match.league).toEqual({ $in: ['NHL', 'NBA'] });
+    });
+  });
+
+  describe('getClosestDates', () => {
+    it('should return the closest past and upcoming dates (two aggregates)', async () => {
+      // call 1 = past ($max), call 2 = upcoming ($min)
+      mockGameModel.aggregate
+        .mockResolvedValueOnce([{ date: '2026-02-01' }])
+        .mockResolvedValueOnce([{ date: '2026-03-10' }]);
+
+      const result = await service.getClosestDates({});
+
+      expect(result).toEqual({ previousDate: '2026-02-01', nextDate: '2026-03-10' });
+      expect(mockGameModel.aggregate).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return null dates when nothing matches', async () => {
+      mockGameModel.aggregate.mockResolvedValue([]);
+
+      const result = await service.getClosestDates({});
+
+      expect(result).toEqual({ previousDate: null, nextDate: null });
+    });
+
+    it('should use the provided date as the boundary instead of today', async () => {
+      mockGameModel.aggregate
+        .mockResolvedValueOnce([{ date: '2026-02-01' }])
+        .mockResolvedValueOnce([{ date: '2026-03-10' }]);
+
+      await service.getClosestDates({ date: '2026-02-15' });
+
+      const pastMatch = mockGameModel.aggregate.mock.calls[0][0][0].$match;
+      const nextMatch = mockGameModel.aggregate.mock.calls[1][0][0].$match;
+      expect(pastMatch.gameDate).toEqual({ $lt: '2026-02-15' });
+      expect(nextMatch.gameDate).toEqual({ $gte: '2026-02-15' });
+    });
+
+    it('should filter by leagues and teamSelectedIds via dedicated builder', async () => {
+      mockGameModel.aggregate
+        .mockResolvedValueOnce([{ date: '2026-02-01' }])
+        .mockResolvedValueOnce([{ date: '2026-03-10' }]);
+
+      await service.getClosestDates({
+        leagues: 'PWHL,NHL',
+        teamSelectedIds: ' PWHL-OTT , MLS-TOR ',
+      });
+
+      const match = mockGameModel.aggregate.mock.calls[0][0][0].$match;
+      expect(match.isActive).toBe(true);
+      expect(match.league).toEqual({ $in: ['PWHL', 'NHL'] });
+      expect(match.teamSelectedId).toEqual({ $in: ['PWHL-OTT', 'MLS-TOR'] });
+    });
+  });
 });

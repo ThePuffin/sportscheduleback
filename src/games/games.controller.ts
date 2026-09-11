@@ -69,6 +69,15 @@ export class GamesController {
     return this.GameService.getDateRange(leagues);
   }
 
+  @Get('/dates/closest')
+  getClosestDates(
+    @Query('leagues') leagues?: string,
+    @Query('teamSelectedIds') teamSelectedIds?: string,
+    @Query('date') date?: string,
+  ) {
+    return this.GameService.getClosestDates({ leagues, teamSelectedIds, date });
+  }
+
   @Get('/date/:gameDate')
   findByDate(@Param('gameDate') gameDate: string) {
     return this.GameService.findByDate(gameDate);

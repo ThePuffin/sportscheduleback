@@ -39,7 +39,7 @@ export class GameService {
     private readonly refreshTimestampService: RefreshTimestampService,
   ) {}
 
-  maxYearBeforeDelete = 12;
+  maxYearBeforeDelete = 15;
   // Purge games that are still active/resolved-less several months after their start
   // (e.g. a PWHL game stuck on 2026-05-11 whose final result can never be fetched).
   staleGameMaxAgeDays = 90;
@@ -746,6 +746,93 @@ export class GameService {
       return { minDate: result[0].minDate, maxDate: result[0].maxDate };
     }
     return { minDate: null, maxDate: null };
+  }
+
+  /**
+   * Returns the closest past and future game dates, optionally scoped to one or
+   * several leagues and/or teams.
+   *
+   * Flow (dedicated helpers make each step easy to follow):
+   *   1. `_buildClosestDatesFilter` — turn the raw query params into a Mongo filter.
+   *   2. `_findClosestGameDate` is called twice — once for the past (largest
+   *      `gameDate` strictly before today) and once for the upcoming (smallest
+   *      `gameDate` from today onwards).
+   *
+   * @returns `{ previousDate, nextDate }` as `YYYY-MM-DD` strings (or `null` when
+   *          no active game matches).
+   */
+  async getClosestDates({
+    leagues,
+    teamSelectedIds,
+    date,
+  }: {
+    leagues?: string;
+    teamSelectedIds?: string;
+    /** Reference date (`YYYY-MM-DD`). When omitted, `today` is used as the boundary. */
+    date?: string;
+  }) {
+    const baseFilter = this._buildClosestDatesFilter(leagues, teamSelectedIds);
+    const boundary = (date ?? '').trim() || readableDate(new Date());
+
+    const previousDate = await this._findClosestGameDate(
+      { ...baseFilter, gameDate: { $lt: boundary } },
+      '$max',
+    );
+    const nextDate = await this._findClosestGameDate(
+      { ...baseFilter, gameDate: { $gte: boundary } },
+      '$min',
+    );
+
+    return { previousDate, nextDate };
+  }
+
+  /**
+   * Builds the base Mongo filter for `getClosestDates`.
+   * - `leagues`: comma/space/plus separated, uppercased → `league: { $in: [...] }`
+   *   (same convention as `findByDateHour`).
+   * - `teamSelectedIds`: comma separated → `teamSelectedId: { $in: [...] }`
+   *   (same convention as `filterGames`).
+   */
+  _buildClosestDatesFilter(leagues?: string, teamSelectedIds?: string) {
+    const filter: any = { isActive: true };
+
+    if (leagues && leagues.length > 0) {
+      const leaguesList = leagues
+        .split(/[ ,+]+/)
+        .filter((l) => l.trim().length > 0)
+        .map((l) => l.trim().toUpperCase());
+      if (leaguesList.length > 0) {
+        filter.league = { $in: leaguesList };
+      }
+    }
+
+    if (teamSelectedIds && teamSelectedIds.length > 0) {
+      const teams = teamSelectedIds
+        .split(',')
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+      if (teams.length > 0) {
+        filter.teamSelectedId = { $in: teams };
+      }
+    }
+
+    return filter;
+  }
+
+  /**
+   * Runs a single aggregation that returns the `_id`-less min/max `gameDate`
+   * matching `filter`. Returns the date string or `null` when nothing matches.
+   */
+  async _findClosestGameDate(
+    filter: Record<string, unknown>,
+    operator: '$min' | '$max',
+  ) {
+    const pipeline: any[] = [
+      { $match: filter },
+      { $group: { _id: null, date: { [operator]: '$gameDate' } } },
+    ];
+    const result = await this.gameModel.aggregate(pipeline);
+    return result.length > 0 ? result[0].date : null;
   }
 
   async findByTeam(

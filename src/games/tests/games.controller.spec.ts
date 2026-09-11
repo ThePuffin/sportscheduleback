@@ -25,6 +25,9 @@ const mockGameService = {
   getDateRange: jest
     .fn()
     .mockResolvedValue({ minDate: '2024-01-01', maxDate: '2024-12-31' }),
+  getClosestDates: jest
+    .fn()
+    .mockResolvedValue({ previousDate: '2024-12-01', nextDate: '2025-01-15' }),
   findByDate: jest.fn().mockResolvedValue(mockGames),
   findByDateHour: jest.fn().mockResolvedValue({ '19:00': mockGames }),
   findByLeague: jest.fn().mockResolvedValue(mockGames),
@@ -117,6 +120,38 @@ describe('GamesController', () => {
       const leagues = 'NHL,NBA';
       await controller.getDateRange(leagues);
       expect(service.getDateRange).toHaveBeenCalledWith(leagues);
+    });
+  });
+
+  describe('getClosestDates', () => {
+    it('should return the closest past and upcoming dates without filters', async () => {
+      await controller.getClosestDates();
+      expect(service.getClosestDates).toHaveBeenCalledWith({
+        leagues: undefined,
+        teamSelectedIds: undefined,
+        date: undefined,
+      });
+    });
+
+    it('should forward the leagues and teamSelectedIds query parameters', async () => {
+      const leagues = 'PWHL';
+      const teamSelectedIds = 'PWHL-OTT,MLS-TOR';
+      await controller.getClosestDates(leagues, teamSelectedIds);
+      expect(service.getClosestDates).toHaveBeenCalledWith({
+        leagues,
+        teamSelectedIds,
+        date: undefined,
+      });
+    });
+
+    it('should forward the reference date query parameter', async () => {
+      const date = '2026-02-10';
+      await controller.getClosestDates(undefined, undefined, date);
+      expect(service.getClosestDates).toHaveBeenCalledWith({
+        leagues: undefined,
+        teamSelectedIds: undefined,
+        date,
+      });
     });
   });
 

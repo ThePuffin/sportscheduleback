@@ -7,6 +7,39 @@ import { capitalize, getLuminance } from '../utils';
 
 const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
 
+// Abort a hanging ESPN request after `timeoutMs`, using the global AbortController
+// (Node >= 18). Prevents a connect-timeout from blocking the schedule/oldies
+// refresh for an unbounded amount of time (undici's default is very long).
+const ESPN_FETCH_TIMEOUT_MS = 15000;
+
+const fetchWithTimeout = (
+  url: string,
+  timeoutMs: number = ESPN_FETCH_TIMEOUT_MS,
+  options: RequestInit = {},
+) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const mergedOptions: RequestInit = { ...options, signal: controller.signal };
+  return fetch(url, mergedOptions).finally(() => clearTimeout(timeout));
+};
+
+// Retry transient network errors (timeouts are often momentary). Throws the last
+// error once all retries are exhausted, so the existing try/catch still works.
+const fetchWithRetry = async (url: string, retries = 1) => {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetchWithTimeout(url);
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError;
+};
+
 const formatSeriesSummary = (summary?: string): string => {
   if (!summary) return '';
   if (summary.length > 30) return summary.substring(0, 27) + '...';
@@ -102,7 +135,7 @@ const getDivision = async (
 }> => {
   try {
     const url = leaguesData[leagueName].fetchDetails + id;
-    const fetchedTeams = await fetch(url);
+    const fetchedTeams = await fetchWithRetry(url);
     const fetchTeams = await fetchedTeams.json();
     const team = fetchTeams?.team || {};
     const { standingSummary = '' } = team;
@@ -155,7 +188,7 @@ const getDivision = async (
 const getESPNStandings = async (leagueName: string) => {
   try {
     const url = leaguesData[leagueName].fetchStandings;
-    const res = await fetch(url);
+    const res = await fetchWithRetry(url);
     const data = await res.json();
     const records = {};
 
@@ -197,7 +230,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
       return allTeams;
     }
     if (!leaguesData[leagueName]) return [];
-    const fetchedTeams = await fetch(leaguesData[leagueName].fetchTeam);
+    const fetchedTeams = await fetchWithRetry(leaguesData[leagueName].fetchTeam);
     const fetchTeams: TeamESPN = await fetchedTeams.json();
     const { sports } = fetchTeams;
     if (!sports) return [];
@@ -208,7 +241,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
     if (allTeams.length === 0 && leagueName.includes('OLYMPICS')) {
       try {
         const url = leaguesData[leagueName].fetchStandings;
-        const res = await fetch(url);
+        const res = await fetchWithRetry(url);
         const data = await res.json();
 
         const traverse = (node) => {
@@ -240,7 +273,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
       try {
         const { sport, league } = leagueConfigs[leagueName];
         const url = `${espnAPI}${sport}/${league}/scoreboard?dates=${currentYear}`;
-        const res = await fetch(url);
+        const res = await fetchWithRetry(url);
         const data = await res.json();
         const events = data.events || [];
         events.forEach((event) => {
@@ -445,7 +478,7 @@ const getEachTeamSchedule = async (
             let hasMore = true;
             while (hasMore) {
               const url = `${espnAPI}${sport}/${league}/scoreboard?dates=${year}&limit=1000&page=${page}`;
-              const res = await fetch(url);
+              const res = await fetchWithRetry(url);
               const data = await res.json();
               const events = data.events || [];
               const eventsFiltered = events.filter((ev) =>
@@ -475,7 +508,7 @@ const getEachTeamSchedule = async (
           try {
             const seasonParam = season ? `&season=${season}` : '';
             const link = `${baseUrl}?seasontype=${type}${seasonParam}`;
-            const fetchedGames = await fetch(link);
+            const fetchedGames = await fetchWithRetry(link);
             const fetchGamesData = await fetchedGames.json();
 
             if (fetchGamesData.events && fetchGamesData.events.length > 0) {
@@ -669,7 +702,7 @@ export const getESPNScores = async (
     const queryString = params.toString() ? `?${params.toString()}` : '';
     const url = `${base}/scoreboard${queryString}`;
     try {
-      const res = await fetch(url);
+      const res = await fetchWithRetry(url);
       const json = await res.json();
       const events = json?.events || [];
       let finishedCount = 0;
@@ -700,7 +733,7 @@ export const getESPNScores = async (
             const tryFetchDetail = async () => {
               try {
                 const url = `${espnAPI}${sport}/${league}/summary?event=${ev.id}`;
-                const r = await fetch(url);
+                const r = await fetchWithRetry(url);
                 if (!r.ok) return null;
                 const j = await r.json();
                 // normalize competitions structure
@@ -892,7 +925,7 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
     if (!leagueConfigs[leagueKey]) return null;
     const { sport, league } = leagueConfigs[leagueKey];
     const url = `${espnAPI}${sport}/${league}/summary?event=${gameId}`;
-    const res = await fetch(url);
+    const res = await fetchWithRetry(url);
     if (!res.ok) return null;
     const data = await res.json();
 

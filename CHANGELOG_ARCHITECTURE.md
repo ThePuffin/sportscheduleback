@@ -2,6 +2,42 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: Timeout + retry on ESPN schedule fetches (`espnAllData.ts`)
+
+ESPN requests inside `getEachTeamSchedule` used raw `fetch` with undici's (very long)
+default timeout, so a connect-timeout could block the schedule/oldies refresh for an
+unbounded time and produce noisy errors.
+
+- `fetchWithTimeout(url, timeoutMs, options?)` — aborts the request after 15 s using
+  the global `AbortController`.
+- `fetchWithRetry(url, retries = 1)` — retries once (500 ms backoff) on transient
+  errors, then throws so the existing per-saison-type try/catch still captures it.
+- The two `fetch` calls in `getEachTeamSchedule` (scoreboard + per-season-type
+  schedule) now use `fetchWithRetry`.
+
+## Added: Closest past/upcoming game dates endpoint (`games.service.ts`, `games.controller.ts`)
+
+New `GET /games/dates/closest` returns `{ previousDate, nextDate }` — the closest
+past and upcoming game dates — optionally scoped by `leagues` and/or
+`teamSelectedIds`. Implemented with **dedicated helpers** so the endpoint flow is
+easy to follow:
+
+- `GameService.getClosestDates({ leagues, teamSelectedIds })` — orchestrator.
+- `GameService._buildClosestDatesFilter(leagues, teamSelectedIds)` — builds the
+  Mongo filter (comma/space/plus leagues, comma-separated teams, both `$in`).
+- `GameService._findClosestGameDate(filter, '$min'|'$max')` — single aggregation
+  returning the boundary date or `null`.
+
+Boundary: past is strictly `<` boundary, upcoming is `>=` boundary. The boundary
+is the optional `date` query param (`YYYY-MM-DD`); if omitted it defaults to today
+(UTC `readableDate`). `previousDate`/`nextDate` are returned as `YYYY-MM-DD` strings.
+
+- `backend/src/games/games.controller.ts` — added `GET /dates/closest`.
+- `backend/src/games/games.service.ts` — added `getClosestDates` + 2 private helpers.
+- `backend/src/games/tests/games.controller.spec.ts` — controller forwards params.
+- `backend/src/games/tests/games.service.spec.ts` — unit tests for `getDateRange`
+  and `getClosestDates` (filters, boundary date, source & team scoping, fallbacks).
+
 ## Added: League-scoped date range limits (`games.service.ts`, `games.controller.ts`)
 
 `GET /games/dates/range` now accepts an optional `leagues` query param

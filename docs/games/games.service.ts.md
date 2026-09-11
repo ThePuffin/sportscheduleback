@@ -88,6 +88,23 @@ string is provided (comma/space/plus separated, uppercased) the min/max is scope
 to those leagues via `league: { $in }`; otherwise it spans every league. Returns
 `{ minDate: null, maxDate: null }` when no active games match.
 
+### `getClosestDates({ leagues, teamSelectedIds, date })`
+
+Returns `{ previousDate, nextDate }` — the closest past and future game dates
+(`YYYY-MM-DD`, or `null` when nothing matches). The reference boundary is the
+optional `date` (`YYYY-MM-DD`); when omitted, today is used. The flow uses two
+dedicated helpers so it is easy to follow:
+
+1. `_buildClosestDatesFilter(leagues, teamSelectedIds)` turns the raw query params
+   into a Mongo filter (same conventions as `findByDateHour` for leagues and
+   `filterGames` for teams).
+2. `_findClosestGameDate(filter, '$max')` — largest `gameDate` strictly **before**
+   the boundary (past match).
+3. `_findClosestGameDate(filter, '$min')` — smallest `gameDate` **from the
+   boundary onwards** (upcoming match).
+
+Both helpers are `private`; only `getClosestDates` is exposed.
+
 ### `findByTeam()` / `findResultsByTeam()`
 
 Returns upcoming or completed games for a selected team. When no games are found for the
