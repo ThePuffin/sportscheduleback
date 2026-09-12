@@ -48,7 +48,8 @@ When refreshing a league's current data, upcoming games are **only deactivated A
 
 Supports the `addMissingOnly` option (used by the **oldies** recovery): when `true`, it never overwrites
 already-stored games; it queries the already-present `uniqueId`s, skips them, and inserts only the missing
-games that have a complete home **and** away team. It logs added / skipped counts.
+games that have a complete home **and** away team. It logs added / skipped counts and returns
+`{ added, skippedExisting, skippedMissingTeamData }` instead of the games array.
 
 **Validation for oldies recovery (`addMissingOnly: true`):**
 

@@ -621,6 +621,7 @@ export class GameService {
           console.info(
             `[Oldies] ${normalizedLeague} ${season ? `(season ${season})` : ''}: added ${added}, skipped (existing identical) ${skippedExisting}, skipped (missing team/score data) ${skippedMissingTeamData}.`,
           );
+          return { added, skippedExisting, skippedMissingTeamData };
         }
       }
 
@@ -2669,6 +2670,8 @@ export class GameService {
     );
 
     // 2. Loop through the leagues and the requested years
+    // Track years where games were actually added (added > 0) for the response message
+    const yearsWithAdditions: number[] = [];
     for (const league of leagues) {
       for (const year of years) {
         console.info(
@@ -2678,13 +2681,17 @@ export class GameService {
         try {
           // Call getLeagueGames passing the specific season parameter.
           // addMissingOnly ensures we never overwrite existing matches (only insert missing ones..
-          await this.getLeagueGames({
+          const result = await this.getLeagueGames({
             league,
             forceUpdate: true,
             skipCascade: true, // true to avoid concurrent refresh conflicts
             season: year,
             addMissingOnly: true, // Oldies: do not overwrite, only add missing games.
           });
+          // Track years where at least one game was actually added
+          if (result && typeof result === 'object' && 'added' in result && result.added > 0) {
+            yearsWithAdditions.push(year);
+          }
         } catch (error) {
           console.error(`[Oldies] Error for ${league} in ${year}:`, error);
         }
@@ -2692,8 +2699,22 @@ export class GameService {
     }
 
     console.info('[Oldies] History data recovery completed!');
+
+    // Build the response message: only list years where games were actually added
+    const addedYearsLabel =
+      yearsWithAdditions.length > 1
+        ? `years ${yearsWithAdditions.join(', ')}`
+        : yearsWithAdditions.length === 1
+          ? `the year ${yearsWithAdditions[0]}`
+          : null;
+
+    const message = addedYearsLabel
+      ? `History recovery for ${addedYearsLabel} ${leagueParam ? `for league ${leagueParam}` : ''} started successfully.`
+      : `History recovery ${leagueParam ? `for league ${leagueParam}` : ''} completed — no new games were added (all years already up to date).`;
+
     return {
-      message: `History recovery for ${yearsLabel} ${leagueParam ? `for league ${leagueParam}` : ''} started successfully.`,
+      message,
+      yearsWithAdditions,
     };
   }
 }

@@ -236,7 +236,7 @@ describe('GameService', () => {
       ]);
       getLeagueGamesSpy = jest
         .spyOn(service, 'getLeagueGames')
-        .mockResolvedValue([]);
+        .mockResolvedValue({ added: 1, skippedExisting: 0, skippedMissingTeamData: 0 });
     });
 
     afterEach(() => {
@@ -297,6 +297,47 @@ describe('GameService', () => {
         }),
       );
       expect(result.message).toContain(String(currentYear - 1));
+    });
+
+    it('should only list years where games were actually added (added > 0)', async () => {
+      const currentYear = new Date().getFullYear();
+
+      // Simulate: first year adds games, second year adds nothing
+      let callCount = 0;
+      getLeagueGamesSpy.mockImplementation(() => {
+        callCount++;
+        // First call returns added > 0, second call returns added = 0
+        return Promise.resolve({
+          added: callCount === 1 ? 5 : 0,
+          skippedExisting: callCount === 1 ? 2 : 100,
+          skippedMissingTeamData: 0,
+        });
+      });
+
+      const result = await service.getOldiesGames(undefined, League.NHL);
+
+      // Only the first year (currentYear) should appear in the message since it had added > 0
+      expect(result.yearsWithAdditions).toContain(currentYear);
+      expect(result.message).toContain(String(currentYear));
+      // The second year should NOT appear
+      expect(result.message).not.toContain(String(currentYear - 1));
+    });
+
+    it('should return "already up to date" message when no games were added', async () => {
+      const currentYear = new Date().getFullYear();
+
+      // All calls return added = 0
+      getLeagueGamesSpy.mockResolvedValue({
+        added: 0,
+        skippedExisting: 5000,
+        skippedMissingTeamData: 0,
+      });
+
+      const result = await service.getOldiesGames(undefined, League.NHL);
+
+      expect(result.yearsWithAdditions).toHaveLength(0);
+      expect(result.message).toContain('no new games were added');
+      expect(result.message).toContain('already up to date');
     });
   });
 

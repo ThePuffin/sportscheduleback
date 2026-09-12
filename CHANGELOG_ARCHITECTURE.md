@@ -2,6 +2,24 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: Oldies history recovery now only lists years where games were actually added
+
+The response message from `POST /games/refresh/oldies` used to list all requested years (e.g. "2026, 2025, 2024, ...") regardless of whether any games were inserted. Years where `added: 0` (all games already existed) cluttered the response.
+
+Now:
+- `getLeagueGames` returns `{ added, skippedExisting, skippedMissingTeamData }` when `addMissingOnly: true` (instead of the games array — only the oldies path uses this flag).
+- `getOldiesGames` tracks which years had `added > 0` and only includes those in the message.
+- When no years had additions, the message reads "completed — no new games were added (all years already up to date)".
+- The response also includes `yearsWithAdditions: number[]` for programmatic use.
+
+### Files changed
+
+- `backend/src/games/games.service.ts` — `getLeagueGames` returns stats object when `addMissingOnly`; `getOldiesGames` filters message by years with additions.
+- `backend/src/games/tests/games.service.spec.ts` — added tests for filtered message and "already up to date" case.
+- `backend/docs/games/games.service.ts.md` — documented new return type.
+
+---
+
 ## Added: Timeout + retry on ESPN schedule fetches (`espnAllData.ts`)
 
 ESPN requests inside `getEachTeamSchedule` used raw `fetch` with undici's (very long)
