@@ -114,13 +114,6 @@ const leagueConfigs = {
     endSeason: '02',
     endPlayoffs: '03',
   },
-  [League.NCAAS]: {
-    sport: 'softball',
-    league: 'college-softball',
-    startSeason: '02',
-    endSeason: '05',
-    endPlayoffs: '06',
-  },
   [League.NWSL]: {
     sport: 'soccer',
     league: 'usa.nwsl',
@@ -298,6 +291,39 @@ export const isCurrentSeason = async (leagueName: string, date?: Date) => {
   }
   const { startSeason, endSeason } = config;
   return isInThePeriod(startSeason, endSeason);
+};
+
+/**
+ * Returns the years that cover the current season for a league.
+ * For seasons spanning two years (e.g., NHL Oct-Apr), returns both years.
+ * For single-year seasons (e.g., MLB Mar-Sep), returns only the current year.
+ */
+export const getCurrentSeasonYears = (leagueName: string): number[] => {
+  const config = getLeagueConfig(leagueName);
+  if (!config) {
+    return [new Date().getFullYear()];
+  }
+
+  const { startSeason, endSeason } = config;
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1; // 1-12
+
+  const startMonth = Number.parseInt(startSeason, 10);
+  const endMonth = Number.parseInt(endSeason, 10);
+
+  // Season spans two calendar years (e.g., Oct-Apr, Nov-Mar)
+  if (startMonth > endMonth) {
+    // If we're in the first part of the season (e.g., Oct-Dec), return [currentYear, currentYear + 1]
+    // If we're in the second part (e.g., Jan-Apr), return [currentYear - 1, currentYear]
+    if (currentMonth >= startMonth) {
+      return [currentYear, currentYear + 1];
+    } else if (currentMonth <= endMonth) {
+      return [currentYear - 1, currentYear];
+    }
+  }
+
+  // Season within the same calendar year (e.g., Mar-Sep, May-Sep)
+  return [currentYear];
 };
 
 export const doesDateRangeOverlapLeaguePeriod = async (

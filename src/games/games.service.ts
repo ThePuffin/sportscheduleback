@@ -3008,7 +3008,8 @@ export class GameService {
     // Filter leagues if a specific league query parameter is provided
     if (leagueParam) {
       const normalizedLeague = leagueParam.toUpperCase().trim();
-      if (!leagues.includes(normalizedLeague)) {
+      // Validate against the League enum instead of checking if teams exist in DB
+      if (!Object.values(League).includes(normalizedLeague as League)) {
         throw new HttpException(`League ${normalizedLeague} not found`, 404);
       }
       leagues = [normalizedLeague];

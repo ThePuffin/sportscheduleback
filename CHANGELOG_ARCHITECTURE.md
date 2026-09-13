@@ -2,6 +2,64 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Changed: Unified fetch behavior - current season vs historical (`espnAllData.ts`, `utils.ts`)
+
+### Problem
+
+Different leagues had different fetch behaviors for normal refreshes, causing confusion and inefficiency. Historical data was being fetched on every normal refresh for some leagues. Also, the concept of "current year" didn't account for seasons spanning two calendar years (e.g., NHL Oct-Apr).
+
+### Solution
+
+Unified the year selection logic for **all leagues**:
+- **Normal fetch** (no `season` param): Fetches only the **current season years** based on `startSeason`/`endSeason` config
+- **Fetch oldest (`getOldiesGames`)**: Fetches historical years via the `season` parameter (up to 10 years back)
+
+Added new utility function `getCurrentSeasonYears(leagueName)` in `utils.ts`:
+- For seasons spanning two years (e.g., NHL Oct-Apr): returns both years (e.g., [2025, 2026] or [2026, 2027])
+- For single-year seasons (e.g., MLB Mar-Sep): returns only the current year
+
+This applies to:
+- Games fetching in `getEachTeamSchedule()` for NCAA and Olympics (scoreboard API)
+- Teams fetching fallback in `getESPNTeams()` for NCAA and Olympics
+
+### Files changed
+
+- `backend/src/utils/utils.ts` — Added `getCurrentSeasonYears()` function.
+- `backend/src/utils/fetchData/espnAllData.ts` — Uses `getCurrentSeasonYears()` for normal fetch.
+- `backend/CHANGELOG_ARCHITECTURE.md` — this entry.
+
+---
+
+## Fixed: NCAA college leagues games not fetching (`espnAllData.ts`)
+
+### Problem
+
+The NCAA college leagues were using the ESPN `/teams/${id}/schedule` endpoint with `seasontype` parameter to fetch games. However, ESPN does not populate this route for some college sports - it returns empty arrays or 404 errors.
+
+This caused:
+- No past games being retrieved for NCAA leagues
+- No future games being retrieved for NCAA leagues
+- Missing schedule data for these leagues
+
+### Solution
+
+Added all NCAA college leagues to the `collegeLeagues` set that uses the **scoreboard API** instead of the schedule API. The scoreboard API (`/scoreboard?dates=${year}`) returns all games for a year, which are then filtered by team ID.
+
+The college leagues now using the scoreboard API:
+- NCAAF (College Football)
+- NCAAB (Men's College Basketball)
+- NCCABB (College Baseball)
+- WNCAAB (Women's College Basketball)
+- NCAAMH (Men's College Hockey)
+- NCAAWH (Women's College Hockey)
+
+### Files changed
+
+- `backend/src/utils/fetchData/espnAllData.ts` — Added `collegeLeagues` set and modified `getEachTeamSchedule()` to use scoreboard API for all college leagues.
+- `backend/CHANGELOG_ARCHITECTURE.md` — this entry.
+
+---
+
 ## Refactored: `getDiskUsage()` production hardening (`games.service.ts`)
 
 The `getDiskUsage()` method was refactored for production robustness with the following improvements:

@@ -3,7 +3,7 @@ import { CollegeLeague, League } from '../../utils/enum';
 import { Colors } from '../Colors';
 import type { ESPNTeam, TeamESPN, TeamType } from '../interface/team';
 import { UniversityLogos } from '../UniversityLogos';
-import { capitalize, getLuminance } from '../utils';
+import { capitalize, getLuminance, getCurrentSeasonYears } from '../utils';
 
 const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
 
@@ -88,7 +88,6 @@ const leagueConfigs = {
   [League.NCCABB]: { sport: 'baseball', league: 'college-baseball' },
   [League.NCAAMH]: { sport: 'hockey', league: 'mens-college-hockey' },
   [League.NCAAWH]: { sport: 'hockey', league: 'womens-college-hockey' },
-  [League.NCAAS]: { sport: 'softball', league: 'college-softball' },
   [League.NWSL]: { sport: 'soccer', league: 'usa.nwsl' },
   [OLYMPICS_HOCKEY_MEN]: {
     sport: 'hockey',
@@ -457,18 +456,23 @@ const getEachTeamSchedule = async (
     }
     let games = [];
     const soccerLeagues = new Set([League.MLS, League.NWSL]);
+    const collegeLeagues = new Set([
+      League.NCAAF,
+      League.NCAAB,
+      League.NCCABB,
+      League.WNCAAB,
+      League.NCAAMH,
+      League.NCAAWH,
+    ]);
 
     if (
       leagueName.includes('OLYMPICS') ||
-      soccerLeagues.has(leagueName as League)
+      soccerLeagues.has(leagueName as League) ||
+      collegeLeagues.has(leagueName as League)
     ) {
       const currentYear = new Date().getFullYear();
 
-      const years = season
-        ? [season]
-        : soccerLeagues.has(leagueName as League)
-          ? [currentYear, currentYear + 1]
-          : [currentYear];
+      const years = season ? [season] : getCurrentSeasonYears(leagueName);
 
       for (const year of years) {
         try {

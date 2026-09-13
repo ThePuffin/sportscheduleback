@@ -11,7 +11,6 @@ export enum League {
   NCCABB = 'NCCABB',
   WNCAAB = 'WNCAAB',
   NCAAMH = 'NCAAMH',
-  NCAAS = 'NCAAS',
   NCAAWH = 'NCAAWH',
   NWSL = 'NWSL',
   'OLYMPICS-MEN' = 'OLYMPICS-MEN',
@@ -24,6 +23,5 @@ export enum CollegeLeague {
   NCCABB = 'NCCABB',
   WNCAAB = 'WNCAAB',
   NCAAMH = 'NCAAMH',
-  NCAAS = 'NCAAS',
   NCAAWH = 'NCAAWH',
 }
