@@ -52,7 +52,15 @@ export class GameService {
   // Capacity-based purge configuration
   private readonly DISK_USAGE_THRESHOLD = 0.9; // 90%
   private readonly CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  private readonly DISK_USAGE_CACHE_TTL_MS = 60 * 1000; // 60 seconds cache for disk usage stats
+  private readonly CLUSTER_TOTAL_MB = 512; // Total cluster storage in MB (adjust to your Atlas plan)
   private lastDiskCheck = 0;
+
+  // In-memory cache for disk usage to avoid spamming dbStats on every call
+  private diskUsageCache: {
+    data: { usedMB: number; totalMB: number; percentage: number };
+    timestamp: number;
+  } | null = null;
 
   getTeams = (teamSelectedIds, games) => {
     if (teamSelectedIds) {
@@ -2352,6 +2360,13 @@ export class GameService {
   }
 
   /**
+   * Disk usage result type returned by getDiskUsage().
+   */
+  private diskUsageResult(usedMB: number, totalMB: number, percentage: number) {
+    return { usedMB, totalMB, percentage };
+  }
+
+  /**
    * Calculates MongoDB disk usage via dbStats (Atlas-compatible).
    *
    * `df` only sees the local container filesystem — on Render this is
@@ -2359,9 +2374,12 @@ export class GameService {
    * `db.command({ dbStats: 1 })` returns the actual storage footprint
    * of the database, matching what Atlas shows in its Metrics tab.
    *
-   * `totalMB` is read from MONGODB_CLUSTER_TOTAL_MB (env var) so the
-   * percentage matches Atlas's "allocated cluster storage". If unset,
-   * we fall back to dbStats.totalSize (data + indexes) * 1.5.
+   * `totalMB` is a hardcoded constant (CLUSTER_TOTAL_MB) set to match
+   * your Atlas cluster storage size (e.g. 512 for a 512MB cluster).
+   * Adjust this value if you upgrade your Atlas plan.
+   *
+   * Results are cached for DISK_USAGE_CACHE_TTL_MS (60s) to avoid
+   * overloading the Atlas cluster with frequent dbStats commands.
    *
    * Returns { usedMB, totalMB, percentage (0-1) }
    */
@@ -2370,55 +2388,162 @@ export class GameService {
     totalMB: number;
     percentage: number;
   }> {
+    const now = Date.now();
+
+    // 1. Serve from cache if still valid
+    if (
+      this.diskUsageCache &&
+      now - this.diskUsageCache.timestamp < this.DISK_USAGE_CACHE_TTL_MS
+    ) {
+      return this.diskUsageCache.data;
+    }
+
     try {
-      const db = (this.gameModel.collection as any).conn.db as any;
-
-      let dbStats: any;
-      try {
-        dbStats = await db.command({ dbStats: 1, scale: 1024 * 1024 }); // MB
-      } catch {
-        // Fallback to $collStats on the games collection
-        const sizeInfo = await (this.gameModel.collection as any)
-          .aggregate([{ $collStats: { storageStats: {} } }])
-          .toArray()
-          .catch(() => []);
-
-        if (sizeInfo?.length > 0) {
-          const usedMB = Math.round(sizeInfo[0].storageStats?.size || 0);
-          const totalMB = Math.round(usedMB * 2); // rough estimate
-          return { usedMB, totalMB, percentage: usedMB / totalMB };
-        }
-        return { usedMB: 0, totalMB: 1, percentage: 0 };
+      // 2. Proper type-safe access to native MongoDB driver via Mongoose
+      const mongooseConnection = this.gameModel.db;
+      if (!mongooseConnection || mongooseConnection.readyState !== 1) {
+        throw new Error('Mongoose connection is not ready');
       }
 
-      // dbStats fields (scale = MiB):
-      //   dataSize   — raw data size (matches Atlas "Data Size")
-      //   storageSize — allocated storage for the collection (includes padding)
-      //   totalSize  — dataSize + indexSize (all collections in the DB)
-      //   fsTotalSize / fsUsedSize — only valid for self-hosted; Atlas returns 0
-      const usedMB = Math.round(dbStats.totalSize || dbStats.storageSize || 0);
+      const db = mongooseConnection.db;
+      if (!db) {
+        throw new Error('Native MongoDB database instance is not available');
+      }
 
-      // Total cluster storage: env var (Atlas quota) > dbStats heuristic
-      const envTotalMB = parseInt(
-        process.env.MONGODB_CLUSTER_TOTAL_MB || '0',
-        10,
+      let usedBytes = 0;
+      let statsSource = 'unknown';
+
+      try {
+        // Attempt dbStats (requires admin read privileges)
+        const dbStats = await db.command({ dbStats: 1 });
+
+        // Log actual dbStats response for debugging
+        console.info('[Capacity Manager] dbStats response:', JSON.stringify({
+          dataSize: dbStats.dataSize,
+          storageSize: dbStats.storageSize,
+          indexSize: dbStats.indexSize,
+          totalSize: dbStats.totalSize,
+          fileSize: dbStats.fileSize,
+          nsSizeMB: dbStats.nsSizeMB,
+        }));
+
+        // Prioritize totalSize (data + indexes across all collections),
+        // then fall back to dataSize + indexSize (Atlas-compatible for all cluster types)
+        if (dbStats.totalSize && dbStats.totalSize > 0) {
+          usedBytes = dbStats.totalSize;
+          statsSource = 'dbStats.totalSize';
+        } else if (dbStats.dataSize || dbStats.indexSize) {
+          usedBytes = (dbStats.dataSize || 0) + (dbStats.indexSize || 0);
+          statsSource = 'dbStats.dataSize+indexSize';
+        } else {
+          usedBytes = dbStats.storageSize || 0;
+          statsSource = 'dbStats.storageSize';
+        }
+      } catch (dbStatsError) {
+        // Fallback: aggregate $collStats across ALL collections
+        console.info('[Capacity Manager] dbStats failed, using collection aggregation fallback');
+        console.debug('[Capacity Manager] dbStats error:', dbStatsError instanceof Error ? dbStatsError.message : String(dbStatsError));
+
+        try {
+          // Get all collection names and sum their storage stats
+          const collections = await db.listCollections().toArray();
+          let totalStorageSize = 0;
+          let totalIndexSize = 0;
+          let totalDataSize = 0;
+
+          for (const collInfo of collections) {
+            const collName = collInfo.name;
+            // Skip system collections
+            if (collName.startsWith('system.')) continue;
+
+            try {
+              const collStats = await db.collection(collName).aggregate([
+                { $collStats: { storageStats: {} } }
+              ]).toArray();
+
+              if (collStats[0]?.storageStats) {
+                const ss = collStats[0].storageStats;
+                // $collStats returns: size (uncompressed data), storageSize (compressed), totalIndexSize
+                totalDataSize += ss.size || 0;
+                totalStorageSize += ss.storageSize || 0;
+                totalIndexSize += ss.totalIndexSize || 0;
+              }
+            } catch {
+              // Skip collections we can't read
+              console.debug(`[Capacity Manager] Could not get stats for collection: ${collName}`);
+            }
+          }
+
+          // Use dataSize + totalIndexSize to match Atlas "Total Data Size"
+          usedBytes = totalDataSize + totalIndexSize;
+          statsSource = 'aggregated $collStats (all collections)';
+
+          console.info('[Capacity Manager] Aggregated collection stats:', JSON.stringify({
+            totalDataSize,
+            totalStorageSize,
+            totalIndexSize,
+            usedBytes,
+          }));
+        } catch (aggError) {
+          // Last resort: just use the games collection stats
+          console.info('[Capacity Manager] Aggregation failed, using games collection only');
+
+          const sizeInfo = await this.gameModel
+            .aggregate<{
+              storageStats?: {
+                size?: number;
+                storageSize?: number;
+                totalIndexSize?: number;
+              };
+            }>([{ $collStats: { storageStats: {} } }])
+            .exec()
+            .catch(() => null);
+
+          if (sizeInfo?.length && sizeInfo[0]?.storageStats) {
+            const stats = sizeInfo[0].storageStats;
+            // $collStats returns "size" (not "totalSize") for uncompressed data size
+            usedBytes = (stats.size || 0) + (stats.totalIndexSize || 0);
+            statsSource = 'games collection $collStats only';
+          }
+        }
+      }
+
+      // 3. Convert bytes → MiB
+      const usedMB = Math.round(usedBytes / (1024 * 1024));
+
+      // 4. Calculate total cluster quota (hardcoded constant)
+      const totalMB = this.CLUSTER_TOTAL_MB;
+
+      // 5. Calculate percentage, capped at 1.0 (100%)
+      const rawPercentage = totalMB > 0 ? usedMB / totalMB : 0;
+      const percentage = Number(Math.min(rawPercentage, 1).toFixed(4));
+
+      const result = this.diskUsageResult(usedMB, totalMB, percentage);
+
+      // Update cache
+      this.diskUsageCache = { data: result, timestamp: now };
+
+      // Log with source info for debugging
+      console.info(
+        `[Capacity Manager] Disk usage: ${usedMB}MB / ${totalMB}MB (${(percentage * 100).toFixed(1)}%) - source: ${statsSource}`,
       );
-      const totalMB =
-        envTotalMB > 0
-          ? envTotalMB
-          : Math.round((dbStats.totalSize || usedMB) * 1.5);
 
-      return {
-        usedMB,
-        totalMB,
-        percentage: totalMB > 0 ? usedMB / totalMB : 0,
-      };
+      // Critical threshold warning (> 85%)
+      if (percentage >= 0.85) {
+        console.warn(
+          `[Capacity Manager] Disk usage is CRITICAL: ${usedMB}MB / ${totalMB}MB (${(percentage * 100).toFixed(1)}%)`,
+        );
+      }
+
+      return result;
     } catch (error) {
       console.warn(
         '[Capacity Manager] Could not check disk usage:',
         error instanceof Error ? error.message : String(error),
       );
-      return { usedMB: 0, totalMB: 1, percentage: 0 };
+
+      // Return last known cache on transient error, or safe fallback
+      return this.diskUsageCache?.data ?? this.diskUsageResult(0, 1, 0);
     }
   }
 

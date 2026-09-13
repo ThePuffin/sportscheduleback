@@ -2,6 +2,24 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Refactored: `getDiskUsage()` production hardening (`games.service.ts`)
+
+The `getDiskUsage()` method was refactored for production robustness with the following improvements:
+
+- **Type safety**: Replaced `(this.gameModel.collection as any).conn.db as any` with proper Mongoose API access via `this.gameModel.db.db` — eliminates hidden `any` casts and prevents runtime crashes if Mongoose internals change.
+- **In-memory caching**: Added a 60-second TTL cache (`DISK_USAGE_CACHE_TTL_MS`) to avoid spamming `dbStats` on every call — critical when healthchecks or Kubernetes probes hit the endpoint frequently.
+- **Accurate size calculation**: Now prioritizes `totalSize` (data + indexes across all collections) for shared clusters (M0/M2/M5), and falls back to `storageSize + indexSize` for dedicated clusters (M10+).
+- **Percentage capping**: The percentage is now clamped to a maximum of 1.0 (100%) using `Math.min(rawPercentage, 1)`.
+- **Critical threshold alerting**: Logs a `console.warn` when disk usage exceeds 85%, providing early warning before the 90% purge threshold.
+- **Graceful degradation**: On transient errors, returns the last cached value instead of a cold fallback, ensuring continuity of service.
+
+### Files changed
+
+- `backend/src/games/games.service.ts` — `getDiskUsage()` refactored with caching, type safety, and production hardening.
+- `backend/CHANGELOG_ARCHITECTURE.md` — this entry.
+
+---
+
 ## Changed: `purgeOldestMonth` now runs twice daily (`cronJob.service.ts`)
 
 The oldest-month purge cron was upgraded from **once daily (3AM UTC)** to **twice daily (3AM & 3PM UTC)** to accelerate time-based cleanup of historical game data.

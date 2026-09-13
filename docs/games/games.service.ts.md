@@ -150,7 +150,7 @@ storage exceeds 90%. This preserves as much historical data as possible while pr
 **Behavior:**
 
 - Runs every 6 hours (via cron job)
-- Calculates disk usage via `df` and MongoDB collection stats
+- Calculates disk usage via MongoDB `dbStats` with `$collStats` fallback
 - Returns `{ action: 'none' | 'purged', diskUsage, purgedYears?, remainingYears? }`
 - Caches last check to avoid excessive I/O (1-hour interval minimum between checks)
 
@@ -165,6 +165,21 @@ storage exceeds 90%. This preserves as much historical data as possible while pr
 - No arbitrary "after N years" deletion — only deletes when capacity requires it
 - All years remain queryable via `findAll()`, `filterGames()`, `findByLeague()` until purged
 
+### `getDiskUsage()` (private)
+
+Calculates MongoDB disk usage via `dbStats` command with `$collStats` fallback.
+
+**Production Hardening:**
+
+- **Type-safe Mongoose access**: Uses `this.gameModel.db.db` (official Mongoose API) instead of unsafe `as any` casts
+- **In-memory caching**: 60-second TTL cache (`DISK_USAGE_CACHE_TTL_MS`) prevents `dbStats` spam on frequent calls
+- **Accurate size calculation**: Prioritizes `totalSize` for shared clusters (M0/M2/M5), falls back to `storageSize + indexSize` for dedicated clusters (M10+)
+- **Percentage capping**: Clamped to max 1.0 (100%) to prevent misleading metrics
+- **Critical threshold alerting**: Logs `console.warn` when usage exceeds 85% (before the 90% purge trigger)
+- **Graceful degradation**: Returns last cached value on transient errors, ensuring continuity
+
+**Returns:** `{ usedMB: number, totalMB: number, percentage: number }`
+
 ## Data Flow
 
 1. The service receives a request from the controller.
@@ -177,3 +192,4 @@ storage exceeds 90%. This preserves as much historical data as possible while pr
 - **Disk monitoring**: Automatic every 6 hours (cron job)
 - **Manual trigger**: `POST /games/capacity/check` (requires API key) — check + purge if needed
 - **Read-only status**: `GET /games/capacity/status` (requires API key) — same diagnostics as the check, but **without performing any deletion**; returns `diskUsage`, per-year breakdown (`years[]`), `teamCount`, `gameCount`, `threshold`, and `actionNeeded`.
+- **Performance**: `getDiskUsage()` results are cached in-memory for 60 seconds to reduce load on the MongoDB cluster.
