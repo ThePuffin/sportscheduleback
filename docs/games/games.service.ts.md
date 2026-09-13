@@ -115,9 +115,16 @@ hitting third-party APIs — the cron jobs keep data fresh all year round instea
 
 ### `findByLeague()` / `findByDate()` / `findByDateHour()`
 
-Provides schedule views used by the frontend tabs. When the DB is empty, `findByDate()`
-passes the requested date to `getAllGames(false, new Date(gameDate))` so only leagues
-covering that specific date are refreshed (same pattern as `findByDateHour()`).
+Read-only schedule views used by the frontend tabs. On an empty result (no games for
+the requested day/filters) they return `[]` / `{}` immediately without triggering any
+league refresh — data freshness is the cron jobs' responsibility (daily per-league
+refreshes 2 AM–7 AM, monthly `getAllGames`, `checkLeagueGamesAvailability` every 12
+minutes, scores every 10 minutes). Previously, the empty paths of `findByDate` /
+`findByDateHour` awaited `getAllGames(false, gameDate, ...)` (and `findAll()` on a
+totally empty DB called `getAllGames()` with no date and no league filter), and the
+"games found today" paths chained background `getLeagueGames` refreshes via
+`refreshChain`; both were removed because they blocked the server (sequential
+third-party schedule fetches under the 460 MB heap budget → OOM restarts).
 
 ### `fetchGamesScores()`
 

@@ -2,6 +2,115 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Changed: Single league rotation cron (`cronJob.service.ts`)
+
+The six fixed daily per-league crons (`updateMLBGames` 2 AM → `updateWNBAGames` 7 AM)
+are replaced by ONE 10-minute cron, `refreshLeaguesOneByOne()`:
+
+- **One league per 10-minute tick**, walking the whole `League` enum in order —
+  covers every league daily (college/NWSL/Olympics included, which the fixed crons
+  never refreshed), and bounds each third-party cycle to a single league.
+- **Window 4 AM-11 AM New York** (`America/New_York`) — ticks outside the window
+  are no-ops; 17 leagues × 10 min = the full list completes ~2 h50 after opening
+  (~6 h50 AM NY), well inside the window. The cursor resets when the 4 AM window
+  of a new NY calendar day opens (day key from the NY-converted clock).
+- **Season-gated**: `isCurrentSeason` / `isPlayoffsPeriod` (10-day cached dates)
+  skip off-season leagues without any third-party fetch; the slot is still consumed.
+- **Slot consumed before awaiting**: a slow refresh never double-runs the same
+  league; a restart resets the cursor and re-walks fresh leagues (skipped by the
+  1-hour timestamp / staleness gates in `getLeagueGames`).
+- **No overlap with the fast crons**:
+  - schedules are offset — rotation `*/10` (:00,:10,…), scores `2-59/10`
+    (:02,:12,…), availability `7-59/12` (:07,:19,…): no shared fire minute;
+  - `GameService.isScoreRecoveryRunning` (new getter) lets the rotation postpone
+    its tick while a score recovery cycle runs (slot not consumed, retried next tick);
+  - conversely `CronService.isHeavyRefreshRunning` (rotation OR oldies) makes the
+    scores and availability crons skip their tick.
+
+### Files changed
+
+- `backend/src/cronJob/cronJob.service.ts` — `refreshLeaguesOneByOne()` + removed `update{MLB,NBA,NFL,NHL,PWHL,WNBA}Games`; offset schedules + `isHeavyRefreshRunning` guards.
+- `backend/src/games/games.service.ts` — `isScoreRecoveryRunning` getter.
+- `backend/src/cronJob/tests/cronJob.service.spec.ts` — rotation tests (window, order, season skip, next-day idle, overlap postponement, fast-cron skip).
+- `backend/docs/cronJob/cronJob.service.ts.md` — updated job table.
+
+---
+
+## Added: Season-gated recovery games fetch at startup (`cronJob.service.ts`)
+
+Since the read-only routes change (`findAll` / `findByDate` / `findByDateHour` no longer
+refresh on empty), a **cold or stale DB** would stay empty until the next daily/monthly
+cron (up to ~24 h) — e.g. a deploy/restart in the evening, or a wiped games volume.
+
+`CronService.onModuleInit` now schedules (2 min after boot, after the existing 30 s
+score recovery) a one-shot `getAllGames(false, new Date())`:
+
+- **Season-gated per league**: the `date` boundary makes `getAllGames` skip leagues
+  where `isCurrentSeason(league, today)` / `isPlayoffsPeriod(league, today)` are false —
+  off-season leagues are never fetched.
+- **Warm restarts stay cheap**: `getLeagueGames`'s internal 1-hour timestamp freshness
+  and `needRefresh` staleness gates skip already-fresh leagues; each attempt stamps the
+  league (`'auto'` timestamp) so a crash/restart loop makes progress instead of
+  re-fetching completed leagues.
+- **Fresh-deploy gap closed**: `getAllGames` fetches teams first when the teams
+  collection is empty — `checkLeagueGamesAvailability` cannot (its 30 % threshold
+  compares against a zero team count, so it never triggers).
+
+Why not piggyback on `fetchGamesScores`: it only updates scores of games **already in
+the DB** (`fetchGamesForLiveScoreUpdate(2)`) and never inserts new scheduled games.
+`checkLeagueGamesAvailability` does insert schedules but is window-limited (0–11 LA)
+and has the zero-team edge above.
+
+### Files changed
+
+- `backend/src/cronJob/cronJob.service.ts` — recovery `getAllGames(false, new Date())` scheduled in `onModuleInit`.
+- `backend/src/cronJob/tests/cronJob.service.spec.ts` — fake-timer test for the scheduled recovery.
+- `backend/docs/cronJob/cronJob.service.ts.md` — documented the startup recovery job.
+
+---
+
+## Changed: Read-only game routes — no refresh-on-empty (`games.service.ts`)
+
+The date-view routes (`GET /games/hour/:gameDate` → `findByDateHour`,
+`GET /games/date/:gameDate` → `findByDate`, `GET /games` → `findAll`) no longer
+trigger league refreshes:
+
+- **Empty result** → returns `{}` / `[]` immediately. Previously, on a totally empty
+  DB these paths awaited `getAllGames(false, gameDate, ...)` — and `findAll()` even
+  called `getAllGames()` with **no date and no league filter**, refreshing every
+  league from third-party APIs directly inside a user request.
+- **Games found for today** → the `needRefresh`-gated background loop (one
+  `getLeagueGames` per stale league seen in the day's games, chained on
+  `refreshChain`) has been removed from `findByDate` / `findByDateHour`.
+- `refreshChain` (the last chained-refresh mechanism in read paths) is deleted.
+
+Why: these call-time refreshes blocked the backend during sequential third-party
+schedule fetches and, combined with the 460 MB heap budget
+(`NODE_OPTIONS=--max-old-space-size=460`), caused memory-pressure blocks and server
+restarts. An empty day is a legitimate result (off-season); the frontend already
+handles it (`NoResults` + bounded auto-retry + cooldown).
+
+Data freshness is now entirely the cron jobs' responsibility, unchanged:
+
+- monthly `getAllGames` (1st of month, 1 AM) + monthly teams (1st, 0:30 AM),
+- daily per-league refreshes 2 AM–7 AM (MLB, NBA, NFL, NHL, PWHL, WNBA),
+- `fetchGamesScores` every 10 minutes (11 AM–2 AM NY) + once at server restart,
+- `checkLeagueGamesAvailability` every 12 minutes (0 AM–11 AM LA) — re-triggers a
+  league refresh when too few upcoming games are stored,
+- `getOldGames` daily at 10 AM (oldies history, one league+year per run).
+
+Manual levers unchanged: `POST /games/refresh/:league` (single league, `forceUpdate`),
+`POST /games/refresh/all`, `POST /games/refresh/oldies`. `findByTeam` keeps its
+existing refresh, already gated to leagues in season or playoffs.
+
+### Files changed
+
+- `backend/src/games/games.service.ts` — removed empty-path refreshes and today-branch `refreshChain` loops in `findAll` / `findByDate` / `findByDateHour`; deleted `refreshChain`.
+- `backend/src/games/tests/games.service.spec.ts` — added read-only route tests (empty result returns without calling `getAllGames`).
+- `backend/docs/games/games.service.ts.md` — documented read-only behavior.
+
+---
+
 ## Fixed: Oldies history recovery now only lists years where games were actually added
 
 The response message from `POST /games/refresh/oldies` used to list all requested years (e.g. "2026, 2025, 2024, ...") regardless of whether any games were inserted. Years where `added: 0` (all games already existed) cluttered the response.

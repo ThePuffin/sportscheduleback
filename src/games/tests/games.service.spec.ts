@@ -12,6 +12,7 @@ describe('GameService', () => {
 
   const mockGameModel = {
     find: jest.fn().mockReturnThis(),
+    sort: jest.fn().mockReturnThis(),
     lean: jest.fn().mockReturnThis(),
     exec: jest.fn(),
     countDocuments: jest.fn(),
@@ -957,6 +958,50 @@ describe('getDateRange', () => {
       expect(match.isActive).toBe(true);
       expect(match.league).toEqual({ $in: ['PWHL', 'NHL'] });
       expect(match.teamSelectedId).toEqual({ $in: ['PWHL-OTT', 'MLS-TOR'] });
+    });
+  });
+
+  describe('read-only routes (no refresh-on-empty)', () => {
+    it('findAll returns [] on an empty DB without calling getAllGames', async () => {
+      const consoleSpy = jest.spyOn(console, 'info').mockImplementation();
+      const getAllGamesSpy = jest
+        .spyOn(service, 'getAllGames')
+        .mockResolvedValue([] as any);
+      mockGameModel.exec.mockResolvedValue([]);
+
+      const result = await service.findAll();
+
+      expect(result).toEqual([]);
+      expect(getAllGamesSpy).not.toHaveBeenCalled();
+      consoleSpy.mockRestore();
+    });
+
+    it('findByDate returns [] for an empty day without calling getAllGames', async () => {
+      const consoleSpy = jest.spyOn(console, 'info').mockImplementation();
+      const getAllGamesSpy = jest
+        .spyOn(service, 'getAllGames')
+        .mockResolvedValue([] as any);
+      mockGameModel.exec.mockResolvedValue([]);
+
+      const result = await service.findByDate('2026-07-01');
+
+      expect(result).toEqual([]);
+      expect(getAllGamesSpy).not.toHaveBeenCalled();
+      consoleSpy.mockRestore();
+    });
+
+    it('findByDateHour returns {} for an empty day without calling getAllGames', async () => {
+      const consoleSpy = jest.spyOn(console, 'info').mockImplementation();
+      const getAllGamesSpy = jest
+        .spyOn(service, 'getAllGames')
+        .mockResolvedValue([] as any);
+      mockGameModel.exec.mockResolvedValue([]);
+
+      const result = await service.findByDateHour('2026-07-01');
+
+      expect(result).toEqual({});
+      expect(getAllGamesSpy).not.toHaveBeenCalled();
+      consoleSpy.mockRestore();
     });
   });
 });
