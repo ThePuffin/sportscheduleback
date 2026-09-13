@@ -40,7 +40,18 @@ const mockGameService = {
   removeLeague: jest.fn().mockResolvedValue({ deletedCount: 10 }),
   removeAll: jest.fn().mockResolvedValue({ deletedCount: 100 }),
   removeDuplicatesAndOlds: jest.fn().mockResolvedValue({ success: true }),
-  remove: jest.fn().mockResolvedValue(mockGame),
+    remove: jest.fn().mockResolvedValue(mockGame),
+    getCapacityStatus: jest.fn().mockResolvedValue({
+    usedMB: 2048,
+    totalMB: 4096,
+    percentage: 0.5,
+    diskUsage: { usedMB: 2048, totalMB: 4096, percentage: 0.5 },
+    years: [{ year: 2024, count: 100, oldestDate: '2024-01-01', newestDate: '2024-12-31' }],
+    teamCount: 50,
+    gameCount: 5000,
+    threshold: 0.9,
+    actionNeeded: false,
+  }),
 };
 
 describe('GamesController', () => {
@@ -313,11 +324,29 @@ describe('GamesController', () => {
     });
   });
 
-  describe('remove', () => {
+    describe('remove', () => {
     it('should remove a single game', async () => {
       const uniqueId = '2024-NHL-123';
       await controller.remove(uniqueId);
       expect(service.remove).toHaveBeenCalledWith(uniqueId);
+    });
+  });
+
+  describe('getCapacityStatus', () => {
+    it('should return the read-only capacity report', async () => {
+      const result = await controller.getCapacityStatus();
+      expect(service.getCapacityStatus).toHaveBeenCalled();
+      expect(result).toEqual({
+        usedMB: 2048,
+        totalMB: 4096,
+        percentage: 0.5,
+        diskUsage: { usedMB: 2048, totalMB: 4096, percentage: 0.5 },
+        years: [{ year: 2024, count: 100, oldestDate: '2024-01-01', newestDate: '2024-12-31' }],
+        teamCount: 50,
+        gameCount: 5000,
+        threshold: 0.9,
+        actionNeeded: false,
+      });
     });
   });
 });

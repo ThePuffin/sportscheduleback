@@ -42,6 +42,11 @@ This controller exposes the HTTP API for game data operations.
 - `DELETE /games/duplicate`
 - `DELETE /games/:uniqueId`
 
+### Capacity management
+
+- `POST /games/capacity/check` (API key) — check disk usage and purge oldest years if ≥ 90% usage
+- `GET /games/capacity/status` (API key) — read-only capacity report: disk usage, per-year game counts, team/game totals, and `actionNeeded` flag (no deletion performed)
+
 ## Data Flow
 
 1. The controller receives HTTP requests.

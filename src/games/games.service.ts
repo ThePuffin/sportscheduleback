@@ -2339,7 +2339,17 @@ export class GameService {
   }
 
   /**
-   * Calculates MongoDB disk usage inside Docker.
+   * Calculates MongoDB disk usage via dbStats (Atlas-compatible).
+   *
+   * `df` only sees the local container filesystem — on Render this is
+   * ephemeral and does NOT reflect the remote Atlas cluster storage.
+   * `db.command({ dbStats: 1 })` returns the actual storage footprint
+   * of the database, matching what Atlas shows in its Metrics tab.
+   *
+   * `totalMB` is read from MONGODB_CLUSTER_TOTAL_MB (env var) so the
+   * percentage matches Atlas's "allocated cluster storage". If unset,
+   * we fall back to dbStats.totalSize (data + indexes) * 1.5.
+   *
    * Returns { usedMB, totalMB, percentage (0-1) }
    */
   private async getDiskUsage(): Promise<{
@@ -2348,55 +2358,53 @@ export class GameService {
     percentage: number;
   }> {
     try {
-      // Try to get the disk space of the Docker volume
-      const { exec } = require('child_process');
-      const { promisify } = require('util');
-      const execAsync = promisify(exec);
+      const db = (this.gameModel.collection as any).conn.db as any;
 
+      let dbStats: any;
       try {
-        // For Docker/Linux: check the persistent volume
-        const { stdout } = await execAsync(
-          'df -B1M /data/db 2>/dev/null || df -B1M .',
-        );
-        const lines = stdout.trim().split('\n');
-        const row = lines[1].split(/\s+/);
-        const totalMB = parseInt(row[1], 10);
-        const usedMBTotal = parseInt(row[2], 10);
-
-        return {
-          usedMB: usedMBTotal,
-          totalMB,
-          percentage: usedMBTotal / totalMB,
-        };
+        dbStats = await db.command({ dbStats: 1, scale: 1024 * 1024 }); // MB
       } catch {
-        // Fallback: estimate usage via aggregate
+        // Fallback to $collStats on the games collection
         const sizeInfo = await (this.gameModel.collection as any)
-          .aggregate([
-            {
-              $collStats: { storageStats: {} },
-            },
-          ])
+          .aggregate([{ $collStats: { storageStats: {} } }])
           .toArray()
           .catch(() => []);
 
-        if (sizeInfo && sizeInfo.length > 0) {
-          const sizeMB = (sizeInfo[0].storageStats?.size || 0) / (1024 * 1024);
-          return {
-            usedMB: Math.round(sizeMB),
-            totalMB: Math.round(sizeMB * 2), // Estimate
-            percentage: 0.5,
-          };
+        if (sizeInfo?.length > 0) {
+          const usedMB = Math.round(sizeInfo[0].storageStats?.size || 0);
+          const totalMB = Math.round(usedMB * 2); // rough estimate
+          return { usedMB, totalMB, percentage: usedMB / totalMB };
         }
-
-        // Full fallback: return 0% (no purge if usage is uncertain)
         return { usedMB: 0, totalMB: 1, percentage: 0 };
       }
+
+      // dbStats fields (scale = MiB):
+      //   dataSize   — raw data size (matches Atlas "Data Size")
+      //   storageSize — allocated storage for the collection (includes padding)
+      //   totalSize  — dataSize + indexSize (all collections in the DB)
+      //   fsTotalSize / fsUsedSize — only valid for self-hosted; Atlas returns 0
+      const usedMB = Math.round(dbStats.totalSize || dbStats.storageSize || 0);
+
+      // Total cluster storage: env var (Atlas quota) > dbStats heuristic
+      const envTotalMB = parseInt(
+        process.env.MONGODB_CLUSTER_TOTAL_MB || '0',
+        10,
+      );
+      const totalMB =
+        envTotalMB > 0
+          ? envTotalMB
+          : Math.round((dbStats.totalSize || usedMB) * 1.5);
+
+      return {
+        usedMB,
+        totalMB,
+        percentage: totalMB > 0 ? usedMB / totalMB : 0,
+      };
     } catch (error) {
       console.warn(
         '[Capacity Manager] Could not check disk usage:',
         error instanceof Error ? error.message : String(error),
       );
-      // Full fallback: return 0% (no purge if usage is uncertain)
       return { usedMB: 0, totalMB: 1, percentage: 0 };
     }
   }
@@ -2418,6 +2426,72 @@ export class GameService {
       `[Capacity Manager] Deleted ${result.deletedCount} games from year ${year}`,
     );
     return result.deletedCount || 0;
+  }
+
+      /**
+   * READ-ONLY capacity report.
+   * Returns the current disk usage + a per-year breakdown (oldest → newest)
+   * plus the count of stored teams, WITHOUT performing any deletion.
+   * Intended for manual inspection / a GET endpoint so operators can decide
+   * whether to trigger `purgeOldestYearsIfNeeded()`.
+   */
+  async getCapacityStatus(): Promise<{
+    /** Used storage in MB */
+    usedMB: number;
+    /** Total storage in MB */
+    totalMB: number;
+    /** Occupancy rate (0–1) */
+    percentage: number;
+    /** Per-year game counts, oldest → newest */
+    years: { year: number; count: number; oldestDate: string; newestDate: string }[];
+    /** Total number of stored teams */
+    teamCount: number;
+    /** Total number of stored game documents */
+    gameCount: number;
+    /** Occupancy threshold above which a purge is triggered (default 0.9) */
+    threshold: number;
+    /** True when `percentage >= threshold` */
+    actionNeeded: boolean;
+    diskUsage: { usedMB: number; totalMB: number; percentage: number };
+  }> {
+    const defaults = {
+      diskUsage: { usedMB: 0, totalMB: 1, percentage: 0 },
+      years: [] as { year: number; count: number; oldestDate: string; newestDate: string }[],
+      teamCount: 0,
+      gameCount: 0,
+    };
+
+    try {
+      const [diskUsage, years, teamCount, gameCount] = await Promise.all([
+        this.getDiskUsage(),
+        this.getAvailableYears(),
+        this.teamService.countAllTeams?.() ?? 0,
+        this.gameModel.countDocuments({}),
+      ]);
+
+      return {
+        // Flattened at root for easy consumption: used / total / percentage
+        usedMB: diskUsage.usedMB,
+        totalMB: diskUsage.totalMB,
+        percentage: diskUsage.percentage,
+        years,
+        teamCount,
+        gameCount,
+        threshold: this.DISK_USAGE_THRESHOLD,
+        actionNeeded: diskUsage.percentage >= this.DISK_USAGE_THRESHOLD,
+        diskUsage,
+      };
+    } catch {
+      return {
+        ...defaults,
+        usedMB: 0,
+        totalMB: 1,
+        percentage: 0,
+        threshold: this.DISK_USAGE_THRESHOLD,
+        actionNeeded: false,
+        diskUsage: defaults.diskUsage,
+      };
+    }
   }
 
   /**

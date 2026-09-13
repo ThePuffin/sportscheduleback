@@ -190,10 +190,16 @@ export class GamesController {
     return this.GameService.removeDuplicatesAndOlds();
   }
 
-  @Post('capacity/check')
+    @Post('capacity/check')
   @UseGuards(ApiKeyGuard)
   async checkCapacity() {
     return await this.GameService.purgeOldestYearsIfNeeded();
+  }
+
+  @Get('capacity/status')
+  @UseGuards(ApiKeyGuard)
+  async getCapacityStatus() {
+    return await this.GameService.getCapacityStatus();
   }
 
   @UseGuards(ApiKeyGuard)

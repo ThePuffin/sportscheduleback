@@ -111,7 +111,27 @@ existing refresh, already gated to leagues in season or playoffs.
 
 ---
 
-## Fixed: Oldies history recovery now only lists years where games were actually added
+## Added: Read-only capacity status endpoint
+
+- **New endpoint** `GET /games/capacity/status` (requires API key) — returns a read-only snapshot of the MongoDB storage footprint **without performing any purge**.
+- Response fields:
+  - `diskUsage`: `{ usedMB, totalMB, percentage }` computed via the same `df` + `$collStats` fallback used by the existing capacity manager.
+  - `years[]`: per-year game count (`{ year, count, oldestDate, newestDate }`), oldest → newest.
+  - `teamCount`: total number of stored teams.
+  - `gameCount`: total number of game documents.
+  - `threshold` (0.9 by default) and `actionNeeded` (boolean) for an at-a-glance decision signal before triggering the destructive `POST /games/capacity/check`.
+- New `GameService.getCapacityStatus()` and `TeamService.countAllTeams()` helpers.
+- Test added in `games.controller.spec.ts`.
+
+### Files changed
+
+- `backend/src/games/games.service.ts` — `getCapacityStatus()` (read-only; wraps `getDiskUsage()`, `getAvailableYears()`, `countDocuments()`, and the new `TeamService.countAllTeams()`; returns safe defaults on any error).
+- `backend/src/teams/teams.service.ts` — `countAllTeams()`.
+- `backend/src/games/games.controller.ts` — `GET /games/capacity/status` route.
+- `backend/src/games/tests/games.controller.spec.ts` — mock + test for `getCapacityStatus`.
+- `backend/docs/games/games.controller.ts.md` / `games.service.ts.md` — documented the new endpoint and method.
+
+---
 
 The response message from `POST /games/refresh/oldies` used to list all requested years (e.g. "2026, 2025, 2024, ...") regardless of whether any games were inserted. Years where `added: 0` (all games already existed) cluttered the response.
 

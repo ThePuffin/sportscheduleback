@@ -175,5 +175,5 @@ storage exceeds 90%. This preserves as much historical data as possible while pr
 ## Capacity Management
 
 - **Disk monitoring**: Automatic every 6 hours (cron job)
-- **Manual trigger**: `POST /games/capacity/check` (requires API key)
-- **Reporting**: Each check logs current disk usage and purged years (if any)
+- **Manual trigger**: `POST /games/capacity/check` (requires API key) — check + purge if needed
+- **Read-only status**: `GET /games/capacity/status` (requires API key) — same diagnostics as the check, but **without performing any deletion**; returns `diskUsage`, per-year breakdown (`years[]`), `teamCount`, `gameCount`, `threshold`, and `actionNeeded`.
