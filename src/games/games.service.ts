@@ -682,8 +682,14 @@ export class GameService {
         console.info(`[getAllGames] progress: ${pct}% (${i + 1}/${total}) — last: ${league}`);
       }
     }
-    console.info('[getAllGames] done');
-    return this.findAll();
+          console.info('[getAllGames] done');
+    // Read-only callers (GET /games) expect the in-memory active set, but the cron jobs
+    // (monthly getAllGames, daily per-league refreshes, checkLeagueGamesAvailability) must
+    // NOT materialise the entire historical collection here — that single `findAll()` scan
+    // was loading every old game (2017→today) into the 460 MB heap right after the loop,
+    // causing an OOM → Render restart → boot→recovery cycle. Cron callers only need to
+    // know the refresh succeeded, so they get an empty array instead.
+    return forceUpdate || date ? [] : this.findAll();
   }
 
   async findAll(): Promise<any[]> {
@@ -1341,21 +1347,41 @@ export class GameService {
   }
 
   async fetchGamesForLiveScoreUpdate(hours = 2): Promise<Game[]> {
+    const now = new Date();
+
+    // Upper bound: started at least `hours` ago (default: 2 hours).
     const hoursAgo = new Date();
     hoursAgo.setHours(hoursAgo.getHours() - hours);
 
+    // --- Fix for restart loop / unbounded recovery ---
+    // `removeStaleUnresolvedGames` (runs at the end of every score cycle) purges games
+    // older than `staleGameMaxAgeDays` (default 90) that are still active / unresolved.
+    // Without a matching LOWER bound here, this query also matched 2017 games stuck in an
+    // active-but-never-resolved state (e.g. a PWHL game on 2026-05-11). The score cycle
+    // kept re-scoring them on every run because `removeStaleUnresolvedGames` could only
+    // purge them AFTER the loop, and the loop grew faster than the purge → net growth →
+    // heap OOM → Render restarts → boot recovery → repeat.
+    // Bounding the scan to `staleGameMaxAgeDays` makes the scan size predictable
+    // (≤ ~90 days of games) and lets the purge actually catch up between cycles,
+    // breaking the loop.
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - this.staleGameMaxAgeDays);
+
     // Fetch games that are:
     // 1. Active
-    // 2. Started at least `hours` ago
+    // 2. Started at least `hours` ago AND started within the last `staleGameMaxAgeDays`
     // 3. NOT in a final/cancelled/postponed state
     // This will include games with partial scores (e.g., 3-0) that are still in progress,
     // and games with null scores that are in progress or should have started.
     return await this.gameModel
       .find({
         isActive: true,
+        startTimeUTC: {
+          $gte: cutoff.toISOString(),          // NEW: lower bound (was unbounded)
+          $lte: hoursAgo.toISOString(),
+        },
         $or: [
           {
-            startTimeUTC: { $lte: hoursAgo.toISOString() },
             gameStatus: {
               $nin: ['FINISHED', 'FINAL', 'CANCELLED', 'POSTPONED'],
             },
@@ -1384,8 +1410,17 @@ export class GameService {
       .exec();
   }
 
-  get isScoreRecoveryRunning(): boolean {
+    get isScoreRecoveryRunning(): boolean {
     return this.isFetchingScores;
+  }
+
+  // --- Startup recovery timestamp helpers (delegated to RefreshTimestampService) ---
+  async getLastRecoveryTimestamp(): Promise<Date | null> {
+    return this.refreshTimestampService.getLastRecoveryTimestamp();
+  }
+
+  async addRecoveryTimestamp(): Promise<void> {
+    await this.refreshTimestampService.addRecoveryTimestamp();
   }
 
   async fetchGamesScores(): Promise<any[]> {

@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
-export type RefreshType = 'manual' | 'auto';
+export type RefreshType = 'manual' | 'auto' | 'recovery';
 
 @Schema()
 export class RefreshTimestamp extends Document {

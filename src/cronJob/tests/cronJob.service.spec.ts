@@ -18,7 +18,9 @@ describe('CronService', () => {
     getOldiesGames: jest.fn(),
     fetchGamesScores: jest.fn().mockResolvedValue([]),
     getLeagueGames: jest.fn().mockResolvedValue([]),
-    getAllGames: jest.fn().mockResolvedValue([]),
+        getAllGames: jest.fn().mockResolvedValue([]),
+    getLastRecoveryTimestamp: jest.fn().mockResolvedValue(null),
+    addRecoveryTimestamp: jest.fn().mockResolvedValue(undefined),
     isScoreRecoveryRunning: false,
   };
 
@@ -153,7 +155,7 @@ describe('CronService', () => {
   });
 
   describe('onModuleInit', () => {
-    it('schedules a season-gated recovery fetch (getAllGames with today) at restart', async () => {
+    it('schedules a season-gated recovery fetch (getAllGames with today) at restart — only if no recovery ran in the last 6h', async () => {
       jest.useFakeTimers();
       try {
         await service.onModuleInit();
@@ -163,8 +165,25 @@ describe('CronService', () => {
           false,
           expect.any(Date),
         );
+        expect(mockGameService.addRecoveryTimestamp).toHaveBeenCalled();
         // the pre-existing 30 s score recovery also fires within the window
         expect(mockGameService.fetchGamesScores).toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('skips the recovery fetch when a recovery timestamp is younger than 6h', async () => {
+      mockGameService.getLastRecoveryTimestamp.mockResolvedValueOnce(
+        new Date(), // recent recovery → skip
+      );
+      jest.useFakeTimers();
+      try {
+        await service.onModuleInit();
+        await jest.advanceTimersByTimeAsync(120000);
+
+        expect(mockGameService.getAllGames).not.toHaveBeenCalled();
+        expect(mockGameService.addRecoveryTimestamp).not.toHaveBeenCalled();
       } finally {
         jest.useRealTimers();
       }

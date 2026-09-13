@@ -28,11 +28,7 @@ export class CronService implements OnModuleInit {
       '[Cron] Server restart: Scheduling initial fetchGamesScores...',
     );
     setTimeout(() => {
-      this.gameService
-        .fetchGamesScores()
-        .catch((err) =>
-          console.error('[Cron] initial fetchGamesScores error:', err),
-        );
+      this.fetchGamesScoresAtStartup();
     }, 30000);
 
     // Recovery fetch at restart (2 min after boot). The read routes
@@ -52,13 +48,52 @@ export class CronService implements OnModuleInit {
     console.info(
       '[Cron] Server restart: Scheduling recovery games fetch (getAllGames, season-gated)...',
     );
+    // --- Fix for restart loop ---
+    // On a crash/OOM, Render restarts the server almost immediately. Each restart used to
+    // re-schedule a full `getAllGames` recovery 2 min later, while the PREVIOUS recovery
+    // (or its `findAll()` tail from the pre-fix era) was still OOM-ing → restart → recovery
+    // → OOM, forever. Gate the recovery on a dedicated `recovery` RefreshTimestamp: if one
+    // already exists within the last 6 h, the previous instance clearly made progress (or
+    // already finished), so this boot skips the heavy fetch. 6 h is short enough to cover a
+    // legitimate cold-start recovery but long enough to absorb any boot-storm from a crash
+    // loop without replaying the full refresh each time.
     setTimeout(() => {
-      this.gameService
-        .getAllGames(false, new Date())
-        .catch((err) =>
-          console.error('[Cron] recovery getAllGames error:', err),
-        );
+      this.getAllGamesRecovery();
     }, 120000);
+  }
+
+  /**
+   * Score recovery at startup, guarded by the score-recycle reentrancy flag.
+   */
+  private async fetchGamesScoresAtStartup(): Promise<void> {
+    try {
+      await this.gameService.fetchGamesScores();
+    } catch (err) {
+      console.error('[Cron] initial fetchGamesScores error:', err);
+    }
+  }
+
+  /**
+   * One-shot `getAllGames(false, new Date())` at boot, guarded by a `recovery`
+   * RefreshTimestamp so we never replay a full refresh while a previous one is
+   * still settling from an OOM-induced restart.
+   */
+  private async getAllGamesRecovery(): Promise<void> {
+    const lastRecovery = await this.gameService.getLastRecoveryTimestamp();
+    if (lastRecovery) {
+      console.info(
+        '[Cron] Recovery games fetch skipped — a recovery already ran within the last 6 hours (last: ' +
+          lastRecovery.toISOString() +
+          ').',
+      );
+      return;
+    }
+    try {
+      await this.gameService.getAllGames(false, new Date());
+      await this.gameService.addRecoveryTimestamp();
+    } catch (err) {
+      console.error('[Cron] recovery getAllGames error:', err);
+    }
   }
 
   @Cron('30 0 1 * *') // EVERY MONTH AT 0:30AM
