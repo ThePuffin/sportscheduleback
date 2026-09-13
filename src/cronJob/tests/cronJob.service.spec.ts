@@ -18,7 +18,8 @@ describe('CronService', () => {
     getOldiesGames: jest.fn(),
     fetchGamesScores: jest.fn().mockResolvedValue([]),
     getLeagueGames: jest.fn().mockResolvedValue([]),
-        getAllGames: jest.fn().mockResolvedValue([]),
+    getAllGames: jest.fn().mockResolvedValue([]),
+    purgeOldestMonth: jest.fn().mockResolvedValue({ action: 'none' }),
     getLastRecoveryTimestamp: jest.fn().mockResolvedValue(null),
     addRecoveryTimestamp: jest.fn().mockResolvedValue(undefined),
     isScoreRecoveryRunning: false,
@@ -329,6 +330,72 @@ describe('CronService', () => {
       expect(mockGameService.getLeagueGames).not.toHaveBeenCalled();
 
       (service as any).isRotatingLeagueInProgress = false;
+    });
+  });
+
+  describe('purgeOldestMonth (twice-daily time-based purge)', () => {
+    it('calls gameService.purgeOldestMonth', async () => {
+      const consoleSpy = jest.spyOn(console, 'info').mockImplementation();
+      mockGameService.purgeOldestMonth = jest.fn().mockResolvedValue({
+        action: 'purged',
+        purgedYear: 2016,
+        purgedMonth: 9,
+        deletedCount: 296,
+        remainingYears: [2016, 2017],
+      });
+
+      await service.purgeOldestMonth();
+
+      expect(mockGameService.purgeOldestMonth).toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[Cron] Purged 296 games from 2016-09. Remaining years: 2016, 2017',
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it('logs when no games to purge', async () => {
+      const consoleSpy = jest.spyOn(console, 'info').mockImplementation();
+      mockGameService.purgeOldestMonth = jest
+        .fn()
+        .mockResolvedValue({ action: 'none' });
+
+      await service.purgeOldestMonth();
+
+      expect(consoleSpy).toHaveBeenCalledWith('[Cron] No games to purge.');
+      consoleSpy.mockRestore();
+    });
+
+    it('logs purged month details', async () => {
+      const consoleSpy = jest.spyOn(console, 'info').mockImplementation();
+      mockGameService.purgeOldestMonth = jest.fn().mockResolvedValue({
+        action: 'purged',
+        purgedYear: 2016,
+        purgedMonth: 9,
+        deletedCount: 296,
+        remainingYears: [2016, 2017],
+      });
+
+      await service.purgeOldestMonth();
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[Cron] Purged 296 games from 2016-09. Remaining years: 2016, 2017',
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it('handles errors gracefully', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+      mockGameService.purgeOldestMonth = jest
+        .fn()
+        .mockRejectedValue(new Error('DB error'));
+
+      await service.purgeOldestMonth();
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[Cron] Error running monthly purge:',
+        expect.any(Error),
+      );
+      consoleSpy.mockRestore();
     });
   });
 });

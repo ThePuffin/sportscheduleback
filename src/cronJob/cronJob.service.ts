@@ -334,6 +334,24 @@ export class CronService implements OnModuleInit {
     }
   }
 
+  @Cron('0 3,15 * * *') // TWICE DAILY AT 3AM & 3PM (UTC) — purge the oldest month of games
+  async purgeOldestMonth() {
+    try {
+      console.info('[Cron] Running monthly purge of oldest games...');
+      const result = await this.gameService.purgeOldestMonth();
+
+      if (result.action === 'purged') {
+        console.info(
+          `[Cron] Purged ${result.deletedCount} games from ${result.purgedYear}-${result.purgedMonth?.toString().padStart(2, '0')}. Remaining years: ${result.remainingYears?.join(', ')}`,
+        );
+      } else {
+        console.info('[Cron] No games to purge.');
+      }
+    } catch (err) {
+      console.error('[Cron] Error running monthly purge:', err);
+    }
+  }
+
   @Cron('0 */6 * * *') // EVERY 6 HOURS
   async monitorDiskCapacity() {
     try {

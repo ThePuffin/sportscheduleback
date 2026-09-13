@@ -2,6 +2,22 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Changed: `purgeOldestMonth` now runs twice daily (`cronJob.service.ts`)
+
+The oldest-month purge cron was upgraded from **once daily (3AM UTC)** to **twice daily (3AM & 3PM UTC)** to accelerate time-based cleanup of historical game data.
+
+- **Schedule**: `0 3,15 * * *` (3AM and 3PM UTC) — roughly 12 hours apart.
+- **Behavior unchanged**: deletes all games from the oldest month in the DB (e.g. September 2016), logs the count and remaining years.
+- **Tests updated**: `cronJob.service.spec.ts` describe block renamed to `purgeOldestMonth (twice-daily time-based purge)`.
+
+### Files changed
+
+- `backend/src/cronJob/cronJob.service.ts` — cron expression `0 3 * * *` → `0 3,15 * * *`.
+- `backend/src/cronJob/tests/cronJob.service.spec.ts` — renamed describe block.
+- `backend/docs/cronJob/cronJob.service.ts.md` — documented new schedule.
+
+---
+
 ## Changed: Single league rotation cron (`cronJob.service.ts`)
 
 The six fixed daily per-league crons (`updateMLBGames` 2 AM → `updateWNBAGames` 7 AM)

@@ -122,45 +122,50 @@ export class GameService {
   }
 
   async create(gameDto: CreateGameDto | UpdateGameDto): Promise<Game> {
-    const { uniqueId } = gameDto;
+    return this.executeWithCapacityGuard(
+      async () => {
+        const { uniqueId } = gameDto;
 
-    if (uniqueId) {
-      const existingGame = await this.findOne(uniqueId);
-      if (existingGame) {
-        if (
-          gameDto.homeTeamScore === null &&
-          existingGame.homeTeamScore !== null
-        ) {
-          delete gameDto.homeTeamScore;
-        }
+        if (uniqueId) {
+          const existingGame = await this.findOne(uniqueId);
+          if (existingGame) {
+            if (
+              gameDto.homeTeamScore === null &&
+              existingGame.homeTeamScore !== null
+            ) {
+              delete gameDto.homeTeamScore;
+            }
 
-        if (
-          gameDto.awayTeamScore === null &&
-          existingGame.awayTeamScore !== null
-        ) {
-          delete gameDto.awayTeamScore;
-        }
+            if (
+              gameDto.awayTeamScore === null &&
+              existingGame.awayTeamScore !== null
+            ) {
+              delete gameDto.awayTeamScore;
+            }
 
-        // Protect game status and live info from being overwritten by null/default values
-        const fieldsToProtect = ['gameStatus', 'gameClock', 'gamePeriod'];
+            // Protect game status and live info from being overwritten by null/default values
+            const fieldsToProtect = ['gameStatus', 'gameClock', 'gamePeriod'];
 
-        fieldsToProtect.forEach((field) => {
-          if (
-            (gameDto[field] === null || gameDto[field] === undefined) &&
-            existingGame[field] !== null
-          ) {
-            delete gameDto[field];
+            fieldsToProtect.forEach((field) => {
+              if (
+                (gameDto[field] === null || gameDto[field] === undefined) &&
+                existingGame[field] !== null
+              ) {
+                delete gameDto[field];
+              }
+            });
+
+            Object.assign(existingGame, gameDto);
+
+            return await existingGame.save();
           }
-        });
+        }
 
-        Object.assign(existingGame, gameDto);
-
-        return await existingGame.save();
-      }
-    }
-
-    const newGame = new this.gameModel(gameDto);
-    return await newGame.save();
+        const newGame = new this.gameModel(gameDto);
+        return await newGame.save();
+      },
+      'create',
+    );
   }
 
   /**
@@ -1215,8 +1220,13 @@ export class GameService {
   }
 
   async update(uniqueId: string, updateGameDto: Partial<UpdateGameDto>) {
-    const filter = { uniqueId: uniqueId };
-    return this.gameModel.updateOne(filter, updateGameDto);
+    return this.executeWithCapacityGuard(
+      async () => {
+        const filter = { uniqueId: uniqueId };
+        return this.gameModel.updateOne(filter, updateGameDto);
+      },
+      'update',
+    );
   }
   async remove(uniqueId: string) {
     const filter = { uniqueId: uniqueId };
@@ -1932,7 +1942,10 @@ export class GameService {
       }
     }
 
-    await game.save();
+    await this.executeWithCapacityGuard(
+      async () => game.save(),
+      'syncGameWithScore.save',
+    );
     return resolvedStatus;
   }
 
@@ -2579,6 +2592,177 @@ export class GameService {
       diskUsage,
       remainingYears,
     };
+  }
+
+  /**
+   * Checks if an error is a MongoDB "no space left" / disk full error.
+   * MongoDB error codes: 68 (NoSpaceLeft), 14 (DiskFull), or message patterns.
+   */
+  private isNoSpaceError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+
+    // Check MongoDB error code
+    const code = (error as any).code;
+    if (code === 68 || code === 14) return true;
+
+    // Check error message patterns
+    const message =
+      (error as any)?.message ??
+      (error as any)?.errmsg ??
+      String(error);
+    const lowerMsg = message.toLowerCase();
+    return (
+      lowerMsg.includes('no space left') ||
+      lowerMsg.includes('disk full') ||
+      lowerMsg.includes('out of disk space') ||
+      lowerMsg.includes('quota exceeded') ||
+      lowerMsg.includes('storage full')
+    );
+  }
+
+  /**
+   * Handles a "no space" error by purging the oldest month of games.
+   * Returns true if the error was a no-space error and purge was triggered.
+   */
+  private async handleNoSpaceError(error: unknown): Promise<boolean> {
+    if (!this.isNoSpaceError(error)) return false;
+
+    console.warn(
+      '[Capacity Manager] No space left error detected — triggering automatic purge of oldest month...',
+    );
+    try {
+      const result = await this.purgeOldestMonth();
+      if (result.action === 'purged') {
+        console.info(
+          `[Capacity Manager] Auto-purge completed: deleted ${result.deletedCount} games from ${result.purgedYear}-${result.purgedMonth?.toString().padStart(2, '0')}.`,
+        );
+      } else {
+        console.warn('[Capacity Manager] Auto-purge: no games to purge.');
+      }
+    } catch (purgeErr) {
+      console.error(
+        '[Capacity Manager] Auto-purge failed:',
+        purgeErr instanceof Error ? purgeErr.message : String(purgeErr),
+      );
+    }
+    return true;
+  }
+
+  /**
+   * Wraps an async operation with automatic capacity management.
+   * If the operation fails with a "no space left" error from MongoDB,
+   * triggers the oldest-month purge and re-throws the original error.
+   */
+  private async executeWithCapacityGuard<T>(
+    operation: () => Promise<T>,
+    context: string,
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      const wasNoSpace = await this.handleNoSpaceError(error);
+      if (wasNoSpace) {
+        console.warn(
+          `[Capacity Manager] ${context} failed due to no-space — purge triggered, re-throwing error.`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Purges the oldest month of games from the database.
+   * Finds the oldest year, then the oldest month within that year,
+   * and deletes all games from that month.
+   * Returns a report with the action taken.
+   */
+  async purgeOldestMonth(): Promise<{
+    action: 'none' | 'purged';
+    purgedYear?: number;
+    purgedMonth?: number;
+    deletedCount?: number;
+    remainingYears?: number[];
+  }> {
+    try {
+      const years = await this.getAvailableYears();
+
+      if (years.length === 0) {
+        console.info('[Capacity Manager] No games to purge.');
+        return { action: 'none' };
+      }
+
+      const oldestYear = years[0].year;
+
+      // Find the oldest month in that year using aggregation
+      const monthResult = await this.gameModel
+        .aggregate([
+          {
+            $match: {
+              gameDate: {
+                $gte: `${oldestYear}-01-01`,
+                $lte: `${oldestYear}-12-31`,
+              },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                $substr: ['$gameDate', 5, 2], // Extract MM from YYYY-MM-DD
+              },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { _id: 1 } }, // Sort months ascending (01, 02, ..., 12)
+          { $limit: 1 },
+        ])
+        .exec();
+
+      if (monthResult.length === 0) {
+        console.info(
+          `[Capacity Manager] No games found in oldest year ${oldestYear}.`,
+        );
+        return { action: 'none' };
+      }
+
+      const oldestMonth = monthResult[0]._id; // "01", "02", etc.
+      const gameCount = monthResult[0].count;
+
+      console.info(
+        `[Capacity Manager] Purging oldest month: ${oldestYear}-${oldestMonth} (${gameCount} games)...`,
+      );
+
+      // Delete all games from that month
+      const startDate = `${oldestYear}-${oldestMonth}-01`;
+      // Calculate last day of month
+      const lastDay = new Date(oldestYear, parseInt(oldestMonth, 10), 0).getDate();
+      const endDate = `${oldestYear}-${oldestMonth}-${lastDay.toString().padStart(2, '0')}`;
+
+      const deleteResult = await this.gameModel.deleteMany({
+        gameDate: { $gte: startDate, $lte: endDate },
+      });
+
+      const deletedCount = deleteResult.deletedCount || 0;
+      console.info(
+        `[Capacity Manager] Deleted ${deletedCount} games from ${oldestYear}-${oldestMonth}.`,
+      );
+
+      // Get remaining years for the report
+      const remainingYears = (await this.getAvailableYears()).map((y) => y.year);
+
+      return {
+        action: 'purged',
+        purgedYear: oldestYear,
+        purgedMonth: parseInt(oldestMonth, 10),
+        deletedCount,
+        remainingYears,
+      };
+    } catch (error) {
+      console.error(
+        '[Capacity Manager] Error purging oldest month:',
+        error instanceof Error ? error.message : String(error),
+      );
+      return { action: 'none' };
+    }
   }
 
   async checkLeagueGamesAvailability() {

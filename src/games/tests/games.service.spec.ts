@@ -878,6 +878,160 @@ describe('GameService', () => {
       expect(mockGameModel.aggregate).toHaveBeenCalled();
     });
   });
+describe('purgeOldestMonth', () => {
+    beforeEach(() => {
+      // Reset aggregate and deleteMany mocks
+      mockGameModel.aggregate = jest.fn();
+      mockGameModel.deleteMany = jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ deletedCount: 0, acknowledged: true }),
+      });
+    });
+
+    it('should return "none" when no years available', async () => {
+      const getAvailableYearsSpy = jest
+        .spyOn(service as any, 'getAvailableYears')
+        .mockResolvedValue([]);
+
+      const result = await service.purgeOldestMonth();
+
+      expect(result.action).toBe('none');
+      expect(mockGameModel.aggregate).not.toHaveBeenCalled();
+      expect(mockGameModel.deleteMany).not.toHaveBeenCalled();
+
+      getAvailableYearsSpy.mockRestore();
+    });
+
+    it('should return "none" when no games found in oldest year', async () => {
+      const getAvailableYearsSpy = jest
+        .spyOn(service as any, 'getAvailableYears')
+        .mockResolvedValue([
+          {
+            year: 2016,
+            count: 100,
+            oldestDate: '2016-09-01',
+            newestDate: '2016-12-31',
+          },
+        ]);
+
+      mockGameModel.aggregate = jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue([]), // No months found
+      });
+
+      const result = await service.purgeOldestMonth();
+
+      expect(result.action).toBe('none');
+      expect(mockGameModel.deleteMany).not.toHaveBeenCalled();
+
+      getAvailableYearsSpy.mockRestore();
+    });
+
+    it('should purge the oldest month successfully', async () => {
+      const getAvailableYearsSpy = jest
+        .spyOn(service as any, 'getAvailableYears')
+        .mockResolvedValueOnce([
+          {
+            year: 2016,
+            count: 2496,
+            oldestDate: '2016-09-25',
+            newestDate: '2016-12-31',
+          },
+          {
+            year: 2017,
+            count: 16831,
+            oldestDate: '2017-01-01',
+            newestDate: '2017-12-31',
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            year: 2016,
+            count: 2200,
+            oldestDate: '2016-10-01',
+            newestDate: '2016-12-31',
+          },
+          {
+            year: 2017,
+            count: 16831,
+            oldestDate: '2017-01-01',
+            newestDate: '2017-12-31',
+          },
+        ]);
+
+      // Mock aggregate to return oldest month = "09" (September)
+      mockGameModel.aggregate = jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: '09', count: 296 }]),
+      });
+
+      // Mock deleteMany to return deleted count
+      mockGameModel.deleteMany = jest
+        .fn()
+        .mockResolvedValueOnce({ deletedCount: 296, acknowledged: true });
+
+      const result = await service.purgeOldestMonth();
+
+      expect(result.action).toBe('purged');
+      expect(result.purgedYear).toBe(2016);
+      expect(result.purgedMonth).toBe(9);
+      expect(result.deletedCount).toBe(296);
+      expect(result.remainingYears).toEqual([2016, 2017]);
+
+      // Verify aggregate was called with correct pipeline
+      expect(mockGameModel.aggregate).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            $match: expect.objectContaining({
+              gameDate: expect.objectContaining({
+                $gte: '2016-01-01',
+                $lte: '2016-12-31',
+              }),
+            }),
+          }),
+        ]),
+      );
+
+      // Verify deleteMany was called with correct date range
+      expect(mockGameModel.deleteMany).toHaveBeenCalledWith({
+        gameDate: { $gte: '2016-09-01', $lte: '2016-09-30' },
+      });
+
+      getAvailableYearsSpy.mockRestore();
+    });
+
+    it('should handle last day of month correctly (December)', async () => {
+      const getAvailableYearsSpy = jest
+        .spyOn(service as any, 'getAvailableYears')
+        .mockResolvedValue([
+          {
+            year: 2016,
+            count: 500,
+            oldestDate: '2016-12-01',
+            newestDate: '2016-12-31',
+          },
+        ]);
+
+      mockGameModel.aggregate = jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: '12', count: 500 }]),
+      });
+
+      mockGameModel.deleteMany = jest
+        .fn()
+        .mockResolvedValueOnce({ deletedCount: 500, acknowledged: true });
+
+      const result = await service.purgeOldestMonth();
+
+      expect(result.action).toBe('purged');
+      expect(result.purgedYear).toBe(2016);
+      expect(result.purgedMonth).toBe(12);
+
+      // December has 31 days
+      expect(mockGameModel.deleteMany).toHaveBeenCalledWith({
+        gameDate: { $gte: '2016-12-01', $lte: '2016-12-31' },
+      });
+
+      getAvailableYearsSpy.mockRestore();
+    });
+  });
+
 describe('getDateRange', () => {
     it('should return min/max dates from the aggregate', async () => {
       mockGameModel.aggregate.mockResolvedValue([
