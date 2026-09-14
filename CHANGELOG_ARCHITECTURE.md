@@ -24,6 +24,25 @@ Added a guard in `getLeagueGames()` that nullifies `homeTeamScore` and `awayTeam
 - `backend/src/games/games.service.ts` — added score-stripping guard before `create(game)` in the import loop
 - `backend/docs/games/games.service.ts.md` — documented the guard
 
+## Change: League rotation now refreshes off-season leagues weekly instead of skipping them
+
+### Problem
+
+The `refreshLeaguesOneByOne()` cron skipped off-season leagues entirely (`isCurrentSeason` check). This meant that if a league released its schedule during the off-season (e.g. NFL in May, NBA/NHL in August), the system wouldn't pick it up until the season officially started.
+
+### Solution
+
+Replaced the hard off-season skip with a `needRefresh()` check that uses `numberOfDaysToRefresh()`:
+- **Playoffs**: refresh every day
+- **Regular season**: refresh every 3 days
+- **Off-season**: refresh every 7 days
+
+This ensures off-season leagues are still checked weekly for newly released schedules, while in-season leagues get refreshed more frequently.
+
+### Files
+- `backend/src/cronJob/cronJob.service.ts` — replaced `isCurrentSeason` skip with `needRefresh()` check in `refreshLeaguesOneByOne()`
+- `backend/docs/cronJob/cronJob.service.ts.md` — updated documentation
+
 ## Changed: Unified fetch behavior - current season vs historical (`espnAllData.ts`, `utils.ts`)
 
 ### Problem

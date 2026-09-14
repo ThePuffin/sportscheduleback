@@ -3,7 +3,8 @@ import { Cron } from '@nestjs/schedule';
 import { GameService } from '../games/games.service';
 import { TeamService } from '../teams/teams.service';
 import { League } from '../utils/enum';
-import { isCurrentSeason, isPlayoffsPeriod } from '../utils/utils';
+import { isCurrentSeason, isPlayoffsPeriod, needRefresh } from '../utils/utils';
+import { readableDate } from '../utils/date';
 
 @Injectable()
 export class CronService implements OnModuleInit {
@@ -177,10 +178,48 @@ export class CronService implements OnModuleInit {
       this.rotatingLeaguesDone = true;
     }
 
-    const inSeason =
-      (await isCurrentSeason(league)) || (await isPlayoffsPeriod(league));
-    if (!inSeason) {
-      console.info(`[Cron] League rotation: ${league} is off-season — skipped.`);
+    // Refresh frequency is governed by needRefresh() → numberOfDaysToRefresh():
+    //   - Playoffs: every day
+    //   - Regular season: every 3 days
+    //   - Off-season: every 7 days
+    // This replaces the old hard off-season skip so that off-season leagues still
+    // get their schedule checked weekly (e.g. to pick up a newly released calendar).
+    let needsRefresh = true;
+    try {
+      const nextWeek = new Date();
+      nextWeek.setDate(nextWeek.getDate() + 7);
+      const gamesForLeague = await this.gameService.gameModel
+        .find({
+          league,
+          isActive: true,
+          gameDate: {
+            $gte: readableDate(new Date()),
+            $lte: readableDate(nextWeek),
+          },
+        })
+        .sort({ startTimeUTC: -1 })
+        .limit(2)
+        .lean()
+        .exec();
+
+      if (gamesForLeague.length === 0) {
+        const anyGames = await this.gameService.gameModel
+          .find({ league, isActive: true })
+          .sort({ startTimeUTC: -1 })
+          .limit(2)
+          .lean()
+          .exec();
+        needsRefresh = await needRefresh(league, { data: anyGames });
+      } else {
+        needsRefresh = await needRefresh(league, { data: gamesForLeague });
+      }
+    } catch (err) {
+      // On error, assume refresh is needed
+      needsRefresh = true;
+    }
+
+    if (!needsRefresh) {
+      console.info(`[Cron] League rotation: ${league} refreshed recently — skipped.`);
       return;
     }
 

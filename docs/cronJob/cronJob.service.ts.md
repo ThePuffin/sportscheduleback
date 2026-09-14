@@ -20,7 +20,7 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 | Job                              | Schedule               | Purpose                                             |
 | -------------------------------- | ---------------------- | --------------------------------------------------- |
 | `onModuleInit()` recovery        | Once at startup (+2 min) | Season-gated `getAllGames(false, new Date())` — fills a cold/stale DB outside cron windows |
-| **`refreshLeaguesOneByOne()`**   | **Every 10 min (window 4 AM-11 AM NY)** | **League rotation: ONE league per tick through the `League` enum, season-gated (skip off-season), stops until the next day once the list is complete** |
+| **`refreshLeaguesOneByOne()`**   | **Every 10 min (window 4 AM-11 AM NY)** | **League rotation: ONE league per tick through the `League` enum, frequency-gated by `needRefresh()` (playoffs: 1 day, season: 3 days, off-season: 7 days), stops until the next day once the list is complete** |
 | `updateTeams()`                  | Monthly (0:30 AM, 1st) | Refresh all teams                                   |
 | `updateAllGames()`               | Monthly (1:00 AM, 1st) | Full league refresh                                 |
 | `getOldGames()`                  | Daily (10:00 AM)       | Historical season recovery (one random year per tick; anti-reentrancy)          |
