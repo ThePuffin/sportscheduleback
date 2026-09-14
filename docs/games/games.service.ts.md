@@ -66,6 +66,12 @@ games that have a complete home **and** away team. It logs added / skipped count
 
 Before `create(game)` is called, scores are nullified for any game whose `startTimeUTC` is in the future. The ESPN/PWHL APIs may return scores for games that haven't started yet; without this guard, scores would be written to the DB and then removed by `fixScoreIssue()` on every `fetchGamesScores()` cycle, creating log spam.
 
+`_resolveStatus()` distinguishes a **temporarily interrupted game** (`DELAYED`/`SUSPENDED`, e.g. a rain delay) from a **true postponement** (`POSTPONED`/`CANCELLED`): an interrupted game resolves to `DELAYED` and stays `isActive` so it remains visible to the frontend with a translated "Match interrompu" status, whereas the existing postponement/cancellation behavior is unchanged.
+
+### `getOldiesGames(yearStr?, leagueParam?)`
+
+Historical recovery over leagues × years. Logs `[Oldies] progress: <pct>% (<done>/<total>) — last: <LEAGUE> <year>` after each step (same pattern as `[getAllGames] progress`), so long recoveries show their advancement. The per-game insertion loop (oldies path, `addMissingOnly: true`) additionally logs `[Oldies] <LEAGUE> (season <year>): insert progress: <pct>% (<processed>/<total>) — added <n>` at 20% milestones + 100%, so the DB insertion phase shows advancement too.
+
 ### `getAllGames(forceUpdate, date, leagueList)`
 
 Refreshes all available leagues, optionally scoped to a date or league list. When a

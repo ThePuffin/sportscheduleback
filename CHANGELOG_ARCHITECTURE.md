@@ -2,6 +2,32 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Change: Oldies progress logging (`getOldiesGames`)
+
+`getOldiesGames()` now logs `[Oldies] progress: <pct>% (<done>/<total>) — last: <LEAGUE> <year>` after each league×year step (in a `finally`, so failures still advance the counter), mirroring the existing `[getAllGames] progress` pattern. Useful to track long historical recoveries.
+
+The per-game insertion loop in `getLeagueGames()` (oldies path only, `addMissingOnly: true`) also logs `[Oldies] <LEAGUE> (season <year>): insert progress: <pct>% (<processed>/<total>) — added <n>` at every 20% milestone plus a final 100% line, so the DB insertion phase itself shows advancement even when most games are skipped as already existing.
+
+### Files
+- `backend/src/games/games.service.ts` — progress counter in `getOldiesGames()` + insert-progress milestones in `getLeagueGames()`
+- `backend/docs/games/games.service.ts.md` — documented the progress logging
+
+## Change: Interrupted games keep a visible translated status (`DELAYED`); postponement behavior unchanged
+
+### Problem
+
+A temporarily interrupted game (e.g. a baseball rain delay / suspension) was being conflated with a true postponement: `_resolveStatus()` mapped `DELAY`/`RAIN`/`WEATHER` keywords to `POSTPONED`, and `syncGameWithScore()` then set `isActive = false`. The game disappeared from the responses and the frontend could never show it or translate its status.
+
+### Solution
+
+- `_resolveStatus()` now detects temporarily interrupted games (`STATUS_DELAYED` / `STATUS_SUSPENDED`, or `DELAY`/`SUSPENDED`/`INTERRUPTED`/`RAIN`/`WEATHER` text) and returns a distinct **`DELAYED`** status. A true postponement (`POSTPONED`/`POSTPONE`/`TBD`) or cancellation (`CANCELLED`) is still detected first, so a detail like "Postponed - Heavy Rain" stays a postponement.
+- Because `DELAYED` is not in the `postponed`/`cancelled` conditions, `syncGameWithScore()` leaves the game `isActive = true` → it stays visible in API responses with `gameStatus = 'DELAYED'`.
+- Postponed/cancelled games keep their existing behavior (unchanged).
+
+### Files
+- `backend/src/games/games.service.ts` — `_resolveStatus()` now returns `DELAYED` for interrupted games
+- `backend/docs/games/games.service.ts.md` — documented the `DELAYED` status
+
 ## Fix: Stop `[fixScoreIssue]` log spam from future games with scores
 
 ### Problem

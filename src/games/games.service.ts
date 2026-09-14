@@ -573,7 +573,20 @@ export class GameService {
         let added = 0;
         let skippedExisting = 0;
         let skippedMissingTeamData = 0;
-        for (const game of uniqueGames) {
+        const totalToProcess = uniqueGames.length;
+        let lastInsertMilestone = 0;
+        const logInsertProgress = (processed: number) => {
+          if (!addMissingOnly || totalToProcess === 0) return;
+          const pct = Math.round((processed / totalToProcess) * 100);
+          if (pct >= lastInsertMilestone + 20 || processed === totalToProcess) {
+            lastInsertMilestone = Math.floor(pct / 20) * 20;
+            console.info(
+              `[Oldies] ${normalizedLeague} ${season ? `(season ${season})` : ''}: insert progress: ${pct}% (${processed}/${totalToProcess}) — added ${added}`,
+            );
+          }
+        };
+        for (let idx = 0; idx < uniqueGames.length; idx++) {
+          const game = uniqueGames[idx];
           game.updateDate = new Date().toISOString();
           game.isActive = true;
 
@@ -590,6 +603,7 @@ export class GameService {
               (stored.awayTeamScore ?? null) === (game?.awayTeamScore ?? null);
             if (game?.uniqueId && sameResult) {
               skippedExisting++;
+              logInsertProgress(idx + 1);
               continue;
             }
 
@@ -606,6 +620,7 @@ export class GameService {
               console.warn(
                 `[Oldies] Skipping ${game?.uniqueId} for ${normalizedLeague} because team data is incomplete (home: ${game?.homeTeamShort || game?.homeTeam || 'none'}, away: ${game?.awayTeamShort || game?.awayTeam || 'none'}).`,
               );
+              logInsertProgress(idx + 1);
               continue;
             }
 
@@ -620,6 +635,7 @@ export class GameService {
               console.warn(
                 `[Oldies] Skipping future game ${game?.uniqueId} for ${normalizedLeague} (scheduled for ${game?.startTimeUTC}, not yet played).`,
               );
+              logInsertProgress(idx + 1);
               continue;
             }
             // Past games are accepted even with null scores; cron will fill them later via fetchGamesScores()
@@ -639,6 +655,7 @@ export class GameService {
 
           await this.create(game);
           added++;
+          logInsertProgress(idx + 1);
         }
 
         if (addMissingOnly) {
@@ -2074,15 +2091,6 @@ export class GameService {
   private _resolveStatus(score: any): string {
     // Priority 0: Check for explicit postponement or cancellation in text fields
     // Sometimes APIs put postponement reasons in status detail, series summary, or records
-    const postponementKeywords = [
-      'POSTPONED',
-      'RAIN',
-      'DELAY',
-      'TBD',
-      'WEATHER',
-    ];
-    const cancellationKeywords = ['CANCELLED', 'CANCELED'];
-
     const statusTextFields = [
       typeof score.status === 'string' ? score.status : '',
       score.status?.detail,
@@ -2093,20 +2101,44 @@ export class GameService {
       .filter(Boolean)
       .map((s) => s.toUpperCase());
 
+    const explicitTypeName = (
+      (typeof score.status === 'object' ? score.status?.type?.name : '') || ''
+    ).toUpperCase();
+
+    // A temporarily interrupted game (rain delay / suspended) is distinct from a
+    // postponement: it is expected to resume and still produce a result, so it
+    // must stay visible with its own status for the frontend to display a
+    // translated "interrupted/delayed" badge (unlike a true postponement).
+    if (
+      explicitTypeName === 'STATUS_DELAYED' ||
+      explicitTypeName === 'STATUS_SUSPENDED'
+    ) {
+      return 'DELAYED';
+    }
+    if (explicitTypeName === 'STATUS_POSTPONED') return 'POSTPONED';
+    if (explicitTypeName === 'STATUS_CANCELLED') return 'CANCELLED';
+
+    // Text fallback. Prioritise an explicit postponement/cancellation so that a
+    // detail like "Postponed - Heavy Rain" stays a postponement rather than being
+    // downgraded to a plain delay.
     if (
       statusTextFields.some((text) =>
-        postponementKeywords.some((key) => text.includes(key)),
+        /POSTPONED|POSTPONE|TBD/i.test(text),
       )
     ) {
       return 'POSTPONED';
     }
-
     if (
-      statusTextFields.some((text) =>
-        cancellationKeywords.some((key) => text.includes(key)),
-      )
+      statusTextFields.some((text) => /CANCELLED|CANCELED/i.test(text))
     ) {
       return 'CANCELLED';
+    }
+    if (
+      statusTextFields.some((text) =>
+        /DELAYED|DELAY|SUSPENDED|INTERRUPTED|RAIN|WEATHER/i.test(text),
+      )
+    ) {
+      return 'DELAYED';
     }
 
     // Priority 1: Check if game is truly finished
@@ -3036,6 +3068,8 @@ export class GameService {
     // 2. Loop through the leagues and the requested years
     // Track years where games were actually added (added > 0) for the response message
     const yearsWithAdditions: number[] = [];
+    const totalSteps = leagues.length * years.length;
+    let completedSteps = 0;
     for (const league of leagues) {
       for (const year of years) {
         console.info(
@@ -3058,6 +3092,12 @@ export class GameService {
           }
         } catch (error) {
           console.error(`[Oldies] Error for ${league} in ${year}:`, error);
+        } finally {
+          completedSteps++;
+          const pct = Math.round((completedSteps / totalSteps) * 100);
+          console.info(
+            `[Oldies] progress: ${pct}% (${completedSteps}/${totalSteps}) — last: ${league} ${year}`,
+          );
         }
       }
     }
