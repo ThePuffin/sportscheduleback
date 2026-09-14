@@ -3018,9 +3018,12 @@ export class GameService {
     let years: number[];
     if (yearStr === undefined || yearStr === null || yearStr.trim() === '') {
       // No year specified -> loop over the last N seasons (years), from the
-      // most recent to the oldest allowed by the historical limit.
+      // last finished year to the oldest allowed by the historical limit.
+      // The current year is excluded: it is still in progress and already
+      // covered by the normal refresh (getLeagueGames / rotation cron).
+      // Use the endpoint with an explicit ?year= to force the current year.
       years = [];
-      for (let y = currentYear; y > minYear; y--) {
+      for (let y = currentYear - 1; y > minYear; y--) {
         years.push(y);
       }
     } else {

@@ -2,6 +2,15 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Change: `getOldiesGames` skips the current year by default (explicit `?year=` still forces it)
+
+Without a `year` param, `getOldiesGames()` now loops from `currentYear - 1` down to the oldest allowed year instead of starting at `currentYear`. The current (in-progress) season is already covered by the normal refresh (`getLeagueGames` / rotation cron), so fetching it again via oldies was duplicate work. Forcing remains possible via `POST /games/refresh/oldies?year=<currentYear>&league=<LEAGUE>` — the explicit-year validation (`minYear..currentYear`) is unchanged.
+
+### Files
+- `backend/src/games/games.service.ts` — default loop starts at `currentYear - 1`
+- `backend/src/games/tests/games.service.spec.ts` — updated default-loop test, added explicit-current-year test
+- `backend/docs/games/games.service.ts.md` — documented the default exclusion + explicit force
+
 ## Change: Oldies progress logging (`getOldiesGames`)
 
 `getOldiesGames()` now logs `[Oldies] progress: <pct>% (<done>/<total>) — last: <LEAGUE> <year>` after each league×year step (in a `finally`, so failures still advance the counter), mirroring the existing `[getAllGames] progress` pattern. Useful to track long historical recoveries.

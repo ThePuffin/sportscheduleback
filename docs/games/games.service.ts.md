@@ -70,7 +70,7 @@ Before `create(game)` is called, scores are nullified for any game whose `startT
 
 ### `getOldiesGames(yearStr?, leagueParam?)`
 
-Historical recovery over leagues × years. Logs `[Oldies] progress: <pct>% (<done>/<total>) — last: <LEAGUE> <year>` after each step (same pattern as `[getAllGames] progress`), so long recoveries show their advancement. The per-game insertion loop (oldies path, `addMissingOnly: true`) additionally logs `[Oldies] <LEAGUE> (season <year>): insert progress: <pct>% (<processed>/<total>) — added <n>` at 20% milestones + 100%, so the DB insertion phase shows advancement too.
+Historical recovery over leagues × years. When no `yearStr` is given, it loops from `currentYear - 1` down to the oldest allowed year — the current (in-progress) year is excluded since it is already covered by the normal refresh. An explicit `?year=` (including the current year) still forces that single season. Logs `[Oldies] progress: <pct>% (<done>/<total>) — last: <LEAGUE> <year>` after each step (same pattern as `[getAllGames] progress`), so long recoveries show their advancement. The per-game insertion loop (oldies path, `addMissingOnly: true`) additionally logs `[Oldies] <LEAGUE> (season <year>): insert progress: <pct>% (<processed>/<total>) — added <n>` at 20% milestones + 100%, so the DB insertion phase shows advancement too.
 
 ### `getAllGames(forceUpdate, date, leagueList)`
 

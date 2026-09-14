@@ -254,11 +254,11 @@ describe('GameService', () => {
       expect(getLeagueGamesSpy).not.toHaveBeenCalled();
     });
 
-    it('should loop over the last 5 seasons when no year is specified', async () => {
+    it('should loop over finished seasons only when no year is specified (excludes current year)', async () => {
       const currentYear = new Date().getFullYear();
       const expectedYears = [];
       for (
-        let y = currentYear;
+        let y = currentYear - 1;
         y > currentYear - service.maxYearBeforeDelete;
         y--
       ) {
@@ -317,11 +317,30 @@ describe('GameService', () => {
 
       const result = await service.getOldiesGames(undefined, League.NHL);
 
-      // Only the first year (currentYear) should appear in the message since it had added > 0
-      expect(result.yearsWithAdditions).toContain(currentYear);
-      expect(result.message).toContain(String(currentYear));
+      // Only the first year (currentYear - 1) should appear in the message since it had added > 0
+      expect(result.yearsWithAdditions).toContain(currentYear - 1);
+      expect(result.message).toContain(String(currentYear - 1));
       // The second year should NOT appear
-      expect(result.message).not.toContain(String(currentYear - 1));
+      expect(result.message).not.toContain(String(currentYear - 2));
+    });
+
+    it('should still allow forcing the current year explicitly via year param', async () => {
+      const currentYear = new Date().getFullYear();
+
+      const result = await service.getOldiesGames(
+        String(currentYear),
+        League.NHL,
+      );
+
+      expect(getLeagueGamesSpy).toHaveBeenCalledTimes(1);
+      expect(getLeagueGamesSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          league: League.NHL,
+          season: currentYear,
+          addMissingOnly: true,
+        }),
+      );
+      expect(result.message).toContain(String(currentYear));
     });
 
     it('should return "already up to date" message when no games were added', async () => {
