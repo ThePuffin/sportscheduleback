@@ -2,6 +2,24 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Change: NCAA team discovery via scoreboard pages + league-scoped university logos
+
+`getESPNTeams()` keeps the classic `GET teams` list, then enriches `CollegeLeague` teams add-only by scanning up to 10 scoreboard pages (`limit=1000`, early stop) of the current year; teams without `isActive` (partial scoreboard objects) are accepted. New `resolveUniversityLogo(league, abbrev)` tries `'{LEAGUE}-{ABBREV}'` first with systematic fallback to `'{ABBREV}'` (used in team mapping, match payloads, `getTeamsLogo()`, pre-save fallback). Missing logo links are backfilled with AND without the league prefix by `backfillMissingUniversityLogos()`, which runs ONLY at the end of `getTeams()` (manual `POST /teams/refresh` or monthly `updateTeams` cron — never on game fetches). Colors already keyed per league via `uniqueId` — unchanged.
+
+### Files
+- `backend/src/utils/fetchData/espnAllData.ts` — 10-page scoreboard enrichment + `resolveUniversityLogo()` + match logo fallbacks
+- `backend/src/teams/teams.service.ts` — pre-save resolver + `backfillMissingUniversityLogos()` at end of `getTeams()` only
+- `backend/src/games/games.service.ts` — `getTeamsLogo()` + `_enrichGameWithTeamData()` use the resolver
+- `backend/docs/utils/fetchData/espnAllData.ts.md` + `backend/docs/teams/teams.service.ts.md` — documented discovery + logo resolution/backfill
+
+## Change: NCAA oldies back to team-schedule endpoint (Olympics/soccer unchanged)
+
+College leagues (`NCAAF, NCAAB, NCCABB, WNCAAB, NCAAMH, NCAAWH`) fetch history via the team schedule endpoint again (`teams/{id}/schedule?seasontype=&season=`): the `scoreboard?dates={year}` path (introduced in `e2e60ed`) does not return their full history. Olympics + soccer (`MLS`/`NWSL`) keep the scoreboard path, including oldies via explicit `season`. `NCAAS` is intentionally not restored.
+
+### Files
+- `backend/src/utils/fetchData/espnAllData.ts` — removed `collegeLeagues` from the scoreboard branch (back to `else`/team-schedule path)
+- `backend/docs/utils/fetchData/espnAllData.ts.md` — created, documents both fetch paths
+
 ## Change: `getOldiesGames` skips the current year by default (explicit `?year=` still forces it)
 
 Without a `year` param, `getOldiesGames()` now loops from `currentYear - 1` down to the oldest allowed year instead of starting at `currentYear`. The current (in-progress) season is already covered by the normal refresh (`getLeagueGames` / rotation cron), so fetching it again via oldies was duplicate work. Forcing remains possible via `POST /games/refresh/oldies?year=<currentYear>&league=<LEAGUE>` — the explicit-year validation (`minYear..currentYear`) is unchanged.

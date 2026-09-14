@@ -456,22 +456,15 @@ const getEachTeamSchedule = async (
     }
     let games = [];
     const soccerLeagues = new Set([League.MLS, League.NWSL]);
-    const collegeLeagues = new Set([
-      League.NCAAF,
-      League.NCAAB,
-      League.NCCABB,
-      League.WNCAAB,
-      League.NCAAMH,
-      League.NCAAWH,
-    ]);
 
+    // NOTE: college leagues (NCAAF, NCAAB, NCCABB, WNCAAB, NCAAMH, NCAAWH)
+    // intentionally use the team schedule endpoint below (else branch):
+    // the scoreboard?dates={year} path does not return their full history.
+    // Olympics + soccer keep the scoreboard path (incl. oldies via season).
     if (
       leagueName.includes('OLYMPICS') ||
-      soccerLeagues.has(leagueName as League) ||
-      collegeLeagues.has(leagueName as League)
+      soccerLeagues.has(leagueName as League)
     ) {
-      const currentYear = new Date().getFullYear();
-
       const years = season ? [season] : getCurrentSeasonYears(leagueName);
 
       for (const year of years) {

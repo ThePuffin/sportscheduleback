@@ -20,7 +20,7 @@ Creates or updates a team document and optionally regenerates frontend constants
 
 ### `getTeams(leagueParam?)`
 
-Fetches teams for a specific league or for all supported leagues, imports them, and saves them to the database.
+Fetches teams for a specific league or for all supported leagues, imports them, and saves them to the database. Triggered manually via `POST /teams/refresh?leagueParam=<LEAGUE>` or by the monthly `updateTeams` cron. At the end of the run only (never during game fetches), `backfillMissingUniversityLogos()` adds missing university logo links under both `'{LEAGUE}-{ABBREV}'` and plain `'{ABBREV}'` keys when the file has no entry (or an empty string) for them.
 
 ### `findAll(leagues?)` / `findAllLeagues()` / `findByLeague()` / `findOne()`
 
