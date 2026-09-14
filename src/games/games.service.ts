@@ -625,6 +625,18 @@ export class GameService {
             // Past games are accepted even with null scores; cron will fill them later via fetchGamesScores()
           }
 
+          // Strip scores for future games to prevent polluting the DB with pre-game scores.
+          // The ESPN/PWHL APIs may return scores for games that haven't started yet;
+          // without this guard, scores would be written to the DB and then removed by
+          // fixScoreIssue() on every fetchGamesScores() cycle, creating log spam.
+          const gameStartTimeCreate = game?.startTimeUTC
+            ? new Date(game.startTimeUTC).getTime()
+            : null;
+          if (gameStartTimeCreate && gameStartTimeCreate > now.getTime()) {
+            game.homeTeamScore = null;
+            game.awayTeamScore = null;
+          }
+
           await this.create(game);
           added++;
         }

@@ -62,6 +62,10 @@ games that have a complete home **and** away team. It logs added / skipped count
   - If the `uniqueId` exists but scores differ → treated as a stale/different result and **refreshed**.
   - Only complete, missing games are created.
 
+**Score stripping for future games (both flows):**
+
+Before `create(game)` is called, scores are nullified for any game whose `startTimeUTC` is in the future. The ESPN/PWHL APIs may return scores for games that haven't started yet; without this guard, scores would be written to the DB and then removed by `fixScoreIssue()` on every `fetchGamesScores()` cycle, creating log spam.
+
 ### `getAllGames(forceUpdate, date, leagueList)`
 
 Refreshes all available leagues, optionally scoped to a date or league list. When a

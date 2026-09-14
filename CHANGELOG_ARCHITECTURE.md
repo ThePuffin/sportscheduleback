@@ -2,6 +2,28 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fix: Stop `[fixScoreIssue]` log spam from future games with scores
+
+### Problem
+
+The `fixScoreIssue()` log (`Removing score for game X that has scores but hasn't started yet...`) appeared hundreds of times. Games like `NCAAWH-*`, `MLS-*` were repeatedly found with scores despite not having started.
+
+### Root Cause
+
+In `getLeagueGames()`, the ESPN/PWHL APIs return scores for games that haven't started yet. The `addMissingOnly` (oldies) flow already rejected future games entirely, but the **normal import flow** had no such guard — it called `create(game)` with the pre-game scores intact. This created an endless cycle:
+
+1. `getLeagueGames` imports a future game with scores → scores written to DB
+2. `fetchGamesScores()` → `fixScoreIssue()` finds it, logs a line, removes scores
+3. Next `getLeagueGames` cycle re-imports the same scores → back to step 1
+
+### Solution
+
+Added a guard in `getLeagueGames()` that nullifies `homeTeamScore` and `awayTeamScore` for any game whose `startTimeUTC` is in the future, right before `create(game)` is called. This prevents pre-game scores from ever being persisted, eliminating the cycle.
+
+### Files
+- `backend/src/games/games.service.ts` — added score-stripping guard before `create(game)` in the import loop
+- `backend/docs/games/games.service.ts.md` — documented the guard
+
 ## Changed: Unified fetch behavior - current season vs historical (`espnAllData.ts`, `utils.ts`)
 
 ### Problem
