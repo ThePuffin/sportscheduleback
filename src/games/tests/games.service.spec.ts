@@ -1,6 +1,7 @@
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TeamService } from '../../teams/teams.service';
+import { Colors, DEFAULT_TEAM_COLORS } from '../../utils/Colors';
 import { League } from '../../utils/enum';
 import * as utils from '../../utils/utils';
 import { GameService } from '../games.service';
@@ -60,6 +61,51 @@ describe('GameService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('_resolveTeamColors', () => {
+    afterEach(() => {
+      delete (Colors as any)['NCAAF-COLORTEST'];
+    });
+
+    it('keeps stored colors when they are not the placeholder', () => {
+      const colors = (service as any)._resolveTeamColors({
+        uniqueId: 'NCAAB-DUKE',
+        color: '#00539b',
+        backgroundColor: '#ffffff',
+      });
+
+      expect(colors).toEqual({
+        color: '#00539b',
+        backgroundColor: '#ffffff',
+      });
+    });
+
+    it('borrows the colors from the same university in another college league', () => {
+      Colors['NCAAF-COLORTEST'] = {
+        color: '#111111',
+        backgroundColor: '#222222',
+      };
+
+      const colors = (service as any)._resolveTeamColors(
+        { color: '#ffffff', backgroundColor: '#000000' },
+        'NCAAB-COLORTEST',
+      );
+
+      expect(colors).toEqual({
+        color: '#111111',
+        backgroundColor: '#222222',
+      });
+    });
+
+    it('uses the default placeholder for non-college leagues', () => {
+      const colors = (service as any)._resolveTeamColors(
+        { color: '#ffffff', backgroundColor: '#000000' },
+        'NHL-NOPE',
+      );
+
+      expect(colors).toEqual(DEFAULT_TEAM_COLORS);
+    });
   });
 
   describe('checkLeagueGamesAvailability', () => {

@@ -1,6 +1,6 @@
 import { readableDate } from '../../utils/date';
 import { CollegeLeague, League } from '../../utils/enum';
-import { Colors } from '../Colors';
+import { getTeamColors } from '../Colors';
 import type { ESPNTeam, TeamESPN, TeamType } from '../interface/team';
 import { UniversityLogos } from '../UniversityLogos';
 import { capitalize, getLuminance, getCurrentSeasonYears } from '../utils';
@@ -332,12 +332,14 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
 
         const record = standings[id];
 
-        let colorTeam = color
-          ? '#' + color
-          : Colors[uniqueId]?.color || Colors.default.color;
+        // University teams sometimes come without colors from ESPN. The shared
+        // resolver falls back to the same university in another college league
+        // (e.g. NCAAB-X -> NCAAF-X) before using the default placeholder.
+        const fallbackColors = getTeamColors(uniqueId);
+        let colorTeam = color ? '#' + color : fallbackColors.color;
         let backgroundColorTeam = alternateColor
           ? '#' + alternateColor
-          : Colors[uniqueId]?.backgroundColor || Colors.default.backgroundColor;
+          : fallbackColors.backgroundColor;
 
         if (getLuminance(colorTeam) < getLuminance(backgroundColorTeam)) {
           const temp = colorTeam;

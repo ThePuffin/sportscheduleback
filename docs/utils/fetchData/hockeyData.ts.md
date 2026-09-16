@@ -14,3 +14,10 @@ playoffs while avoiding the provider's default preseason response.
 
 Completed games use HockeyTech's official final markers (`final`, status `4`, or a `Final`
 status string). Scores are preserved even when one team has zero goals.
+
+## Team Colors
+
+NHL and PWHL teams resolve their colors through `getTeamColors()` from `../Colors`:
+the stored `ColorsTeam` entry wins, otherwise the generic default placeholder
+(`#ffffff` on `#000000`) is used. Non-college leagues never borrow colors from
+another league.

@@ -15,6 +15,14 @@ This is the core business logic module for games. It fetches schedules and score
 
 ## Main Responsibilities
 
+### `_resolveTeamColors()` (private)
+
+Resolves a team's display colors for `_enrichGameWithTeamData()`. Stored colors are kept as-is
+unless they are the generic placeholder (`#ffffff` on `#000000`): in that case `getTeamColors()`
+(from `utils/Colors.ts`) borrows the colors of the same university in another college league.
+Non-college leagues simply keep the default placeholder, so already-stored teams display the
+correct colors without waiting for a re-fetch.
+
 ### `create()`
 
 Creates or updates a game document while preserving important live fields such as status and clock.

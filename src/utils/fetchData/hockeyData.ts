@@ -7,7 +7,7 @@ import type {
   TeamPWHL,
   TeamType,
 } from '../../utils/interface/team';
-import { Colors } from '../Colors';
+import { getTeamColors } from '../Colors';
 import { PWHLGameAPI } from '../interface/gamePWHL';
 import { capitalize, getLuminance } from '../utils';
 const leagueName = League.NHL;
@@ -102,9 +102,9 @@ export class HockeyData {
         const teamID = teamAbbrev.default;
         const uniqueId = `${leagueName}-${teamID}`;
 
-        let colorTeam = Colors[uniqueId]?.color || Colors.default.color;
-        let backgroundColorTeam =
-          Colors[uniqueId]?.backgroundColor || Colors.default.backgroundColor;
+        const resolvedColors = getTeamColors(uniqueId);
+        let colorTeam = resolvedColors.color;
+        let backgroundColorTeam = resolvedColors.backgroundColor;
 
         if (getLuminance(colorTeam) < getLuminance(backgroundColorTeam)) {
           const temp = colorTeam;
@@ -167,9 +167,9 @@ export class HockeyData {
           otLosses = Number.parseInt(parts[2]) || 0;
         }
 
-        let colorTeam = Colors[uniqueId]?.color || Colors.default.color;
-        let backgroundColorTeam =
-          Colors[uniqueId]?.backgroundColor || Colors.default.backgroundColor;
+        const resolvedColors = getTeamColors(uniqueId);
+        let colorTeam = resolvedColors.color;
+        let backgroundColorTeam = resolvedColors.backgroundColor;
 
         if (getLuminance(colorTeam) < getLuminance(backgroundColorTeam)) {
           const temp = colorTeam;

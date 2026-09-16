@@ -5,6 +5,7 @@ import * as mongoose from 'mongoose';
 import { Model } from 'mongoose';
 import { TeamService } from '../teams/teams.service';
 import { addHours, readableDate } from '../utils/date';
+import { getTeamColors, isDefaultTeamColors } from '../utils/Colors';
 import { CollegeLeague, League } from '../utils/enum';
 import {
   getESPNGameScore,
@@ -83,6 +84,29 @@ export class GameService {
     return logos;
   }
 
+  /**
+   * Resolves a team's display colors. Stored colors are kept as-is unless they
+   * are the generic placeholder (`#ffffff` on `#000000`): in that case the
+   * shared resolver borrows the colors of the same university in another
+   * college league (non-college leagues simply keep the default placeholder).
+   */
+  private _resolveTeamColors(
+    team: any,
+    fallbackUniqueId?: string,
+  ): { color?: string; backgroundColor?: string } {
+    const storedColors = {
+      color: team?.color,
+      backgroundColor: team?.backgroundColor,
+    };
+
+    if (!isDefaultTeamColors(storedColors)) {
+      return storedColors;
+    }
+
+    const uniqueId = team?.uniqueId ?? fallbackUniqueId;
+    return uniqueId ? getTeamColors(uniqueId) : storedColors;
+  }
+
   private _enrichGameWithTeamData(game: any, teamsMap: Map<string, TeamType>) {
     // Fallback sur le fichier statique `HistoricalTeams` pour les équipes
     // disparues/déménagées/renommées absentes de la base (vieux matchs).
@@ -93,6 +117,9 @@ export class GameService {
     const isPlayoffs =
       (game.seriesSummary || game.seriesStatus) &&
       !game.seriesSummary?.toLowerCase().includes('regular season');
+
+    const homeTeamColors = this._resolveTeamColors(homeTeam, game.homeTeamId);
+    const awayTeamColors = this._resolveTeamColors(awayTeam, game.awayTeamId);
 
     return {
       ...game,
@@ -118,14 +145,14 @@ export class GameService {
         game.homeTeamLogoDark ||
         UniversityLogos[homeTeam?.abbrev || game.homeTeamShort || ''] ||
         '',
-      homeTeamColor: homeTeam?.color,
-      homeTeamBackgroundColor: homeTeam?.backgroundColor,
+      homeTeamColor: homeTeamColors.color,
+      homeTeamBackgroundColor: homeTeamColors.backgroundColor,
       awayTeam: awayTeam?.label || game.awayTeam,
       awayTeamShort: awayTeam?.abbrev || game.awayTeamShort,
       awayTeamLogo: awayTeam?.teamLogo || game.awayTeamLogo,
       awayTeamLogoDark: awayTeam?.teamLogoDark || game.awayTeamLogoDark,
-      awayTeamColor: awayTeam?.color,
-      awayTeamBackgroundColor: awayTeam?.backgroundColor,
+      awayTeamColor: awayTeamColors.color,
+      awayTeamBackgroundColor: awayTeamColors.backgroundColor,
     };
   }
 

@@ -2,6 +2,18 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Change: University teams borrow colors from another college league when missing
+
+Some university teams come back from ESPN without colors; their `ColorsTeam` entry was then stored as the generic placeholder (`#ffffff` on `#000000`) and the UI showed a white-on-black card. `backend/src/utils/Colors.ts` now exposes `getTeamColors(uniqueId)`: a known, non-placeholder entry is returned as-is; for a **university league** with a missing/placeholder entry the same university abbreviation is looked up in the other college leagues (a school keeps the same colors across sports, e.g. `NCAAB-X` → `NCAAF-X`); every other case (non-college leagues included) keeps `Colors.default`. This applies at fetch time (ESPN + NHL/PWHL team mapping) and at display time via the new `GameService._resolveTeamColors()`, so already-stored teams show the borrowed colors without waiting for a re-fetch.
+
+### Files
+- `backend/src/utils/Colors.ts` — `DEFAULT_TEAM_COLORS`, `isDefaultTeamColors()`, `COLLEGE_LEAGUES`, `getTeamColors()`
+- `backend/src/utils/fetchData/espnAllData.ts` — fallback branch uses `getTeamColors(uniqueId)`
+- `backend/src/utils/fetchData/hockeyData.ts` — NHL/PWHL team mapping uses `getTeamColors(uniqueId)`
+- `backend/src/games/games.service.ts` — new `_resolveTeamColors()` used by `_enrichGameWithTeamData()`
+- `backend/src/utils/Colors.spec.ts` + `backend/src/games/tests/games.service.spec.ts` — unit tests
+- `backend/docs/utils/Colors.ts.md` (new) + `espnAllData.ts.md`, `hockeyData.ts.md`, `games/games.service.ts.md` — documentation
+
 ## Change: NCAA team discovery via scoreboard pages + league-scoped university logos
 
 `getESPNTeams()` keeps the classic `GET teams` list, then enriches `CollegeLeague` teams add-only by scanning up to 10 scoreboard pages (`limit=1000`, early stop) of the current year; teams without `isActive` (partial scoreboard objects) are accepted. New `resolveUniversityLogo(league, abbrev)` tries `'{LEAGUE}-{ABBREV}'` first with systematic fallback to `'{ABBREV}'` (used in team mapping, match payloads, `getTeamsLogo()`, pre-save fallback). Missing logo links are backfilled with AND without the league prefix by `backfillMissingUniversityLogos()`, which runs ONLY at the end of `getTeams()` (manual `POST /teams/refresh` or monthly `updateTeams` cron — never on game fetches). Colors already keyed per league via `uniqueId` — unchanged.
