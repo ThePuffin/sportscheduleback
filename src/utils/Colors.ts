@@ -26,6 +26,22 @@ export const isDefaultTeamColors = (
   normalizeHex(colors.color) === DEFAULT_TEAM_COLORS.color &&
   normalizeHex(colors.backgroundColor) === DEFAULT_TEAM_COLORS.backgroundColor;
 
+/**
+ * Safeguard: a pair where `color` is identical to `backgroundColor` (or the
+ * `#NULL` artifact) is unusable for display. Such entries are treated as
+ * "unknown" everywhere, exactly like the default placeholder.
+ */
+export const isDegenerateTeamColors = (
+  colors?: Partial<TeamColors> | null,
+): boolean => {
+  if (!colors) return false;
+  const color = normalizeHex(colors.color);
+  const backgroundColor = normalizeHex(colors.backgroundColor);
+  if (!color || !backgroundColor) return false;
+  if (color === '#null' || backgroundColor === '#null') return true;
+  return color === backgroundColor;
+};
+
 export const Colors: Record<string, TeamColors> = {
   default: DEFAULT_TEAM_COLORS,
   ...ColorsTeamEnum,
@@ -41,8 +57,11 @@ export const Colors: Record<string, TeamColors> = {
  * - Anything else (non-college leagues included) => `Colors.default`.
  */
 export const getTeamColors = (uniqueId: string): TeamColors => {
+  const isUsable = (colors?: Partial<TeamColors> | null): boolean =>
+    !!colors && !isDefaultTeamColors(colors) && !isDegenerateTeamColors(colors);
+
   const directColors = uniqueId ? Colors[uniqueId] : undefined;
-  if (directColors && !isDefaultTeamColors(directColors)) {
+  if (isUsable(directColors)) {
     return directColors;
   }
 
@@ -55,11 +74,12 @@ export const getTeamColors = (uniqueId: string): TeamColors => {
     for (const otherLeague of COLLEGE_LEAGUES) {
       if (otherLeague === league) continue;
       const crossLeagueColors = Colors[`${otherLeague}-${abbrev}`];
-      if (crossLeagueColors && !isDefaultTeamColors(crossLeagueColors)) {
+      if (isUsable(crossLeagueColors)) {
         return crossLeagueColors;
       }
     }
   }
 
-  return directColors ?? DEFAULT_TEAM_COLORS;
+  // Safeguard: never return a degenerate (color === background) entry.
+  return isUsable(directColors) ? directColors! : DEFAULT_TEAM_COLORS;
 };

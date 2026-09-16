@@ -5,7 +5,11 @@ import * as mongoose from 'mongoose';
 import { Model } from 'mongoose';
 import { TeamService } from '../teams/teams.service';
 import { addHours, readableDate } from '../utils/date';
-import { getTeamColors, isDefaultTeamColors } from '../utils/Colors';
+import {
+  getTeamColors,
+  isDefaultTeamColors,
+  isDegenerateTeamColors,
+} from '../utils/Colors';
 import { CollegeLeague, League } from '../utils/enum';
 import {
   getESPNGameScore,
@@ -99,7 +103,10 @@ export class GameService {
       backgroundColor: team?.backgroundColor,
     };
 
-    if (!isDefaultTeamColors(storedColors)) {
+    if (
+      !isDefaultTeamColors(storedColors) &&
+      !isDegenerateTeamColors(storedColors)
+    ) {
       return storedColors;
     }
 
@@ -157,50 +164,47 @@ export class GameService {
   }
 
   async create(gameDto: CreateGameDto | UpdateGameDto): Promise<Game> {
-    return this.executeWithCapacityGuard(
-      async () => {
-        const { uniqueId } = gameDto;
+    return this.executeWithCapacityGuard(async () => {
+      const { uniqueId } = gameDto;
 
-        if (uniqueId) {
-          const existingGame = await this.findOne(uniqueId);
-          if (existingGame) {
-            if (
-              gameDto.homeTeamScore === null &&
-              existingGame.homeTeamScore !== null
-            ) {
-              delete gameDto.homeTeamScore;
-            }
-
-            if (
-              gameDto.awayTeamScore === null &&
-              existingGame.awayTeamScore !== null
-            ) {
-              delete gameDto.awayTeamScore;
-            }
-
-            // Protect game status and live info from being overwritten by null/default values
-            const fieldsToProtect = ['gameStatus', 'gameClock', 'gamePeriod'];
-
-            fieldsToProtect.forEach((field) => {
-              if (
-                (gameDto[field] === null || gameDto[field] === undefined) &&
-                existingGame[field] !== null
-              ) {
-                delete gameDto[field];
-              }
-            });
-
-            Object.assign(existingGame, gameDto);
-
-            return await existingGame.save();
+      if (uniqueId) {
+        const existingGame = await this.findOne(uniqueId);
+        if (existingGame) {
+          if (
+            gameDto.homeTeamScore === null &&
+            existingGame.homeTeamScore !== null
+          ) {
+            delete gameDto.homeTeamScore;
           }
-        }
 
-        const newGame = new this.gameModel(gameDto);
-        return await newGame.save();
-      },
-      'create',
-    );
+          if (
+            gameDto.awayTeamScore === null &&
+            existingGame.awayTeamScore !== null
+          ) {
+            delete gameDto.awayTeamScore;
+          }
+
+          // Protect game status and live info from being overwritten by null/default values
+          const fieldsToProtect = ['gameStatus', 'gameClock', 'gamePeriod'];
+
+          fieldsToProtect.forEach((field) => {
+            if (
+              (gameDto[field] === null || gameDto[field] === undefined) &&
+              existingGame[field] !== null
+            ) {
+              delete gameDto[field];
+            }
+          });
+
+          Object.assign(existingGame, gameDto);
+
+          return await existingGame.save();
+        }
+      }
+
+      const newGame = new this.gameModel(gameDto);
+      return await newGame.save();
+    }, 'create');
   }
 
   /**
@@ -574,7 +578,7 @@ export class GameService {
         // A game is considered "already present" (same game) only when its uniqueId matches
         // AND both the home and the away scores match the stored ones.
         // Otherwise we refresh it with the fresh (more complete) data.
-        let existingResults = new Map<
+        const existingResults = new Map<
           string,
           { homeTeamScore?: number; awayTeamScore?: number }
         >();
@@ -732,7 +736,9 @@ export class GameService {
 
     const total = leaguesToRefresh.length;
     let lastMilestone = 0; // next 20% milestone to log (20, 40, 60, 80, 100)
-    console.info(`[getAllGames] refreshing ${total} league(s): ${leaguesToRefresh.join(', ')}`);
+    console.info(
+      `[getAllGames] refreshing ${total} league(s): ${leaguesToRefresh.join(', ')}`,
+    );
     for (let i = 0; i < total; i++) {
       const league = leaguesToRefresh[i];
       console.info(`[getAllGames] refreshing ${league} (${i + 1}/${total})`);
@@ -748,10 +754,12 @@ export class GameService {
       const pct = Math.round(((i + 1) / total) * 100);
       if (pct >= lastMilestone + 20) {
         lastMilestone = Math.floor(pct / 20) * 20;
-        console.info(`[getAllGames] progress: ${pct}% (${i + 1}/${total}) — last: ${league}`);
+        console.info(
+          `[getAllGames] progress: ${pct}% (${i + 1}/${total}) — last: ${league}`,
+        );
       }
     }
-          console.info('[getAllGames] done');
+    console.info('[getAllGames] done');
     // Read-only callers (GET /games) expect the in-memory active set, but the cron jobs
     // (monthly getAllGames, daily per-league refreshes, checkLeagueGamesAvailability) must
     // NOT materialise the entire historical collection here — that single `findAll()` scan
@@ -775,7 +783,9 @@ export class GameService {
       // daily per-league refreshes, checkLeagueGamesAvailability) fill the
       // DB; a manual one-league refresh stays available via
       // POST /games/refresh/:league.
-      console.info('No games found in DB. Returning [] — cron jobs will fill the DB.');
+      console.info(
+        'No games found in DB. Returning [] — cron jobs will fill the DB.',
+      );
       return [];
     }
 
@@ -923,7 +933,7 @@ export class GameService {
     clean?: boolean,
     needRefreshData = true,
   ) {
-    let games = await this.filterGames({
+    const games = await this.filterGames({
       teamSelectedIds: teamSelectedId,
       startDate,
       clean,
@@ -1271,8 +1281,7 @@ export class GameService {
     const filteredGames = games.filter(({ gameStatus, startTimeUTC }) => {
       const now = new Date();
       const isStartedForMoreThan12Hours =
-        new Date(startTimeUTC) <
-        new Date(now.getTime() - 12 * 60 * 60 * 1000);
+        new Date(startTimeUTC) < new Date(now.getTime() - 12 * 60 * 60 * 1000);
       return (
         (gameStatus !== 'FINISHED' && !isStartedForMoreThan12Hours) ||
         gameStatus === 'FINISHED'
@@ -1284,13 +1293,10 @@ export class GameService {
   }
 
   async update(uniqueId: string, updateGameDto: Partial<UpdateGameDto>) {
-    return this.executeWithCapacityGuard(
-      async () => {
-        const filter = { uniqueId: uniqueId };
-        return this.gameModel.updateOne(filter, updateGameDto);
-      },
-      'update',
-    );
+    return this.executeWithCapacityGuard(async () => {
+      const filter = { uniqueId: uniqueId };
+      return this.gameModel.updateOne(filter, updateGameDto);
+    }, 'update');
   }
   async remove(uniqueId: string) {
     const filter = { uniqueId: uniqueId };
@@ -1451,7 +1457,7 @@ export class GameService {
       .find({
         isActive: true,
         startTimeUTC: {
-          $gte: cutoff.toISOString(),          // NEW: lower bound (was unbounded)
+          $gte: cutoff.toISOString(), // NEW: lower bound (was unbounded)
           $lte: hoursAgo.toISOString(),
         },
         $or: [
@@ -1484,7 +1490,7 @@ export class GameService {
       .exec();
   }
 
-    get isScoreRecoveryRunning(): boolean {
+  get isScoreRecoveryRunning(): boolean {
     return this.isFetchingScores;
   }
 
@@ -1765,7 +1771,7 @@ export class GameService {
   }
 
   private async removeOldGamesWithoutScore() {
-    let gamesToDelete = await this.fetchOldGamesWithMissingScores(72);
+    const gamesToDelete = await this.fetchOldGamesWithMissingScores(72);
 
     console.info(
       `[fetchGamesScores] ${gamesToDelete.length} games without scores found. Processing...`,
@@ -2068,7 +2074,9 @@ export class GameService {
       // checkLeagueGamesAvailability) fill and keep the DB fresh. Refreshing
       // from this read path was blocking the server during third-party
       // schedule fetches (event-loop + memory pressure → restarts).
-      console.info(`[findByDateHour] No games found for ${gameDate}. Returning {}.`);
+      console.info(
+        `[findByDateHour] No games found for ${gameDate}. Returning {}.`,
+      );
       return {};
     }
 
@@ -2089,8 +2097,7 @@ export class GameService {
     const filteredGames = games.filter(({ gameStatus, startTimeUTC }) => {
       const now = new Date();
       const isStartedForMoreThan12Hours =
-        new Date(startTimeUTC) <
-        new Date(now.getTime() - 12 * 60 * 60 * 1000);
+        new Date(startTimeUTC) < new Date(now.getTime() - 12 * 60 * 60 * 1000);
       return (
         (gameStatus !== 'FINISHED' && !isStartedForMoreThan12Hours) ||
         gameStatus === 'FINISHED'
@@ -2148,16 +2155,10 @@ export class GameService {
     // Text fallback. Prioritise an explicit postponement/cancellation so that a
     // detail like "Postponed - Heavy Rain" stays a postponement rather than being
     // downgraded to a plain delay.
-    if (
-      statusTextFields.some((text) =>
-        /POSTPONED|POSTPONE|TBD/i.test(text),
-      )
-    ) {
+    if (statusTextFields.some((text) => /POSTPONED|POSTPONE|TBD/i.test(text))) {
       return 'POSTPONED';
     }
-    if (
-      statusTextFields.some((text) => /CANCELLED|CANCELED/i.test(text))
-    ) {
+    if (statusTextFields.some((text) => /CANCELLED|CANCELED/i.test(text))) {
       return 'CANCELLED';
     }
     if (
@@ -2489,14 +2490,17 @@ export class GameService {
         const dbStats = await db.command({ dbStats: 1 });
 
         // Log actual dbStats response for debugging
-        console.info('[Capacity Manager] dbStats response:', JSON.stringify({
-          dataSize: dbStats.dataSize,
-          storageSize: dbStats.storageSize,
-          indexSize: dbStats.indexSize,
-          totalSize: dbStats.totalSize,
-          fileSize: dbStats.fileSize,
-          nsSizeMB: dbStats.nsSizeMB,
-        }));
+        console.info(
+          '[Capacity Manager] dbStats response:',
+          JSON.stringify({
+            dataSize: dbStats.dataSize,
+            storageSize: dbStats.storageSize,
+            indexSize: dbStats.indexSize,
+            totalSize: dbStats.totalSize,
+            fileSize: dbStats.fileSize,
+            nsSizeMB: dbStats.nsSizeMB,
+          }),
+        );
 
         // Prioritize totalSize (data + indexes across all collections),
         // then fall back to dataSize + indexSize (Atlas-compatible for all cluster types)
@@ -2512,8 +2516,15 @@ export class GameService {
         }
       } catch (dbStatsError) {
         // Fallback: aggregate $collStats across ALL collections
-        console.info('[Capacity Manager] dbStats failed, using collection aggregation fallback');
-        console.debug('[Capacity Manager] dbStats error:', dbStatsError instanceof Error ? dbStatsError.message : String(dbStatsError));
+        console.info(
+          '[Capacity Manager] dbStats failed, using collection aggregation fallback',
+        );
+        console.debug(
+          '[Capacity Manager] dbStats error:',
+          dbStatsError instanceof Error
+            ? dbStatsError.message
+            : String(dbStatsError),
+        );
 
         try {
           // Get all collection names and sum their storage stats
@@ -2528,9 +2539,10 @@ export class GameService {
             if (collName.startsWith('system.')) continue;
 
             try {
-              const collStats = await db.collection(collName).aggregate([
-                { $collStats: { storageStats: {} } }
-              ]).toArray();
+              const collStats = await db
+                .collection(collName)
+                .aggregate([{ $collStats: { storageStats: {} } }])
+                .toArray();
 
               if (collStats[0]?.storageStats) {
                 const ss = collStats[0].storageStats;
@@ -2541,7 +2553,9 @@ export class GameService {
               }
             } catch {
               // Skip collections we can't read
-              console.debug(`[Capacity Manager] Could not get stats for collection: ${collName}`);
+              console.debug(
+                `[Capacity Manager] Could not get stats for collection: ${collName}`,
+              );
             }
           }
 
@@ -2549,15 +2563,20 @@ export class GameService {
           usedBytes = totalDataSize + totalIndexSize;
           statsSource = 'aggregated $collStats (all collections)';
 
-          console.info('[Capacity Manager] Aggregated collection stats:', JSON.stringify({
-            totalDataSize,
-            totalStorageSize,
-            totalIndexSize,
-            usedBytes,
-          }));
+          console.info(
+            '[Capacity Manager] Aggregated collection stats:',
+            JSON.stringify({
+              totalDataSize,
+              totalStorageSize,
+              totalIndexSize,
+              usedBytes,
+            }),
+          );
         } catch (aggError) {
           // Last resort: just use the games collection stats
-          console.info('[Capacity Manager] Aggregation failed, using games collection only');
+          console.info(
+            '[Capacity Manager] Aggregation failed, using games collection only',
+          );
 
           const sizeInfo = await this.gameModel
             .aggregate<{
@@ -2637,7 +2656,7 @@ export class GameService {
     return result.deletedCount || 0;
   }
 
-      /**
+  /**
    * READ-ONLY capacity report.
    * Returns the current disk usage + a per-year breakdown (oldest → newest)
    * plus the count of stored teams, WITHOUT performing any deletion.
@@ -2652,7 +2671,12 @@ export class GameService {
     /** Occupancy rate (0–1) */
     percentage: number;
     /** Per-year game counts, oldest → newest */
-    years: { year: number; count: number; oldestDate: string; newestDate: string }[];
+    years: {
+      year: number;
+      count: number;
+      oldestDate: string;
+      newestDate: string;
+    }[];
     /** Total number of stored teams */
     teamCount: number;
     /** Total number of stored game documents */
@@ -2665,7 +2689,12 @@ export class GameService {
   }> {
     const defaults = {
       diskUsage: { usedMB: 0, totalMB: 1, percentage: 0 },
-      years: [] as { year: number; count: number; oldestDate: string; newestDate: string }[],
+      years: [] as {
+        year: number;
+        count: number;
+        oldestDate: string;
+        newestDate: string;
+      }[],
       teamCount: 0,
       gameCount: 0,
     };
@@ -2803,9 +2832,7 @@ export class GameService {
 
     // Check error message patterns
     const message =
-      (error as any)?.message ??
-      (error as any)?.errmsg ??
-      String(error);
+      (error as any)?.message ?? (error as any)?.errmsg ?? String(error);
     const lowerMsg = message.toLowerCase();
     return (
       lowerMsg.includes('no space left') ||
@@ -2930,7 +2957,11 @@ export class GameService {
       // Delete all games from that month
       const startDate = `${oldestYear}-${oldestMonth}-01`;
       // Calculate last day of month
-      const lastDay = new Date(oldestYear, parseInt(oldestMonth, 10), 0).getDate();
+      const lastDay = new Date(
+        oldestYear,
+        parseInt(oldestMonth, 10),
+        0,
+      ).getDate();
       const endDate = `${oldestYear}-${oldestMonth}-${lastDay.toString().padStart(2, '0')}`;
 
       const deleteResult = await this.gameModel.deleteMany({
@@ -2943,7 +2974,9 @@ export class GameService {
       );
 
       // Get remaining years for the report
-      const remainingYears = (await this.getAvailableYears()).map((y) => y.year);
+      const remainingYears = (await this.getAvailableYears()).map(
+        (y) => y.year,
+      );
 
       return {
         action: 'purged',
@@ -3117,7 +3150,12 @@ export class GameService {
             addMissingOnly: true, // Oldies: do not overwrite, only add missing games.
           });
           // Track years where at least one game was actually added
-          if (result && typeof result === 'object' && 'added' in result && result.added > 0) {
+          if (
+            result &&
+            typeof result === 'object' &&
+            'added' in result &&
+            result.added > 0
+          ) {
             yearsWithAdditions.push(year);
           }
         } catch (error) {

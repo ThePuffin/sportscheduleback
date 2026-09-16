@@ -13,14 +13,18 @@ placeholder, and exposes helpers to resolve a team's colors from its `uniqueId`.
 - **`DEFAULT_TEAM_COLORS`** — single source of truth for the placeholder
   (`color: '#ffffff'`, `backgroundColor: '#000000'`).
 - **`isDefaultTeamColors(colors)`** — case-insensitive check for that placeholder.
+- **`isDegenerateTeamColors(colors)`** — safeguard: `true` when `color` equals
+  `backgroundColor` (case-insensitive) or when either value is the `#NULL`
+  artifact. Such pairs are unusable for display.
 - **`COLLEGE_LEAGUES`** — the six university leagues
   (`NCAAF, NCAAB, NCCABB, WNCAAB, NCAAMH, NCAAWH`).
 - **`getTeamColors(uniqueId)`** — resolution helper:
-  1. known non-placeholder entry → returned as-is;
-  2. university league with a missing/placeholder entry → the same university
-     abbreviation is looked up in the other college leagues (a school keeps the
-     same colors across sports, e.g. `NCAAB-X` borrows `NCAAF-X` / `NCAAMH-X`);
+  1. known entry that is neither the placeholder nor degenerate → returned as-is;
+  2. university league with a missing/placeholder/**degenerate** entry → the same
+     university abbreviation is looked up in the other college leagues (a school
+     keeps the same colors across sports, e.g. `NCAAB-X` borrows `NCAAF-X` / `NCAAMH-X`);
   3. anything else (non-college leagues included) → `DEFAULT_TEAM_COLORS`.
+     A degenerate entry is **never** returned.
 
 ## Consumers
 

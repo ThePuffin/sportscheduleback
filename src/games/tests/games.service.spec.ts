@@ -106,6 +106,32 @@ describe('GameService', () => {
 
       expect(colors).toEqual(DEFAULT_TEAM_COLORS);
     });
+
+    it('treats stored degenerate (color === background) colors as unknown and borrows from another league', () => {
+      Colors['NCAAF-COLORTEST'] = {
+        color: '#111111',
+        backgroundColor: '#222222',
+      };
+
+      const colors = (service as any)._resolveTeamColors(
+        { color: '#000000', backgroundColor: '#000000' },
+        'NCCABB-COLORTEST',
+      );
+
+      expect(colors).toEqual({
+        color: '#111111',
+        backgroundColor: '#222222',
+      });
+    });
+
+    it('falls back to the default placeholder when the stored colors are degenerate and no league helps', () => {
+      const colors = (service as any)._resolveTeamColors(
+        { color: '#000000', backgroundColor: '#000000' },
+        'NHL-NOPE',
+      );
+
+      expect(colors).toEqual(DEFAULT_TEAM_COLORS);
+    });
   });
 
   describe('checkLeagueGamesAvailability', () => {
@@ -283,7 +309,11 @@ describe('GameService', () => {
       ]);
       getLeagueGamesSpy = jest
         .spyOn(service, 'getLeagueGames')
-        .mockResolvedValue({ added: 1, skippedExisting: 0, skippedMissingTeamData: 0 });
+        .mockResolvedValue({
+          added: 1,
+          skippedExisting: 0,
+          skippedMissingTeamData: 0,
+        });
     });
 
     afterEach(() => {
@@ -943,12 +973,14 @@ describe('GameService', () => {
       expect(mockGameModel.aggregate).toHaveBeenCalled();
     });
   });
-describe('purgeOldestMonth', () => {
+  describe('purgeOldestMonth', () => {
     beforeEach(() => {
       // Reset aggregate and deleteMany mocks
       mockGameModel.aggregate = jest.fn();
       mockGameModel.deleteMany = jest.fn().mockReturnValue({
-        exec: jest.fn().mockResolvedValue({ deletedCount: 0, acknowledged: true }),
+        exec: jest
+          .fn()
+          .mockResolvedValue({ deletedCount: 0, acknowledged: true }),
       });
     });
 
@@ -1097,7 +1129,7 @@ describe('purgeOldestMonth', () => {
     });
   });
 
-describe('getDateRange', () => {
+  describe('getDateRange', () => {
     it('should return min/max dates from the aggregate', async () => {
       mockGameModel.aggregate.mockResolvedValue([
         { minDate: '2024-01-01', maxDate: '2024-12-31' },
@@ -1138,7 +1170,10 @@ describe('getDateRange', () => {
 
       const result = await service.getClosestDates({});
 
-      expect(result).toEqual({ previousDate: '2026-02-01', nextDate: '2026-03-10' });
+      expect(result).toEqual({
+        previousDate: '2026-02-01',
+        nextDate: '2026-03-10',
+      });
       expect(mockGameModel.aggregate).toHaveBeenCalledTimes(2);
     });
 

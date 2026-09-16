@@ -33,7 +33,9 @@ const fetchWithRetry = async (url: string, retries = 1) => {
     } catch (error) {
       lastError = error;
       if (attempt < retries) {
-        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+        await new Promise((resolve) =>
+          setTimeout(resolve, 500 * (attempt + 1)),
+        );
       }
     }
   }
@@ -229,12 +231,14 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
       return allTeams;
     }
     if (!leaguesData[leagueName]) return [];
-    const fetchedTeams = await fetchWithRetry(leaguesData[leagueName].fetchTeam);
+    const fetchedTeams = await fetchWithRetry(
+      leaguesData[leagueName].fetchTeam,
+    );
     const fetchTeams: TeamESPN = await fetchedTeams.json();
     const { sports } = fetchTeams;
     if (!sports) return [];
     const { leagues } = sports[0];
-    let allTeams: ESPNTeam[] = leagues[0].teams || [];
+    const allTeams: ESPNTeam[] = leagues[0].teams || [];
     const standings = await getESPNStandings(leagueName);
 
     if (allTeams.length === 0 && leagueName.includes('OLYMPICS')) {
@@ -340,6 +344,14 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
         let backgroundColorTeam = alternateColor
           ? '#' + alternateColor
           : fallbackColors.backgroundColor;
+
+        // Safeguard: ESPN sometimes returns color === alternateColor (or an
+        // entry that collapses into the fallback); such a pair is unusable, so
+        // keep the resolved fallback colors instead.
+        if (colorTeam.toLowerCase() === backgroundColorTeam.toLowerCase()) {
+          colorTeam = fallbackColors.color;
+          backgroundColorTeam = fallbackColors.backgroundColor;
+        }
 
         if (getLuminance(colorTeam) < getLuminance(backgroundColorTeam)) {
           const temp = colorTeam;
@@ -597,8 +609,8 @@ const getEachTeamSchedule = async (
             (l) => l.rel?.includes('dark') && l.rel?.includes('scoreboard'),
           )?.href || homeTeamLogo;
 
-        let homeTeamShort = homeAbbrev;
-        let awayTeamShort = awayAbbrev;
+        const homeTeamShort = homeAbbrev;
+        const awayTeamShort = awayAbbrev;
         const comp = competitions[0];
 
         return {
@@ -761,8 +773,8 @@ export const getESPNScores = async (
                 const awayTeamRecord =
                   away?.records?.find((r) => r.type === 'total')?.summary || '';
 
-                let homeTeamShort = home?.team?.abbreviation || undefined;
-                let awayTeamShort = away?.team?.abbreviation || undefined;
+                const homeTeamShort = home?.team?.abbreviation || undefined;
+                const awayTeamShort = away?.team?.abbreviation || undefined;
 
                 const displayClockDetail = comp.status?.displayClock || '';
                 const statusIndicatesFinishedDetail =
@@ -854,8 +866,8 @@ export const getESPNScores = async (
         const awayTeamRecord =
           away?.records?.find((r) => r.type === 'total')?.summary || '';
 
-        let homeTeamShort = home?.team?.abbreviation || undefined;
-        let awayTeamShort = away?.team?.abbreviation || undefined;
+        const homeTeamShort = home?.team?.abbreviation || undefined;
+        const awayTeamShort = away?.team?.abbreviation || undefined;
 
         finishedCount++;
         const normalized = {

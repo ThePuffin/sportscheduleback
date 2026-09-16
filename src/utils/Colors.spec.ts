@@ -4,6 +4,7 @@ import {
   DEFAULT_TEAM_COLORS,
   getTeamColors,
   isDefaultTeamColors,
+  isDegenerateTeamColors,
 } from './Colors';
 
 describe('Colors helpers', () => {
@@ -14,6 +15,8 @@ describe('Colors helpers', () => {
     'NCAAB-TESTU',
     'NCAAWH-TESTU',
     'NCAAMH-TESTU',
+    'NCCABB-TESTU',
+    'NCAAMH-TESTU2',
     'XYZ-TESTU',
   ];
 
@@ -56,6 +59,50 @@ describe('Colors helpers', () => {
       expect(isDefaultTeamColors({})).toBe(false);
       expect(isDefaultTeamColors(null)).toBe(false);
       expect(isDefaultTeamColors(undefined)).toBe(false);
+    });
+  });
+
+  describe('isDegenerateTeamColors (safeguard)', () => {
+    it('detects color === backgroundColor (case-insensitive)', () => {
+      expect(
+        isDegenerateTeamColors({
+          color: '#000000',
+          backgroundColor: '#000000',
+        }),
+      ).toBe(true);
+      expect(
+        isDegenerateTeamColors({
+          color: '#FF0000',
+          backgroundColor: '#ff0000',
+        }),
+      ).toBe(true);
+    });
+
+    it('detects the #NULL artifact', () => {
+      expect(
+        isDegenerateTeamColors({ color: '#NULL', backgroundColor: '#NULL' }),
+      ).toBe(true);
+      expect(
+        isDegenerateTeamColors({ color: '#ff0000', backgroundColor: '#NULL' }),
+      ).toBe(true);
+    });
+
+    it('accepts real pairs and rejects empty/nullish values', () => {
+      expect(
+        isDegenerateTeamColors({
+          color: '#ffffff',
+          backgroundColor: '#000000',
+        }),
+      ).toBe(false);
+      expect(
+        isDegenerateTeamColors({
+          color: '#9E1B32',
+          backgroundColor: '#FFFFFF',
+        }),
+      ).toBe(false);
+      expect(isDegenerateTeamColors({ color: '#ffffff' })).toBe(false);
+      expect(isDegenerateTeamColors(null)).toBe(false);
+      expect(isDegenerateTeamColors(undefined)).toBe(false);
     });
   });
 
@@ -116,6 +163,36 @@ describe('Colors helpers', () => {
 
     it('handles an empty uniqueId safely', () => {
       expect(getTeamColors('')).toEqual(DEFAULT_TEAM_COLORS);
+    });
+
+    it('treats a degenerate (color === background) entry as unknown and borrows from another college league', () => {
+      Colors['NCCABB-TESTU'] = {
+        color: '#000000',
+        backgroundColor: '#000000',
+      };
+      Colors['NCAAF-TESTU'] = {
+        color: '#112233',
+        backgroundColor: '#445566',
+      };
+
+      expect(getTeamColors('NCCABB-TESTU')).toEqual({
+        color: '#112233',
+        backgroundColor: '#445566',
+      });
+    });
+
+    it('never returns a degenerate entry: falls back to the default placeholder', () => {
+      Colors['XYZ-TESTU'] = {
+        color: '#000000',
+        backgroundColor: '#000000',
+      };
+      Colors['NCAAMH-TESTU2'] = {
+        color: '#NULL',
+        backgroundColor: '#NULL',
+      };
+
+      expect(getTeamColors('XYZ-TESTU')).toEqual(DEFAULT_TEAM_COLORS);
+      expect(getTeamColors('NCAAMH-TESTU2')).toEqual(DEFAULT_TEAM_COLORS);
     });
   });
 });

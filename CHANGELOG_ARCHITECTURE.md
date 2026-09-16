@@ -2,6 +2,17 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Change: Degenerate color pairs (color === background) treated as unknown
+
+Entries where `color` equals `backgroundColor` (e.g. `#000000`/`#000000`, or the `#NULL` artifact) are unusable for display. New `isDegenerateTeamColors()` in `Colors.ts` makes such pairs "unknown" everywhere: `getTeamColors()` never returns one (cross-college fallback then `DEFAULT_TEAM_COLORS`), `_resolveTeamColors()` in `games.service.ts` no longer trusts them, and the ESPN team mapping (`espnAllData.ts`) replaces a `color === alternateColor` pair with the resolved fallback colors. Remaining broken entries are listed in `COLORS_REPORT.md` (repo root) for manual fixing; colors scraped from teamcolorcodes.com were rejected (all pages returned the same template artifact `#00E5FF/#F0F0F0`).
+
+### Files
+- `backend/src/utils/Colors.ts` — `isDegenerateTeamColors()` + degenerate-aware `getTeamColors()`
+- `backend/src/utils/fetchData/espnAllData.ts` — degenerate pair guard at fetch time
+- `backend/src/games/games.service.ts` — `_resolveTeamColors()` degenerate-aware
+- `backend/src/utils/Colors.spec.ts` + `backend/src/games/tests/games.service.spec.ts` — new tests
+- `COLORS_REPORT.md` — manual-fix report (degenerate + unresolvable placeholder entries)
+
 ## Change: University teams borrow colors from another college league when missing
 
 Some university teams come back from ESPN without colors; their `ColorsTeam` entry was then stored as the generic placeholder (`#ffffff` on `#000000`) and the UI showed a white-on-black card. `backend/src/utils/Colors.ts` now exposes `getTeamColors(uniqueId)`: a known, non-placeholder entry is returned as-is; for a **university league** with a missing/placeholder entry the same university abbreviation is looked up in the other college leagues (a school keeps the same colors across sports, e.g. `NCAAB-X` → `NCAAF-X`); every other case (non-college leagues included) keeps `Colors.default`. This applies at fetch time (ESPN + NHL/PWHL team mapping) and at display time via the new `GameService._resolveTeamColors()`, so already-stored teams show the borrowed colors without waiting for a re-fetch.
