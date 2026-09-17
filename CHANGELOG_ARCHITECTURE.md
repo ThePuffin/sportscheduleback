@@ -2,6 +2,27 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Change: NCAA colors refreshed from official color codes (lighter = text, darker = background)
+
+441 college entries in `backend/src/utils/ColorsTeam.ts` were rewritten from a curated list of official school color pairs (mirroring the same change in `frontend/constants/ColorsTeam.tsx`). Rule: the **lighter** color (perceived luminance) is stored as `color` (text) and the **darker** as `backgroundColor`. ESPN abbreviation aliases applied (`ULL`→`UL`, `MARSH`→`MRSH`, `BOISE`→`BOIS`, `LA TECH`→`LT`, `KAN`→`KU`, `IND`→`IU`, `TEMP`→`TEM`, `VANDY`→`VAN`, `NOVA`→`VILL`, `CHAR`→`CLT`, `SCAR`→`SC`, `OKLA`→`OU`, `NW`→`NU`, `TAMU`→`TA&M`); `CRU` (Carroll WI) untouched. Note: `teams.service.ts` regenerates this file from stored team data — teams whose colors were re-resolved at fetch time will keep the new values, but any team later re-fetched with degenerate ESPN colors still falls back through `getTeamColors()`.
+
+### Files
+
+- `backend/src/utils/ColorsTeam.ts`
+
+### Follow-up: placeholder college teams resolved from teamcolorcodes.com
+
+
+180 backend entries for 55 schools that were stored as the generic placeholder (`#ffffff`/`#000000`) were rewritten from real hex codes found on teamcolorcodes.com (same lighter/darker rule as the main change; the frontend file received the identical values). 49 schools are not listed on that site (404) and keep the placeholder; they remain covered by the `getTeamColors()` placeholder/degenerate guards.
+
+### Follow-up 2: 30 more placeholder teams resolved from the Kaggle dataset
+
+The Kaggle dataset `coreymaxedon/ncaa-team-color` (`color_teams.csv`) filled 58 more entries (30 D1 schools, 116 entries total across both files): Boston University, Campbell, Merrimack, Denver, Robert Morris, UMass Lowell, Abilene Christian, Binghamton, Bryant, Bucknell, Central Arkansas, California Baptist, The Citadel, Eastern Illinois, Elon, ETSU, Jackson State, Lamar, Mercer, Missouri, South Dakota State, Southeastern Louisiana, Towson, Incarnate Word, UMBC, VMI, William & Mary, Wofford, UTRGV and Long Island. 22 D3/NAIA/small schools remain on the placeholder (absent from both sources).
+
+### Follow-up 3: the last 22 placeholder schools filled manually
+
+All 22 remaining schools received manually sourced official color pairs (same rule: lighter = text, darker = background — 32 entries per file, 64 total). **No `#ffffff`/`#000000` placeholder remains in any college league.** Only the `NCAAMH-AUSD` degenerate `#NULL` entry remains (handled by the runtime guard).
+
 ## Change: Degenerate color pairs (color === background) treated as unknown
 
 Entries where `color` equals `backgroundColor` (e.g. `#000000`/`#000000`, or the `#NULL` artifact) are unusable for display. New `isDegenerateTeamColors()` in `Colors.ts` makes such pairs "unknown" everywhere: `getTeamColors()` never returns one (cross-college fallback then `DEFAULT_TEAM_COLORS`), `_resolveTeamColors()` in `games.service.ts` no longer trusts them, and the ESPN team mapping (`espnAllData.ts`) replaces a `color === alternateColor` pair with the resolved fallback colors. Remaining broken entries are listed in `COLORS_REPORT.md` (repo root) for manual fixing; colors scraped from teamcolorcodes.com were rejected (all pages returned the same template artifact `#00E5FF/#F0F0F0`).
