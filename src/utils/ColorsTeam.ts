@@ -1903,7 +1903,26 @@ export const ColorsTeamEnum: Record<
     color: '#E51936',
     backgroundColor: '#690717',
   },
-        'NCAAMH-AF': {
+  'NCAAF-BRWN': { color: '#54413a', backgroundColor: '#000000' },
+  'NCAAF-COLU': { color: '#9bcbeb', backgroundColor: '#003865' },
+  'NCAAF-COR': { color: '#d60027', backgroundColor: '#000000' },
+  'NCAAF-DART': { color: '#005730', backgroundColor: '#000000' },
+  'NCAAF-DRKE': { color: '#bec0c2', backgroundColor: '#005596' },
+  'NCAAF-HARV': { color: '#990000', backgroundColor: '#000000' },
+  'NCAAF-JKST': { color: '#008ed6', backgroundColor: '#002147' },
+  'NCAAF-MRST': { color: '#e53730', backgroundColor: '#000000' },
+  'NCAAF-MORE': { color: '#29109c', backgroundColor: '#000000' },
+  'NCAAF-NCCU': { color: '#c2c3c0', backgroundColor: '#880023' },
+  'NCAAF-PENN': { color: '#ffffff', backgroundColor: '#041e42' },
+  'NCAAF-PRES': { color: '#003372', backgroundColor: '#000000' },
+  'NCAAF-PRIN': { color: '#ff9408', backgroundColor: '#000000' },
+  'NCAAF-USD': { color: '#0d1361', backgroundColor: '#000000' },
+  'NCAAF-SFA': { color: '#230d3c', backgroundColor: '#000000' },
+  'NCAAF-STMN': { color: '#919396', backgroundColor: '#512682' },
+  'NCAAF-TNTC': { color: '#440e62', backgroundColor: '#000000' },
+  'NCAAF-VAL': { color: '#ffcc00', backgroundColor: '#381e0e' },
+  'NCAAF-W&M': { color: '#f0b323', backgroundColor: '#115740' },
+  'NCAAMH-AF': {
     color: '#8a8d8f',
     backgroundColor: '#003087',
   },
@@ -2095,7 +2114,12 @@ export const ColorsTeamEnum: Record<
     color: '#b3b5b7',
     backgroundColor: '#8b1535',
   },
-    'NCAAMH-OHIO': {
+  // Oakland ACHA club: reuse the existing NCCABB-OAK school colors.
+  'NCAAMH-OAK': {
+    color: '#04091c',
+    backgroundColor: '#000000',
+  },
+  'NCAAMH-OHIO': {
     color: '#e0aa0f',
     backgroundColor: '#00693e',
   },
@@ -2150,10 +2174,6 @@ export const ColorsTeamEnum: Record<
   'NCAAMH-SHU': {
     color: '#c29472',
     backgroundColor: '#a40012',
-  },
-          'NCAAMH-ST.': {
-    color: '#d6c682',
-    backgroundColor: '#55318c',
   },
     'NCAAMH-STMN': {
     color: '#919396',
@@ -2303,6 +2323,11 @@ export const ColorsTeamEnum: Record<
     color: '#641460',
     backgroundColor: '#000000',
   },
+  // Northern Michigan ACHA club: reuse NCAAMH-NMI school colors.
+  'NCAAWH-NMU': {
+    color: '#ffc425',
+    backgroundColor: '#095339',
+  },
     'NCAAWH-OSU': {
     color: '#666666',
     backgroundColor: '#bb0000',
@@ -2354,18 +2379,6 @@ export const ColorsTeamEnum: Record<
   'NCAAWH-SHU': {
     color: '#c29472',
     backgroundColor: '#a40012',
-  },
-        'NCAAWH-ST.': {
-    color: '#d6c682',
-    backgroundColor: '#55318c',
-  },
-        'NCAAWH-ST.': {
-    color: '#d6c682',
-    backgroundColor: '#55318c',
-  },
-          'NCAAWH-ST.': {
-    color: '#d6c682',
-    backgroundColor: '#55318c',
   },
         'NCAAWH-STMIK': {
     color: '#d6c682',
@@ -4686,5 +4699,325 @@ export const ColorsTeamEnum: Record<
   'WNCAAB-YALE': {
     color: '#286dc0',
     backgroundColor: '#004a81',
+  },
+  'NCAAB-AKR': {
+    color: '#a28d5b',
+    backgroundColor: '#041e42',
+  },
+  'NCAAB-APP': {
+    color: '#ffc72c',
+    backgroundColor: '#222222',
+  },
+  'NCAAB-ARST': {
+    color: '#cc0000',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-BEL': {
+    color: '#182142',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-BGSU': {
+    color: '#ff6600',
+    backgroundColor: '#4f2c1d',
+  },
+  'NCAAB-CLT': {
+    color: '#a49665',
+    backgroundColor: '#005035',
+  },
+  'NCAAB-CLE': {
+    color: '#006633',
+    backgroundColor: '#231f20',
+  },
+  'NCAAB-COFC': {
+    color: '#9c8456',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-CSUN': {
+    color: '#b50000',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-DRKE': {
+    color: '#bec0c2',
+    backgroundColor: '#005596',
+  },
+  'NCAAB-ECU': {
+    color: '#fdc82f',
+    backgroundColor: '#592a8a',
+  },
+  'NCAAB-ETSU': {
+    color: '#ffc72c',
+    backgroundColor: '#041e42',
+  },
+  'NCAAB-FAU': {
+    color: '#cc0000',
+    backgroundColor: '#003366',
+  },
+  'NCAAB-FRES': {
+    color: '#db0032',
+    backgroundColor: '#002b5c',
+  },
+  'NCAAB-FUR': {
+    color: '#ffffff',
+    backgroundColor: '#582c83',
+  },
+  'NCAAB-GASO': {
+    color: '#a3aaae',
+    backgroundColor: '#011e41',
+  },
+  'NCAAB-GAST': {
+    color: '#cc0000',
+    backgroundColor: '#0039a6',
+  },
+  'NCAAB-HOF': {
+    color: '#27297c',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-IONA': {
+    color: '#f2a900',
+    backgroundColor: '#6f2c3f',
+  },
+  'NCAAB-JMU': {
+    color: '#cbb677',
+    backgroundColor: '#450084',
+  },
+  'NCAAB-LBSU': {
+    color: '#ffc72a',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-LIB': {
+    color: '#c41230',
+    backgroundColor: '#0c2340',
+  },
+  'NCAAB-LT': {
+    color: '#e31b23',
+    backgroundColor: '#002f6c',
+  },
+  'NCAAB-MEM': {
+    color: '#8d9093',
+    backgroundColor: '#003087',
+  },
+  'NCAAB-MER': {
+    color: '#f76800',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-MRSH': {
+    color: '#00b140',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-MOST': {
+    color: '#ffffff',
+    backgroundColor: '#5e0009',
+  },
+  'NCAAB-MTST': {
+    color: '#bc955c',
+    backgroundColor: '#00205c',
+  },
+  'NCAAB-MTSU': {
+    color: '#a7a9ac',
+    backgroundColor: '#0066cc',
+  },
+  'NCAAB-MONT': {
+    color: '#666666',
+    backgroundColor: '#751d4a',
+  },
+  'NCAAB-NCAT': {
+    color: '#004684',
+    backgroundColor: '#0505aa',
+  },
+  'NCAAB-NMSU': {
+    color: '#ffffff',
+    backgroundColor: '#891226',
+  },
+  'NCAAB-UNT': {
+    color: '#00853e',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-OAK': {
+    color: '#04091c',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-ODU': {
+    color: '#7c878e',
+    backgroundColor: '#003057',
+  },
+  'NCAAB-OHIO': {
+    color: '#e0aa0f',
+    backgroundColor: '#00693e',
+  },
+  'NCAAB-ORST': {
+    color: '#dc4405',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-PFW': {
+    color: '#00378a',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-PRIN': {
+    color: '#ff9408',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-RAD': {
+    color: '#bd1818',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-RICE': {
+    color: '#c1c6c8',
+    backgroundColor: '#00205b',
+  },
+  'NCAAB-RICH': {
+    color: '#b90b2e',
+    backgroundColor: '#9e0712',
+  },
+  'NCAAB-SAM': {
+    color: '#005485',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-SFA': {
+    color: '#230d3c',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-SHU': {
+    color: '#c29472',
+    backgroundColor: '#a40012',
+  },
+  'NCAAB-USM': {
+    color: '#ffc72c',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-SUU': {
+    color: '#c72026',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-TEM': {
+    color: '#ffc72c',
+    backgroundColor: '#9e182b',
+  },
+  'NCAAB-TOW': {
+    color: '#ffbb00',
+    backgroundColor: '#3c3c3c',
+  },
+  'NCAAB-TROY': {
+    color: '#8d9093',
+    backgroundColor: '#8a0538',
+  },
+  'NCAAB-TNST': {
+    color: '#f0f0f0',
+    backgroundColor: '#171796',
+  },
+  'NCAAB-TULN': {
+    color: '#418fde',
+    backgroundColor: '#006747',
+  },
+  'NCAAB-TLSA': {
+    color: '#c8102e',
+    backgroundColor: '#002d62',
+  },
+  'NCAAB-UCD': {
+    color: '#c3c4c6',
+    backgroundColor: '#002855',
+  },
+  'NCAAB-UCI': {
+    color: '#00108c',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-UCSB': {
+    color: '#febc11',
+    backgroundColor: '#003660',
+  },
+  'NCAAB-UNCW': {
+    color: '#1d2f68',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-UNCG': {
+    color: '#21467b',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-UNCO': {
+    color: '#ffc533',
+    backgroundColor: '#13558d',
+  },
+  'NCAAB-UND': {
+    color: '#c2c3c0',
+    backgroundColor: '#00a26b',
+  },
+  'NCAAB-UNH': {
+    color: '#c3c4c6',
+    backgroundColor: '#004990',
+  },
+  'NCAAB-UNI': {
+    color: '#ffffff',
+    backgroundColor: '#473282',
+  },
+  'NCAAB-UNLV': {
+    color: '#b1b3b3',
+    backgroundColor: '#cf0a2c',
+  },
+  'NCAAB-UNM': {
+    color: '#a7a8aa',
+    backgroundColor: '#ba0c2f',
+  },
+  'NCAAB-NOLA': {
+    color: '#2b3986',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-UTA': {
+    color: '#004b7c',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-UTEP': {
+    color: '#ff6600',
+    backgroundColor: '#002855',
+  },
+  'NCAAB-RGV': {
+    color: '#ffa300',
+    backgroundColor: '#0c2340',
+  },
+  'NCAAB-UTSA': {
+    color: '#f15a22',
+    backgroundColor: '#0c2340',
+  },
+  'NCAAB-UVM': {
+    color: '#ffc72c',
+    backgroundColor: '#154734',
+  },
+  'NCAAB-VCU': {
+    color: '#ffb300',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-VAL': {
+    color: '#ffcc00',
+    backgroundColor: '#381e0e',
+  },
+  'NCAAB-WEB': {
+    color: '#ebebeb',
+    backgroundColor: '#18005a',
+  },
+  'NCAAB-WCU': {
+    color: '#bf9e70',
+    backgroundColor: '#492f91',
+  },
+  'NCAAB-W&M': {
+    color: '#f0b323',
+    backgroundColor: '#115740',
+  },
+  'NCAAB-WIN': {
+    color: '#9e0b0e',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-WOF': {
+    color: '#c7b37f',
+    backgroundColor: '#886e4c',
+  },
+  'NCAAB-WRST': {
+    color: '#a36209',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-WYO': {
+    color: '#ffc72c',
+    backgroundColor: '#492f24',
+  },
+  'NCAAB-YSU': {
+    color: '#e51936',
+    backgroundColor: '#690717',
   },
 };
