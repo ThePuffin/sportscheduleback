@@ -256,6 +256,91 @@ export class TeamService {
     return deleted;
   }
 
+  /**
+   * Age threshold (in days) before a team without any game can be purged.
+   * Fixed at 60 days (~2 months).
+   */
+  private readonly staleTeamMaxAgeDays = 60;
+
+  /**
+   * Returns purge candidates: teams whose `updateDate` is older than 2 months
+   * (or missing/empty) and still considered active.
+   *
+   * - `updateDate` is refreshed on every monthly `getTeams()`, so a team no
+   *   longer returned by the provider (renamed, removed, defunct) becomes
+   *   stale after ~2 months.
+   * - `HistoricalTeams` entries and `isActive === false` teams are excluded:
+   *   they are already handled (soft-delete, oldies display fallback) and must
+   *   never be physically deleted.
+   */
+  async findStaleTeamCandidates(): Promise<any[]> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - this.staleTeamMaxAgeDays);
+    const cutoffIso = cutoff.toISOString();
+
+    const stale = await this.teamModel
+      .find({
+        isActive: { $ne: false },
+        $or: [
+          { updateDate: { $lt: cutoffIso } },
+          { updateDate: { $exists: false } },
+          { updateDate: null },
+          { updateDate: '' },
+        ],
+      })
+      .lean()
+      .exec();
+
+    return (stale || []).filter(
+      (team: any) => team?.uniqueId && !HistoricalTeams[team.uniqueId],
+    );
+  }
+
+  /**
+   * Deletes stale candidates (see `findStaleTeamCandidates`) that are not
+   * referenced by any active game (`usedTeamIds` is provided by `GameService`).
+   */
+  async purgeStaleTeamsWithoutGames(
+    usedTeamIds: string[] | Set<string>,
+  ): Promise<{
+    action: 'purged' | 'none';
+    candidates: number;
+    deletedCount: number;
+    deletedIds: string[];
+  }> {
+    const used =
+      usedTeamIds instanceof Set ? usedTeamIds : new Set(usedTeamIds ?? []);
+    const candidates = await this.findStaleTeamCandidates();
+    const toDelete = candidates.filter(
+      (team: any) => !used.has(team.uniqueId),
+    );
+
+    const deletedIds = toDelete.map((team: any) => team.uniqueId);
+    console.info(
+      `[purgeStaleTeams] ${candidates.length} stale candidate(s), ${toDelete.length} without active games to delete.`,
+    );
+
+    if (toDelete.length === 0) {
+      return {
+        action: 'none',
+        candidates: candidates.length,
+        deletedCount: 0,
+        deletedIds,
+      };
+    }
+
+    const result = await this.deleteManyByIds(deletedIds);
+    console.info(
+      `[purgeStaleTeams] Deleted ${result.deletedCount} stale team(s) without active games: ${deletedIds.join(', ')}.`,
+    );
+    return {
+      action: 'purged',
+      candidates: candidates.length,
+      deletedCount: result.deletedCount ?? 0,
+      deletedIds,
+    };
+  }
+
   async deleteManyByIds(ids: string[]): Promise<DeleteResult> {
     if (!ids || ids.length === 0) {
       return { acknowledged: true, deletedCount: 0 };

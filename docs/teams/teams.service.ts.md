@@ -30,6 +30,18 @@ Expose team lookup helpers for the controller and other services.
 
 Updates team records such as wins/losses and ties/OT losses.
 
+### `findStaleTeamCandidates()`
+
+Returns teams whose `updateDate` is older than 2 months (60 days) or missing —
+i.e. teams no longer returned by the provider. Excludes `isActive === false`
+and `HistoricalTeams` entries (never physically deleted).
+
+### `purgeStaleTeamsWithoutGames(usedTeamIds)`
+
+Deletes stale candidates (see above) that are referenced by **no** active game
+(`usedTeamIds` is supplied by `GameService.findUsedTeamIds()`, avoiding a
+circular Team↔Game dependency).
+
 ### `deleteManyByIds(ids)`
 
 Deletes teams by `uniqueId`. To be safe it also matches by `_id`, but **only** for ids that are valid

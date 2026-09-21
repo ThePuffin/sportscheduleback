@@ -20,9 +20,24 @@ describe('CronService', () => {
     getLeagueGames: jest.fn().mockResolvedValue([]),
     getAllGames: jest.fn().mockResolvedValue([]),
     purgeOldestMonth: jest.fn().mockResolvedValue({ action: 'none' }),
+    purgeStaleTeamsWithoutGames: jest.fn(),
     getLastRecoveryTimestamp: jest.fn().mockResolvedValue(null),
     addRecoveryTimestamp: jest.fn().mockResolvedValue(undefined),
     isScoreRecoveryRunning: false,
+    // Mocked Mongoose model: chainable find/sort/limit/lean/exec returning [].
+    // Empty array per league → rotation calls needRefresh(league, { data: [] }),
+    // which returns true (nothing stored → refresh needed).
+    gameModel: {
+      find: jest.fn().mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue({
+            lean: jest.fn().mockReturnValue({
+              exec: jest.fn().mockResolvedValue([]),
+            }),
+          }),
+        }),
+      }),
+    },
   };
 
   beforeEach(async () => {
@@ -250,25 +265,25 @@ describe('CronService', () => {
       playoffsSpy.mockRestore();
     });
 
-    it('skips off-season leagues without fetching (slot still consumed)', async () => {
+    it('skips recently-refreshed leagues without fetching (slot still consumed)', async () => {
       jest.useFakeTimers();
       jest.setSystemTime(new Date('2026-09-13T08:00:00Z'));
-      const seasonSpy = jest
-        .spyOn(utils, 'isCurrentSeason')
+      // needRefresh governs the rotation (1/3/7-day freshness): NHL was
+      // refreshed recently → skipped; NFL is stale → fetched.
+      const needRefreshSpy = jest
+        .spyOn(utils, 'needRefresh')
         .mockImplementation(async (league) => league === League.NFL);
-      const playoffsSpy = jest.spyOn(utils, 'isPlayoffsPeriod').mockResolvedValue(false);
 
-      await service.refreshLeaguesOneByOne(); // NHL → off-season → skipped
+      await service.refreshLeaguesOneByOne(); // NHL → fresh → skipped
       expect(mockGameService.getLeagueGames).not.toHaveBeenCalled();
 
-      await service.refreshLeaguesOneByOne(); // NFL → in season
+      await service.refreshLeaguesOneByOne(); // NFL → stale → fetched
       expect(mockGameService.getLeagueGames).toHaveBeenCalledTimes(1);
       expect(mockGameService.getLeagueGames).toHaveBeenCalledWith({
         league: League.NFL,
       });
 
-      seasonSpy.mockRestore();
-      playoffsSpy.mockRestore();
+      needRefreshSpy.mockRestore();
     });
 
     it('stops once the list is complete until the next day', async () => {
@@ -393,6 +408,67 @@ describe('CronService', () => {
 
       expect(consoleSpy).toHaveBeenCalledWith(
         '[Cron] Error running monthly purge:',
+        expect.any(Error),
+      );
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('purgeStaleTeams (weekly stale-teams purge)', () => {
+    it('refreshes teams first then purges and logs the result', async () => {
+      const consoleSpy = jest.spyOn(console, 'info').mockImplementation();
+      mockTeamService.getTeams = jest.fn().mockResolvedValue([]);
+      mockGameService.purgeStaleTeamsWithoutGames = jest
+        .fn()
+        .mockResolvedValue({
+          action: 'purged',
+          candidates: 2,
+          deletedCount: 1,
+          deletedIds: ['NHL-TOR'],
+        });
+
+      await service.purgeStaleTeams();
+
+      expect(mockTeamService.getTeams).toHaveBeenCalled();
+      expect(
+        mockGameService.purgeStaleTeamsWithoutGames,
+      ).toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[Cron] Purged 1 stale team(s): NHL-TOR',
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it('logs when there is nothing to purge', async () => {
+      const consoleSpy = jest.spyOn(console, 'info').mockImplementation();
+      mockTeamService.getTeams = jest.fn().mockResolvedValue([]);
+      mockGameService.purgeStaleTeamsWithoutGames = jest
+        .fn()
+        .mockResolvedValue({
+          action: 'none',
+          candidates: 0,
+          deletedCount: 0,
+          deletedIds: [],
+        });
+
+      await service.purgeStaleTeams();
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[Cron] No stale teams to purge (0 candidate(s)).',
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it('handles errors gracefully', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+      mockTeamService.getTeams = jest
+        .fn()
+        .mockRejectedValue(new Error('DB error'));
+
+      await service.purgeStaleTeams();
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[Cron] Error running stale teams purge:',
         expect.any(Error),
       );
       consoleSpy.mockRestore();

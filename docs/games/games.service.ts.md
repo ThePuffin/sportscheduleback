@@ -157,6 +157,19 @@ Fetches live score updates for a specific list of game IDs.
 
 Backfills games from recent dates to keep the database current.
 
+### `findUsedTeamIds()` (new)
+
+Returns the union of `teamSelectedId` + `homeTeamId` + `awayTeamId` over all
+`isActive: true` games. Used by the stale-teams purge so a team still
+referenced by any active game is never deleted (e.g. off-season leagues).
+
+### `purgeStaleTeamsWithoutGames()` (new)
+
+Collects `findUsedTeamIds()` then delegates to
+`TeamService.purgeStaleTeamsWithoutGames()`. Exposed manually via
+`POST /games/teams/purge-stale` (API key) and run weekly by
+`CronService.purgeStaleTeams()` (Sunday 4AM UTC, after a teams refresh).
+
 ### `checkLeagueGamesAvailability()`
 
 Performs availability checks and triggers a refresh if a league appears to have too few upcoming games.
@@ -165,7 +178,6 @@ Performs availability checks and triggers a refresh if a league appears to have 
 
 **Capacity-based purge strategy**: Monitors disk usage and automatically purges entire years of games (oldest first) when
 storage exceeds 90%. This preserves as much historical data as possible while preventing disk space exhaustion.
-
 **Behavior:**
 
 - Runs every 6 hours (via cron job)

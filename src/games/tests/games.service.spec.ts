@@ -29,6 +29,7 @@ describe('GameService', () => {
     countByLeague: jest.fn(),
     findAll: jest.fn(),
     deleteManyByIds: jest.fn(),
+    purgeStaleTeamsWithoutGames: jest.fn(),
   };
 
   const mockRefreshTimestampService = {
@@ -1256,6 +1257,55 @@ describe('GameService', () => {
       expect(result).toEqual({});
       expect(getAllGamesSpy).not.toHaveBeenCalled();
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe('findUsedTeamIds / purgeStaleTeamsWithoutGames', () => {
+    it('findUsedTeamIds unions teamSelectedId + homeTeamId + awayTeamId of active games', async () => {
+      mockGameModel.distinct.mockImplementation((field: string) => ({
+        exec: jest.fn().mockResolvedValue(
+          field === 'teamSelectedId'
+            ? ['NHL-BOS', 'NHL-TOR']
+            : field === 'homeTeamId'
+              ? ['NHL-BOS', '']
+              : ['NHL-EDM', null],
+        ),
+      }));
+
+      const used = await service.findUsedTeamIds();
+
+      expect(mockGameModel.distinct).toHaveBeenCalledWith('teamSelectedId', {
+        isActive: true,
+      });
+      expect(mockGameModel.distinct).toHaveBeenCalledWith('homeTeamId', {
+        isActive: true,
+      });
+      expect(mockGameModel.distinct).toHaveBeenCalledWith('awayTeamId', {
+        isActive: true,
+      });
+      expect(used).toEqual(new Set(['NHL-BOS', 'NHL-TOR', 'NHL-EDM']));
+    });
+
+    it('purgeStaleTeamsWithoutGames delegates used ids to TeamService', async () => {
+      mockGameModel.distinct.mockImplementation(() => ({
+        exec: jest.fn().mockResolvedValue(['NHL-BOS']),
+      }));
+      const purgeResult = {
+        action: 'purged' as const,
+        candidates: 1,
+        deletedCount: 1,
+        deletedIds: ['NHL-TOR'],
+      };
+      mockTeamService.purgeStaleTeamsWithoutGames = jest
+        .fn()
+        .mockResolvedValue(purgeResult);
+
+      const result = await service.purgeStaleTeamsWithoutGames();
+
+      expect(result).toEqual(purgeResult);
+      expect(mockTeamService.purgeStaleTeamsWithoutGames).toHaveBeenCalledWith(
+        new Set(['NHL-BOS']),
+      );
     });
   });
 });

@@ -190,6 +190,12 @@ export class GamesController {
     return this.GameService.removeDuplicatesAndOlds();
   }
 
+  @Post('teams/purge-stale')
+  @UseGuards(ApiKeyGuard)
+  async purgeStaleTeams() {
+    return this.GameService.purgeStaleTeamsWithoutGames();
+  }
+
     @Post('capacity/check')
   @UseGuards(ApiKeyGuard)
   async checkCapacity() {

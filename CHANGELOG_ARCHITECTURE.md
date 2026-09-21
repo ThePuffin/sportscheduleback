@@ -2,6 +2,41 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: weekly purge of stale teams without active games
+
+### Purpose
+
+Delete teams that disappeared from the provider (renamed/defunct) and have no
+active game left: candidates are teams whose `updateDate` is older than 2
+months (refreshed monthly by `getTeams()`) and that are referenced by **no**
+`isActive: true` game (`teamSelectedId`/`homeTeamId`/`awayTeamId`).
+`HistoricalTeams` entries and `isActive === false` teams are never deleted
+(display fallback for oldies). A team still referenced by any active game is
+kept (covers off-season leagues).
+
+### Files
+
+- `backend/src/teams/teams.service.ts` — `findStaleTeamCandidates()`,
+  `purgeStaleTeamsWithoutGames(usedTeamIds)`
+- `backend/src/games/games.service.ts` — `findUsedTeamIds()`,
+  `purgeStaleTeamsWithoutGames()` (delegates to TeamService, no circular
+  dependency)
+- `backend/src/cronJob/cronJob.service.ts` — `purgeStaleTeams()` weekly Sunday
+  4AM UTC (refreshes teams first, then purges)
+- `backend/src/games/games.controller.ts` — `POST /games/teams/purge-stale`
+  (API key)
+- `backend/src/teams/tests/teams.service.spec.ts`,
+  `backend/src/games/tests/games.service.spec.ts`,
+  `backend/src/cronJob/tests/cronJob.service.spec.ts` — new tests
+- `backend/docs/teams/teams.service.ts.md`, `backend/docs/games/games.service.ts.md`,
+  `backend/docs/cronJob/cronJob.service.ts.md` — documentation
+
+### Verification
+
+`tsc --noEmit` clean; Jest suites pass.
+
+---
+
 ## Change: Team catalogs and color maintenance
 
 Expanded static catalogs and synchronized frontend/backend colors while preserving provider identifiers and avoiding duplicate aliases. College additions use lighter text and darker backgrounds; contrast requires separate validation. Redundant color properties were removed without changing effective values.

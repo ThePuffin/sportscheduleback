@@ -346,4 +346,88 @@ describe('TeamService', () => {
       expect(result).toEqual(deleteResult);
     });
   });
+
+  describe('findStaleTeamCandidates', () => {
+    const oldDate = (daysAgo: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() - daysAgo);
+      return d.toISOString();
+    };
+
+    it('returns teams older than the cutoff and excludes HistoricalTeams + isActive=false', async () => {
+      // find() returns docs already filtered by Mongo on isActive/updateDate;
+      // the service only applies the HistoricalTeams + uniqueId filter.
+      const docs = [
+        { uniqueId: 'NHL-BOS', updateDate: oldDate(90) },
+        { uniqueId: 'NHL-ATL', updateDate: oldDate(90) }, // HistoricalTeams → excluded
+        { uniqueId: '', updateDate: oldDate(90) }, // no uniqueId → excluded
+      ];
+      (model.find as jest.Mock).mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(docs),
+        }),
+      });
+
+      const result = await service.findStaleTeamCandidates();
+
+      expect(model.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isActive: { $ne: false },
+          $or: expect.any(Array),
+        }),
+      );
+      expect(result).toEqual([
+        { uniqueId: 'NHL-BOS', updateDate: docs[0].updateDate },
+      ]);
+    });
+  });
+
+  describe('purgeStaleTeamsWithoutGames', () => {
+    const oldDate = (daysAgo: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() - daysAgo);
+      return d.toISOString();
+    };
+
+    const mockFind = (docs: any[]) => {
+      (model.find as jest.Mock).mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(docs),
+        }),
+      });
+    };
+
+    it('deletes stale teams not referenced by any active game', async () => {
+      mockFind([
+        { uniqueId: 'NHL-BOS', league: 'NHL', updateDate: oldDate(90) },
+        { uniqueId: 'NHL-TOR', league: 'NHL', updateDate: oldDate(90) },
+      ]);
+      (model.deleteMany as jest.Mock).mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
+      });
+
+      const result = await service.purgeStaleTeamsWithoutGames(
+        new Set(['NHL-BOS']),
+      );
+
+      expect(result.action).toBe('purged');
+      expect(result.candidates).toBe(2);
+      expect(result.deletedIds).toEqual(['NHL-TOR']);
+      expect(model.deleteMany).toHaveBeenCalledWith({
+        $or: [{ uniqueId: { $in: ['NHL-TOR'] } }],
+      });
+    });
+
+    it('returns none when every stale team is still referenced by a game', async () => {
+      mockFind([{ uniqueId: 'NHL-BOS', league: 'NHL', updateDate: oldDate(90) }]);
+
+      const result = await service.purgeStaleTeamsWithoutGames(
+        new Set(['NHL-BOS']),
+      );
+
+      expect(result.action).toBe('none');
+      expect(result.deletedIds).toEqual([]);
+      expect(model.deleteMany).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -1304,6 +1304,42 @@ export class GameService {
     return deleted;
   }
 
+  /**
+   * Returns the set of team ids referenced by at least one ACTIVE game
+   * (`teamSelectedId` + `homeTeamId` + `awayTeamId`). Used by the stale teams
+   * purge: a team still referenced by an active game is never deleted, even if
+   * its `updateDate` is old (e.g. off-season).
+   */
+  async findUsedTeamIds(): Promise<Set<string>> {
+    const fields = ['teamSelectedId', 'homeTeamId', 'awayTeamId'];
+    const used = new Set<string>();
+    for (const field of fields) {
+      const ids: unknown[] = await this.gameModel
+        .distinct(field, { isActive: true })
+        .exec();
+      for (const id of ids) {
+        if (typeof id === 'string' && id.length > 0) used.add(id);
+      }
+    }
+    return used;
+  }
+
+  /**
+   * Deletes teams stale for more than 2 months with no active game reference.
+   * Collects used team ids then delegates filtering/deletion to
+   * `TeamService.purgeStaleTeamsWithoutGames()` (no circular dependency:
+   * TeamService does not depend on GameService).
+   */
+  async purgeStaleTeamsWithoutGames(): Promise<{
+    action: 'purged' | 'none';
+    candidates: number;
+    deletedCount: number;
+    deletedIds: string[];
+  }> {
+    const used = await this.findUsedTeamIds();
+    return this.teamService.purgeStaleTeamsWithoutGames(used);
+  }
+
   async removeAll() {
     await this.gameModel.deleteMany({});
     const games = await this.gameModel.find().exec();

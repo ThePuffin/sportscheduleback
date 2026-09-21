@@ -27,6 +27,7 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 | `fetchAndApplyScores()`          | Every 10 min, offset :02 (`2-59/10`) | Live score updates (NY business hours 11 AM - 4 AM); **skips while the rotation/oldies run** |
 | `checkLeagueGamesAvailability()` | Every 12 min, offset :07 (`7-59/12`) | Availability checks (LA early hours 0-11 AM); **skips while the rotation/oldies run** |
 | **`purgeOldestMonth()`**         | **Twice daily (3AM & 3PM UTC)** | **Purge the oldest month of games (time-based)** |
+| **`purgeStaleTeams()`**           | **Weekly Sunday 4AM UTC**       | **Refresh teams, then delete teams stale for more than 2 months with no active game** |
 | **`monitorDiskCapacity()`**      | **Every 6 hours**      | **Disk usage check & auto-purge old years**         |
 
 ## New: `monitorDiskCapacity()`

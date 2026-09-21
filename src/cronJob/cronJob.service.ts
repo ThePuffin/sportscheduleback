@@ -391,6 +391,31 @@ export class CronService implements OnModuleInit {
     }
   }
 
+  @Cron('0 4 * * 0') // WEEKLY ON SUNDAY AT 4AM (UTC) — purge stale teams without active games
+  async purgeStaleTeams() {
+    try {
+      console.info(
+        '[Cron] Running weekly purge of stale teams without active games...',
+      );
+      // Refresh teams first so `updateDate` is current for still-listed teams;
+      // only teams missing from the provider for more than 2 months stay stale.
+      await this.teamService.getTeams();
+      const result = await this.gameService.purgeStaleTeamsWithoutGames();
+
+      if (result.action === 'purged') {
+        console.info(
+          `[Cron] Purged ${result.deletedCount} stale team(s): ${result.deletedIds.join(', ')}`,
+        );
+      } else {
+        console.info(
+          `[Cron] No stale teams to purge (${result.candidates} candidate(s)).`,
+        );
+      }
+    } catch (err) {
+      console.error('[Cron] Error running stale teams purge:', err);
+    }
+  }
+
   @Cron('0 */6 * * *') // EVERY 6 HOURS
   async monitorDiskCapacity() {
     try {
