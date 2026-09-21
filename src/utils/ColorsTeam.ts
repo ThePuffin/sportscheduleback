@@ -1,8 +1,4 @@
-// https://teamcolorcodes.com/ncaa-color-codes/
-export const ColorsTeamEnum: Record<
-  string,
-  { color: string; backgroundColor: string }
-> = {
+export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: string }> = {
   'MLB-ARI': {
     color: '#aa182c',
     backgroundColor: '#000000',
@@ -363,43 +359,63 @@ export const ColorsTeamEnum: Record<
     color: '#e31837',
     backgroundColor: '#002b5c',
   },
-    'NCAAB-ALA': {
-    color: '#828a8f',
+  'NCAAB-AKR': {
+    color: '#c5b783',
+    backgroundColor: '#041e42',
+  },
+  'NCAAB-ALA': {
+    color: '#ffffff',
     backgroundColor: '#9e1b32',
   },
   'NCAAB-AMER': {
     color: '#c41130',
     backgroundColor: '#c8102e',
   },
-    'NCAAB-ARIZ': {
+  'NCAAB-APP': {
+    color: '#ffcd00',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-ARIZ': {
     color: '#cc0033',
     backgroundColor: '#003366',
   },
-    'NCAAB-ARK': {
-    color: '#9d2235',
+  'NCAAB-ARK': {
+    color: '#ffffff',
+    backgroundColor: '#a32136',
+  },
+  'NCAAB-ARST': {
+    color: '#cc092f',
     backgroundColor: '#000000',
   },
-    'NCAAB-ASU': {
+  'NCAAB-ASU': {
     color: '#ffc627',
     backgroundColor: '#8c1d40',
   },
-    'NCAAB-AUB': {
-    color: '#e87722',
-    backgroundColor: '#0c2340',
+  'NCAAB-AUB': {
+    color: '#f26522',
+    backgroundColor: '#002b5c',
   },
-    'NCAAB-BAY': {
-    color: '#fecb00',
-    backgroundColor: '#003015',
+  'NCAAB-BAY': {
+    color: '#ffb81c',
+    backgroundColor: '#154734',
   },
-    'NCAAB-BC': {
-    color: '#bc9b6a',
-    backgroundColor: '#98002e',
+  'NCAAB-BC': {
+    color: '#dbcca6',
+    backgroundColor: '#8c2232',
   },
-        'NCAAB-BELL': {
-    color: '#c8c8c8',
-    backgroundColor: '#752936',
+  'NCAAB-BEL': {
+    color: '#c9262d',
+    backgroundColor: '#182142',
   },
-    'NCAAB-BOIS': {
+  'NCAAB-BELL': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-BGSU': {
+    color: '#fd5000',
+    backgroundColor: '#4f2c1d',
+  },
+  'NCAAB-BOIS': {
     color: '#d64309',
     backgroundColor: '#0033a0',
   },
@@ -415,53 +431,69 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#005bbb',
   },
-    'NCAAB-BUT': {
+  'NCAAB-BUT': {
     color: '#708090',
     backgroundColor: '#002d62',
   },
-    'NCAAB-BYU': {
-    color: '#ffffff',
+  'NCAAB-BYU': {
+    color: '#0047ba',
     backgroundColor: '#002e5d',
   },
-    'NCAAB-CAL': {
-    color: '#fdb515',
-    backgroundColor: '#003262',
+  'NCAAB-CAL': {
+    color: '#ffc72c',
+    backgroundColor: '#041e42',
   },
-    'NCAAB-CIN': {
+  'NCAAB-CIN': {
     color: '#e00122',
     backgroundColor: '#000000',
   },
-    'NCAAB-CLEM': {
-    color: '#f56600',
-    backgroundColor: '#522d80',
+  'NCAAB-CLE': {
+    color: '#006633',
+    backgroundColor: '#231f20',
   },
-    'NCAAB-COLO': {
+  'NCAAB-CLEM': {
+    color: '#ffffff',
+    backgroundColor: '#f56600',
+  },
+  'NCAAB-CLT': {
+    color: '#a49665',
+    backgroundColor: '#005035',
+  },
+  'NCAAB-COFC': {
+    color: '#9e8959',
+    backgroundColor: '#7a2531',
+  },
+  'NCAAB-COLO': {
     color: '#cfb87c',
     backgroundColor: '#000000',
   },
-    'NCAAB-CONN': {
-    color: '#e00122',
-    backgroundColor: '#000e2e',
+  'NCAAB-CONN': {
+    color: '#a2aaad',
+    backgroundColor: '#0c2340',
   },
   'NCAAB-CP': {
     color: '#eed897',
     backgroundColor: '#1E4D2B',
   },
-    'NCAAB-CREI': {
-    color: '#63666a',
+  'NCAAB-CREI': {
+    color: '#6cadde',
     backgroundColor: '#005ca9',
   },
-    'NCAAB-CSU': {
+  'NCAAB-CSU': {
     color: '#c8c372',
-    backgroundColor: '#1e4d2b',
+    backgroundColor: '#004c23',
   },
-        'NCAAB-DAV': {
-    color: '#ac1a2f',
+  'NCAAB-CSUN': {
+    color: '#b50000',
     backgroundColor: '#000000',
   },
-    'NCAAB-DAY': {
-    color: '#d71920',
-    backgroundColor: '#002244',
+  'NCAAB-DAV': {
+    color: '#e51837',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-DAY': {
+    color: '#ffffff',
+    backgroundColor: '#004B8D',
   },
   'NCAAB-DEL': {
     color: '#ffd200',
@@ -471,29 +503,61 @@ export const ColorsTeamEnum: Record<
     color: '#2d649c',
     backgroundColor: '#ce1125',
   },
-    'NCAAB-DUKE': {
+  'NCAAB-DRKE': {
+    color: '#bec0c2',
+    backgroundColor: '#005596',
+  },
+  'NCAAB-DUKE': {
     color: '#ffffff',
-    backgroundColor: '#003087',
+    backgroundColor: '#00539b',
   },
   'NCAAB-DUQ': {
     color: '#b90b2e',
     backgroundColor: '#002D62',
   },
-    'NCAAB-EMU': {
+  'NCAAB-ECU': {
+    color: '#ffc72c',
+    backgroundColor: '#582c83',
+  },
+  'NCAAB-EMU': {
     color: '#ffffff',
-    backgroundColor: '#006633',
+    backgroundColor: '#006938',
+  },
+  'NCAAB-ETSU': {
+    color: '#ffc423',
+    backgroundColor: '#002d61',
   },
   'NCAAB-FAMU': {
     color: '#F89728',
     backgroundColor: '#00843d',
   },
-    'NCAAB-FLA': {
+  'NCAAB-FAU': {
+    color: '#003366',
+    backgroundColor: '#cc0000',
+  },
+  'NCAAB-FLA': {
     color: '#fa4616',
     backgroundColor: '#0021a5',
   },
-    'NCAAB-FSU': {
+  'NCAAB-FRES': {
+    color: '#b1102b',
+    backgroundColor: '#13284c',
+  },
+  'NCAAB-FSU': {
     color: '#ceb888',
     backgroundColor: '#782f40',
+  },
+  'NCAAB-FUR': {
+    color: '#ffffff',
+    backgroundColor: '#582c83',
+  },
+  'NCAAB-GASO': {
+    color: '#a3aaae',
+    backgroundColor: '#041e42',
+  },
+  'NCAAB-GAST': {
+    color: '#ffffff',
+    backgroundColor: '#0039a6',
   },
   'NCAAB-GCU': {
     color: '#ffffff',
@@ -503,13 +567,13 @@ export const ColorsTeamEnum: Record<
     color: '#ecb010',
     backgroundColor: '#016600',
   },
-    'NCAAB-GONZ': {
-    color: '#c1c6c8',
+  'NCAAB-GONZ': {
+    color: '#c8102e',
     backgroundColor: '#041e42',
   },
-    'NCAAB-GT': {
-    color: '#b3a369',
-    backgroundColor: '#003057',
+  'NCAAB-GT': {
+    color: '#ffffff',
+    backgroundColor: '#b3a369',
   },
   'NCAAB-GTWN': {
     color: '#001c58',
@@ -523,11 +587,15 @@ export const ColorsTeamEnum: Record<
     color: '#8a8d8f',
     backgroundColor: '#0857B1',
   },
-    'NCAAB-HAW': {
-    color: '#c8c8c8',
-    backgroundColor: '#024731',
+  'NCAAB-HAW': {
+    color: '#005737',
+    backgroundColor: '#000000',
   },
-    'NCAAB-HOU': {
+  'NCAAB-HOF': {
+    color: '#ffc72c',
+    backgroundColor: '#003594',
+  },
+  'NCAAB-HOU': {
     color: '#ffffff',
     backgroundColor: '#c8102e',
   },
@@ -539,63 +607,83 @@ export const ColorsTeamEnum: Record<
     color: '#8c6e4a',
     backgroundColor: '#000000',
   },
-    'NCAAB-ILL': {
-    color: '#e84a27',
+  'NCAAB-ILL': {
+    color: '#ff5f05',
     backgroundColor: '#13294b',
   },
-    'NCAAB-IOWA': {
-    color: '#ffcd00',
-    backgroundColor: '#000000',
+  'NCAAB-IONA': {
+    color: '#f0ab00',
+    backgroundColor: '#6f2c3e',
   },
-    'NCAAB-ISU': {
-    color: '#f1be48',
-    backgroundColor: '#c8102e',
+  'NCAAB-IOWA': {
+    color: '#fcd116',
+    backgroundColor: '#231f20',
   },
-    'NCAAB-IU': {
-    color: '#eeedeb',
-    backgroundColor: '#990000',
+  'NCAAB-ISU': {
+    color: '#ffc72a',
+    backgroundColor: '#ae192d',
+  },
+  'NCAAB-IU': {
+    color: '#ffffff',
+    backgroundColor: '#970310',
   },
   'NCAAB-IUIN': {
     color: '#d59f0f',
     backgroundColor: '#A81F30',
   },
+  'NCAAB-JMU': {
+    color: '#cbb677',
+    backgroundColor: '#450084',
+  },
   'NCAAB-JXST': {
     color: '#cc0000',
     backgroundColor: '#000000',
   },
-    'NCAAB-KENT': {
+  'NCAAB-KENT': {
     color: '#eaab00',
     backgroundColor: '#002664',
   },
-    'NCAAB-KSU': {
-    color: '#d1d5db',
-    backgroundColor: '#512888',
+  'NCAAB-KSU': {
+    color: '#e2e3e4',
+    backgroundColor: '#330a57',
   },
-    'NCAAB-KU': {
-    color: '#e8000d',
-    backgroundColor: '#0051ba',
+  'NCAAB-KU': {
+    color: '#0051ba',
+    backgroundColor: '#e8000d',
+  },
+  'NCAAB-LBSU': {
+    color: '#f1f2f3',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-LIB': {
+    color: '#b72025',
+    backgroundColor: '#0a254e',
   },
   'NCAAB-LMU': {
     color: '#00345b',
     backgroundColor: '#880029',
   },
-    'NCAAB-LOU': {
-    color: '#ad0000',
-    backgroundColor: '#000000',
+  'NCAAB-LOU': {
+    color: '#ffffff',
+    backgroundColor: '#c9001f',
   },
-    'NCAAB-LSU': {
+  'NCAAB-LSU': {
     color: '#fdd023',
-    backgroundColor: '#461d7c',
+    backgroundColor: '#461d76',
+  },
+  'NCAAB-LT': {
+    color: '#cb333b',
+    backgroundColor: '#003087',
   },
   'NCAAB-LUC': {
     color: '#9d1244',
     backgroundColor: '#000000',
   },
-    'NCAAB-M-OH': {
+  'NCAAB-M-OH': {
     color: '#ffffff',
-    backgroundColor: '#b81f2d',
+    backgroundColor: '#c41230',
   },
-    'NCAAB-MARQ': {
+  'NCAAB-MARQ': {
     color: '#ffcc00',
     backgroundColor: '#003366',
   },
@@ -603,97 +691,161 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#881c1c',
   },
-    'NCAAB-MD': {
-    color: '#ffd100',
-    backgroundColor: '#e21833',
+  'NCAAB-MD': {
+    color: '#ffffff',
+    backgroundColor: '#ce1126',
   },
-    'NCAAB-MIA': {
-    color: '#f47321',
-    backgroundColor: '#005030',
+  'NCAAB-MEM': {
+    color: '#8e908f',
+    backgroundColor: '#004991',
   },
-    'NCAAB-MICH': {
+  'NCAAB-MER': {
+    color: '#ff7f29',
+    backgroundColor: '#080808',
+  },
+  'NCAAB-MIA': {
+    color: '#f47423',
+    backgroundColor: '#035131',
+  },
+  'NCAAB-MICH': {
     color: '#ffcb05',
     backgroundColor: '#00274c',
   },
-    'NCAAB-MINN': {
-    color: '#ffcc33',
-    backgroundColor: '#7a0019',
+  'NCAAB-MINN': {
+    color: '#fab41c',
+    backgroundColor: '#5e0a2f',
   },
-    'NCAAB-MISS': {
-    color: '#ce1126',
-    backgroundColor: '#14213d',
+  'NCAAB-MISS': {
+    color: '#cf142b',
+    backgroundColor: '#13294b',
   },
-    'NCAAB-MIZ': {
+  'NCAAB-MIZ': {
     color: '#f1b82d',
     backgroundColor: '#000000',
   },
-    'NCAAB-MSST': {
-    color: '#c2c1c2',
+  'NCAAB-MONT': {
+    color: '#666666',
+    backgroundColor: '#751D4A',
+  },
+  'NCAAB-MOST': {
+    color: '#ffffff',
+    backgroundColor: '#5e0009',
+  },
+  'NCAAB-MRSH': {
+    color: '#00b140',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-MSST': {
+    color: '#c1c6c8',
     backgroundColor: '#5d1725',
   },
-    'NCAAB-MSU': {
+  'NCAAB-MSU': {
     color: '#ffffff',
-    backgroundColor: '#18453b',
+    backgroundColor: '#173f35',
+  },
+  'NCAAB-MTST': {
+    color: '#bc955c',
+    backgroundColor: '#00205c',
+  },
+  'NCAAB-MTSU': {
+    color: '#ffffff',
+    backgroundColor: '#036eb7',
   },
   'NCAAB-MUR': {
     color: '#002148',
     backgroundColor: '#000e00',
   },
+  'NCAAB-NCAT': {
+    color: '#004684',
+    backgroundColor: '#0505aa',
+  },
   'NCAAB-NCSU': {
     color: '#ffffff',
     backgroundColor: '#cc0000',
   },
-    'NCAAB-ND': {
+  'NCAAB-ND': {
     color: '#c99700',
-    backgroundColor: '#0c2340',
+    backgroundColor: '#062340',
   },
-    'NCAAB-NEB': {
-    color: '#f5f1e6',
-    backgroundColor: '#e31837',
-  },
-    'NCAAB-NEV': {
-    color: '#807f84',
-    backgroundColor: '#003366',
-  },
-    'NCAAB-NIU': {
-    color: '#ba0c2f',
-    backgroundColor: '#000000',
-  },
-        'NCAAB-NKU': {
-    color: '#ffc72c',
-    backgroundColor: '#000000',
-  },
-    'NCAAB-NU': {
+  'NCAAB-NEB': {
     color: '#ffffff',
-    backgroundColor: '#4e2a84',
+    backgroundColor: '#e31937',
   },
-    'NCAAB-OKST': {
-    color: '#ff7300',
+  'NCAAB-NEV': {
+    color: '#8a8d8f',
+    backgroundColor: '#041e42',
+  },
+  'NCAAB-NIU': {
+    color: '#c8102e',
     backgroundColor: '#000000',
   },
-    'NCAAB-ORE': {
-    color: '#fee12b',
+  'NCAAB-NKU': {
+    color: '#ffc82e',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-NMSU': {
+    color: '#7e141b',
+    backgroundColor: '#231f20',
+  },
+  'NCAAB-NOLA': {
+    color: '#fdd023',
+    backgroundColor: '#461d7c',
+  },
+  'NCAAB-NU': {
+    color: '#ffffff',
+    backgroundColor: '#492f92',
+  },
+  'NCAAB-OAK': {
+    color: '#bc955c',
+    backgroundColor: '#04091c',
+  },
+  'NCAAB-ODU': {
+    color: '#a1d2f1',
+    backgroundColor: '#003768',
+  },
+  'NCAAB-OHIO': {
+    color: '#ffffff',
     backgroundColor: '#154734',
   },
-    'NCAAB-OSU': {
-    color: '#666666',
-    backgroundColor: '#bb0000',
+  'NCAAB-OKST': {
+    color: '#fe5c00',
+    backgroundColor: '#000000',
   },
-    'NCAAB-OU': {
-    color: '#fdf9d8',
-    backgroundColor: '#841617',
+  'NCAAB-ORE': {
+    color: '#fff41b',
+    backgroundColor: '#00934b',
+  },
+  'NCAAB-ORST': {
+    color: '#dc4405',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-OSU': {
+    color: '#a8adb4',
+    backgroundColor: '#ba0c2f',
+  },
+  'NCAAB-OU': {
+    color: '#ffffff',
+    backgroundColor: '#990000',
   },
   'NCAAB-PEPP': {
     color: '#dc762f',
     backgroundColor: '#003A72',
   },
-    'NCAAB-PITT': {
+  'NCAAB-PFW': {
+    color: '#cfb991',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-PITT': {
     color: '#ffb81c',
     backgroundColor: '#003594',
   },
   'NCAAB-PORT': {
     color: '#a8b3ba',
     backgroundColor: '#330072',
+  },
+  'NCAAB-PRIN': {
+    color: '#ff6000',
+    backgroundColor: '#000000',
   },
   'NCAAB-PROV': {
     color: '#a3a19e',
@@ -703,23 +855,43 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#061440',
   },
-    'NCAAB-PUR': {
+  'NCAAB-PUR': {
     color: '#ceb888',
     backgroundColor: '#000000',
   },
-    'NCAAB-RUTG': {
-    color: '#5f6062',
-    backgroundColor: '#cc0033',
+  'NCAAB-RAD': {
+    color: '#c2c3c0',
+    backgroundColor: '#BC1515',
+  },
+  'NCAAB-RGV': {
+    color: '#e1732d',
+    backgroundColor: '#dc6000',
+  },
+  'NCAAB-RICE': {
+    color: '#c1c6c8',
+    backgroundColor: '#00205b',
+  },
+  'NCAAB-RICH': {
+    color: '#b90b2e',
+    backgroundColor: '#9e0712',
+  },
+  'NCAAB-RUTG': {
+    color: '#ffffff',
+    backgroundColor: '#ce0e2d',
   },
   'NCAAB-SAC': {
     color: '#cdb97d',
     backgroundColor: '#00573C',
   },
+  'NCAAB-SAM': {
+    color: '#005485',
+    backgroundColor: '#bc0023',
+  },
   'NCAAB-SBU': {
     color: '#70261D',
     backgroundColor: '#000000',
   },
-    'NCAAB-SC': {
+  'NCAAB-SC': {
     color: '#73000a',
     backgroundColor: '#000000',
   },
@@ -727,7 +899,7 @@ export const ColorsTeamEnum: Record<
     color: '#690b0b',
     backgroundColor: '#101010',
   },
-    'NCAAB-SDSU': {
+  'NCAAB-SDSU': {
     color: '#a6192e',
     backgroundColor: '#000000',
   },
@@ -739,31 +911,39 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#005a36',
   },
+  'NCAAB-SFA': {
+    color: '#bec0c2',
+    backgroundColor: '#393996',
+  },
+  'NCAAB-SHU': {
+    color: '#c29472',
+    backgroundColor: '#a40012',
+  },
   'NCAAB-SIU': {
     color: '#c2c3c0',
     backgroundColor: '#85283D',
   },
-    'NCAAB-SJSU': {
-    color: '#e5a823',
-    backgroundColor: '#0055a5',
+  'NCAAB-SJSU': {
+    color: '#ffb81a',
+    backgroundColor: '#0038a8',
   },
   'NCAAB-SJU': {
     color: '#d10000',
     backgroundColor: '#101010',
   },
-        'NCAAB-SLU': {
-    color: '#c8c9c7',
-    backgroundColor: '#003da5',
+  'NCAAB-SLU': {
+    color: '#ebebeb',
+    backgroundColor: '#00539C',
   },
   'NCAAB-SMC': {
     color: '#d80024',
     backgroundColor: '#003057',
   },
-    'NCAAB-SMU': {
-    color: '#cc0000',
-    backgroundColor: '#003366',
+  'NCAAB-SMU': {
+    color: '#0033a1',
+    backgroundColor: '#a80000',
   },
-    'NCAAB-STAN': {
+  'NCAAB-STAN': {
     color: '#ffffff',
     backgroundColor: '#8c1515',
   },
@@ -771,160 +951,296 @@ export const ColorsTeamEnum: Record<
     color: '#56854e',
     backgroundColor: '#0a5640',
   },
-    'NCAAB-SYR': {
-    color: '#d44500',
-    backgroundColor: '#3e3d4d',
+  'NCAAB-SUU': {
+    color: '#c72026',
+    backgroundColor: '#000000',
   },
-    'NCAAB-TA&M': {
+  'NCAAB-SYR': {
+    color: '#ff431b',
+    backgroundColor: '#000e54',
+  },
+  'NCAAB-TA&M': {
     color: '#ffffff',
     backgroundColor: '#500000',
   },
-    'NCAAB-TCU': {
-    color: '#a3a9ac',
+  'NCAAB-TCU': {
+    color: '#ffffff',
     backgroundColor: '#4d1979',
   },
-    'NCAAB-TENN': {
-    color: '#ff8200',
-    backgroundColor: '#58595b',
-  },
-    'NCAAB-TEX': {
+  'NCAAB-TEM': {
     color: '#ffffff',
-    backgroundColor: '#bf5700',
+    backgroundColor: '#a41e35',
   },
-    'NCAAB-TOL': {
-    color: '#ffc72c',
-    backgroundColor: '#002664',
+  'NCAAB-TENN': {
+    color: '#ffffff',
+    backgroundColor: '#ff8200',
   },
-    'NCAAB-TTU': {
-    color: '#cc0000',
+  'NCAAB-TEX': {
+    color: '#ffffff',
+    backgroundColor: '#af5c37',
+  },
+  'NCAAB-TLSA': {
+    color: '#d0b787',
+    backgroundColor: '#003595',
+  },
+  'NCAAB-TNST': {
+    color: '#f0f0f0',
+    backgroundColor: '#171796',
+  },
+  'NCAAB-TOL': {
+    color: '#ffcd00',
+    backgroundColor: '#0b2240',
+  },
+  'NCAAB-TOW': {
+    color: '#FFC229',
+    backgroundColor: '#3c3c3c',
+  },
+  'NCAAB-TROY': {
+    color: '#b1b1b1',
+    backgroundColor: '#862633',
+  },
+  'NCAAB-TTU': {
+    color: '#da291c',
     backgroundColor: '#000000',
   },
-    'NCAAB-UAB': {
-    color: '#cc9933',
-    backgroundColor: '#006341',
+  'NCAAB-TULN': {
+    color: '#418fde',
+    backgroundColor: '#006747',
   },
-    'NCAAB-UCF': {
-    color: '#ba9b37',
+  'NCAAB-UAB': {
+    color: '#fdb913',
+    backgroundColor: '#1a5632',
+  },
+  'NCAAB-UCD': {
+    color: '#c3c4c6',
+    backgroundColor: '#002855',
+  },
+  'NCAAB-UCF': {
+    color: '#b4a169',
     backgroundColor: '#000000',
   },
-    'NCAAB-UCLA': {
+  'NCAAB-UCI': {
+    color: '#fec52e',
+    backgroundColor: '#002B5C',
+  },
+  'NCAAB-UCLA': {
     color: '#f2a900',
-    backgroundColor: '#2d68c4',
+    backgroundColor: '#2774ae',
   },
   'NCAAB-UCR': {
     color: '#14234F',
     backgroundColor: '#000000',
   },
+  'NCAAB-UCSB': {
+    color: '#febc11',
+    backgroundColor: '#1e1840',
+  },
   'NCAAB-UCSD': {
     color: '#ffcd00',
     backgroundColor: '#000000',
   },
-    'NCAAB-UGA': {
+  'NCAAB-UGA': {
     color: '#ba0c2f',
-    backgroundColor: '#000000',
+    backgroundColor: '#2c2a29',
   },
   'NCAAB-UIC': {
     color: '#d50032',
     backgroundColor: '#001e62',
   },
-    'NCAAB-UK': {
+  'NCAAB-UK': {
     color: '#ffffff',
     backgroundColor: '#0033a0',
   },
-    'NCAAB-UMBC': {
-    color: '#ffc20e',
-    backgroundColor: '#b18906',
+  'NCAAB-UMBC': {
+    color: '#ad860a',
+    backgroundColor: '#000000',
   },
-    'NCAAB-UNC': {
+  'NCAAB-UNC': {
     color: '#7bafd4',
     backgroundColor: '#13294b',
   },
-    'NCAAB-USA': {
+  'NCAAB-UNCG': {
+    color: '#ffd90a',
+    backgroundColor: '#003559',
+  },
+  'NCAAB-UNCO': {
+    color: '#ffc533',
+    backgroundColor: '#13558D',
+  },
+  'NCAAB-UNCW': {
+    color: '#ffda00',
+    backgroundColor: '#00665e',
+  },
+  'NCAAB-UND': {
+    color: '#c2c3c0',
+    backgroundColor: '#00A26B',
+  },
+  'NCAAB-UNH': {
+    color: '#c3c4c6',
+    backgroundColor: '#004990',
+  },
+  'NCAAB-UNI': {
+    color: '#ffffff',
+    backgroundColor: '#473282',
+  },
+  'NCAAB-UNLV': {
+    color: '#cac8c8',
+    backgroundColor: '#cf0a2c',
+  },
+  'NCAAB-UNM': {
+    color: '#a7a8aa',
+    backgroundColor: '#ba0c2f',
+  },
+  'NCAAB-UNT': {
+    color: '#ffffff',
+    backgroundColor: '#068f33',
+  },
+  'NCAAB-USA': {
     color: '#bf0d3e',
     backgroundColor: '#00205b',
   },
-    'NCAAB-USC': {
+  'NCAAB-USC': {
     color: '#ffc72c',
-    backgroundColor: '#990000',
+    backgroundColor: '#9d2235',
   },
-    'NCAAB-USF': {
+  'NCAAB-USF': {
     color: '#cfc493',
     backgroundColor: '#006747',
   },
-    'NCAAB-USU': {
-    color: '#8a9d8f',
-    backgroundColor: '#00263e',
+  'NCAAB-USM': {
+    color: '#ffc72c',
+    backgroundColor: '#231f20',
   },
-    'NCAAB-UTAH': {
-    color: '#cc0000',
-    backgroundColor: '#000000',
+  'NCAAB-USU': {
+    color: '#ffffff',
+    backgroundColor: '#0f2439',
   },
-    'NCAAB-UVA': {
+  'NCAAB-UTA': {
+    color: '#f58024',
+    backgroundColor: '#004b7c',
+  },
+  'NCAAB-UTAH': {
+    color: '#ffffff',
+    backgroundColor: '#be0000',
+  },
+  'NCAAB-UTEP': {
+    color: '#ff8200',
+    backgroundColor: '#041e42',
+  },
+  'NCAAB-UTSA': {
+    color: '#f15a22',
+    backgroundColor: '#0c2340',
+  },
+  'NCAAB-UVA': {
     color: '#f84c1e',
     backgroundColor: '#232d4b',
   },
-    'NCAAB-VAN': {
-    color: '#866d4b',
+  'NCAAB-UVM': {
+    color: '#ffc72c',
+    backgroundColor: '#154734',
+  },
+  'NCAAB-VAL': {
+    color: '#794500',
+    backgroundColor: '#381e0e',
+  },
+  'NCAAB-VAN': {
+    color: '#cfae70',
     backgroundColor: '#000000',
   },
-    'NCAAB-VILL': {
+  'NCAAB-VCU': {
+    color: '#ffaf00',
+    backgroundColor: '#000000',
+  },
+  'NCAAB-VILL': {
     color: '#13b5ea',
     backgroundColor: '#00205b',
   },
-    'NCAAB-VT': {
+  'NCAAB-VT': {
     color: '#cf4520',
-    backgroundColor: '#630031',
+    backgroundColor: '#6a2c3e',
   },
-    'NCAAB-WAKE': {
-    color: '#9e7e38',
+  'NCAAB-W&M': {
+    color: '#f0b323',
+    backgroundColor: '#115740',
+  },
+  'NCAAB-WAKE': {
+    color: '#ceb888',
+    backgroundColor: '#2c2a29',
+  },
+  'NCAAB-WASH': {
+    color: '#e8d3a2',
+    backgroundColor: '#33006f',
+  },
+  'NCAAB-WCU': {
+    color: '#bf9e70',
+    backgroundColor: '#492F91',
+  },
+  'NCAAB-WEB': {
+    color: '#ebebeb',
+    backgroundColor: '#18005a',
+  },
+  'NCAAB-WIN': {
+    color: '#fdb41e',
+    backgroundColor: '#9e0b0e',
+  },
+  'NCAAB-WIS': {
+    color: '#ffffff',
+    backgroundColor: '#a00000',
+  },
+  'NCAAB-WKU': {
+    color: '#ffffff',
+    backgroundColor: '#e13a3e',
+  },
+  'NCAAB-WMU': {
+    color: '#f1c500',
+    backgroundColor: '#532e1f',
+  },
+  'NCAAB-WOF': {
+    color: '#f0f0f0',
+    backgroundColor: '#533B22',
+  },
+  'NCAAB-WRST': {
+    color: '#a36209',
     backgroundColor: '#000000',
   },
-    'NCAAB-WASH': {
-    color: '#b7a57a',
-    backgroundColor: '#4b2e83',
+  'NCAAB-WSU': {
+    color: '#4d4d4d',
+    backgroundColor: '#a60f2d',
   },
-    'NCAAB-WIS': {
-    color: '#ffffff',
-    backgroundColor: '#c5050c',
-  },
-    'NCAAB-WKU': {
-    color: '#f11010',
-    backgroundColor: '#101010',
-  },
-    'NCAAB-WMU': {
-    color: '#f1b82d',
-    backgroundColor: '#532a1d',
-  },
-    'NCAAB-WSU': {
-    color: '#5e6a71',
-    backgroundColor: '#981e32',
-  },
-    'NCAAB-WVU': {
+  'NCAAB-WVU': {
     color: '#eaaa00',
     backgroundColor: '#002855',
   },
-    'NCAAB-XAV': {
-    color: '#9ea2a2',
-    backgroundColor: '#0c2340',
+  'NCAAB-WYO': {
+    color: '#ffc425',
+    backgroundColor: '#492f24',
+  },
+  'NCAAB-XAV': {
+    color: '#a5a7a8',
+    backgroundColor: '#21304e',
   },
   'NCAAB-YALE': {
     color: '#286dc0',
     backgroundColor: '#004a81',
   },
-    'NCAAF-ACU': {
+  'NCAAB-YSU': {
+    color: '#E51935',
+    backgroundColor: '#690717',
+  },
+  'NCAAF-ACU': {
+    color: '#b1b3b3',
+    backgroundColor: '#592d82',
+  },
+  'NCAAF-AFA': {
     color: '#ffffff',
-    backgroundColor: '#4f2170',
+    backgroundColor: '#003594',
   },
-    'NCAAF-AFA': {
-    color: '#8a9db1',
-    backgroundColor: '#003366',
-  },
-    'NCAAF-AKR': {
-    color: '#a28d5b',
+  'NCAAF-AKR': {
+    color: '#c5b783',
     backgroundColor: '#041e42',
   },
-    'NCAAF-ALA': {
-    color: '#828a8f',
+  'NCAAF-ALA': {
+    color: '#ffffff',
     backgroundColor: '#9e1b32',
   },
   'NCAAF-ALB': {
@@ -943,59 +1259,59 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#3f1f69',
   },
-    'NCAAF-APP': {
-    color: '#ffc72c',
-    backgroundColor: '#222222',
+  'NCAAF-APP': {
+    color: '#ffcd00',
+    backgroundColor: '#000000',
   },
   'NCAAF-APSU': {
     color: '#8e0b0b',
     backgroundColor: '#000000',
   },
-    'NCAAF-ARIZ': {
+  'NCAAF-ARIZ': {
     color: '#cc0033',
     backgroundColor: '#003366',
   },
-    'NCAAF-ARK': {
-    color: '#9d2235',
+  'NCAAF-ARK': {
+    color: '#ffffff',
+    backgroundColor: '#a32136',
+  },
+  'NCAAF-ARMY': {
+    color: '#d3bc8d',
     backgroundColor: '#000000',
   },
-    'NCAAF-ARMY': {
-    color: '#d4bf91',
+  'NCAAF-ARST': {
+    color: '#cc092f',
     backgroundColor: '#000000',
   },
-    'NCAAF-ARST': {
-    color: '#cc0000',
-    backgroundColor: '#000000',
-  },
-    'NCAAF-ASU': {
+  'NCAAF-ASU': {
     color: '#ffc627',
     backgroundColor: '#8c1d40',
   },
-    'NCAAF-AUB': {
-    color: '#e87722',
-    backgroundColor: '#0c2340',
+  'NCAAF-AUB': {
+    color: '#f26522',
+    backgroundColor: '#002b5c',
   },
-    'NCAAF-BALL': {
-    color: '#ba0c2f',
-    backgroundColor: '#000000',
+  'NCAAF-BALL': {
+    color: '#ffffff',
+    backgroundColor: '#ba0c2f',
   },
-    'NCAAF-BAY': {
-    color: '#fecb00',
-    backgroundColor: '#003015',
+  'NCAAF-BAY': {
+    color: '#ffb81c',
+    backgroundColor: '#154734',
   },
-    'NCAAF-BC': {
-    color: '#bc9b6a',
-    backgroundColor: '#98002e',
+  'NCAAF-BC': {
+    color: '#dbcca6',
+    backgroundColor: '#8c2232',
   },
   'NCAAF-BCU': {
     color: '#e9aa12',
     backgroundColor: '#7b1831',
   },
-    'NCAAF-BGSU': {
-    color: '#ff6600',
+  'NCAAF-BGSU': {
+    color: '#fd5000',
     backgroundColor: '#4f2c1d',
   },
-    'NCAAF-BOIS': {
+  'NCAAF-BOIS': {
     color: '#d64309',
     backgroundColor: '#0033a0',
   },
@@ -1003,37 +1319,41 @@ export const ColorsTeamEnum: Record<
     color: '#bf2f38',
     backgroundColor: '#000000',
   },
-    'NCAAF-BRY': {
-    color: '#b4975b',
+  'NCAAF-BRWN': {
+    color: '#949300',
+    backgroundColor: '#411e09',
+  },
+  'NCAAF-BRY': {
+    color: '#9f8343',
     backgroundColor: '#000000',
   },
-    'NCAAF-BUCK': {
-    color: '#e87722',
-    backgroundColor: '#003865',
+  'NCAAF-BUCK': {
+    color: '#00316e',
+    backgroundColor: '#000060',
   },
-    'NCAAF-BUFF': {
-    color: '#005bbb',
-    backgroundColor: '#000000',
+  'NCAAF-BUFF': {
+    color: '#ffffff',
+    backgroundColor: '#005bbb',
   },
   'NCAAF-BVU': {
     color: '#feba12',
     backgroundColor: '#001440',
   },
-    'NCAAF-BYU': {
-    color: '#ffffff',
+  'NCAAF-BYU': {
+    color: '#0047ba',
     backgroundColor: '#002e5d',
   },
-    'NCAAF-CAL': {
-    color: '#fdb515',
-    backgroundColor: '#003262',
+  'NCAAF-CAL': {
+    color: '#ffc72c',
+    backgroundColor: '#041e42',
   },
-    'NCAAF-CAM': {
-    color: '#f58025',
-    backgroundColor: '#231f20',
+  'NCAAF-CAM': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAF-CARK': {
-    color: '#818a8f',
-    backgroundColor: '#4f2d7f',
+  'NCAAF-CARK': {
+    color: '#a7a9ac',
+    backgroundColor: '#8e959a',
   },
   'NCAAF-CC': {
     color: '#ffffff',
@@ -1043,7 +1363,7 @@ export const ColorsTeamEnum: Record<
     color: '#d1d5d8',
     backgroundColor: '#1B49A2',
   },
-    'NCAAF-CCU': {
+  'NCAAF-CCU': {
     color: '#a27752',
     backgroundColor: '#006f71',
   },
@@ -1051,23 +1371,23 @@ export const ColorsTeamEnum: Record<
     color: '#ded090',
     backgroundColor: '#2e3192',
   },
-    'NCAAF-CIN': {
+  'NCAAF-CIN': {
     color: '#e00122',
     backgroundColor: '#000000',
   },
-    'NCAAF-CIT': {
-    color: '#3975b7',
-    backgroundColor: '#1f3a60',
+  'NCAAF-CIT': {
+    color: '#7badd3',
+    backgroundColor: '#002856',
   },
   'NCAAF-CLBY': {
     color: '#ffffff',
     backgroundColor: '#012778',
   },
-    'NCAAF-CLEM': {
-    color: '#f56600',
-    backgroundColor: '#522d80',
+  'NCAAF-CLEM': {
+    color: '#ffffff',
+    backgroundColor: '#f56600',
   },
-    'NCAAF-CLT': {
+  'NCAAF-CLT': {
     color: '#a49665',
     backgroundColor: '#005035',
   },
@@ -1075,85 +1395,101 @@ export const ColorsTeamEnum: Record<
     color: '#feba15',
     backgroundColor: '#981a31',
   },
-    'NCAAF-CMU': {
-    color: '#ffc82e',
-    backgroundColor: '#6a0032',
+  'NCAAF-CMU': {
+    color: '#fbab18',
+    backgroundColor: '#4c0027',
   },
   'NCAAF-COLG': {
     color: '#ffffff',
     backgroundColor: '#821019',
   },
-    'NCAAF-COLO': {
+  'NCAAF-COLO': {
     color: '#cfb87c',
     backgroundColor: '#000000',
   },
-        'NCAAF-COMU': {
-    color: '#fbce04',
-    backgroundColor: '#5d0022',
+  'NCAAF-COLU': {
+    color: '#7ba4db',
+    backgroundColor: '#183863',
   },
-    'NCAAF-CONN': {
-    color: '#e00122',
-    backgroundColor: '#000e2e',
+  'NCAAF-COMU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAF-CONN': {
+    color: '#a2aaad',
+    backgroundColor: '#0c2340',
+  },
+  'NCAAF-COR': {
+    color: '#ffffff',
+    backgroundColor: '#b31b1b',
   },
   'NCAAF-CP': {
     color: '#eed897',
     backgroundColor: '#1E4D2B',
   },
-    'NCAAF-CRU': {
-    color: '#f15a24',
-    backgroundColor: '#002d62',
+  'NCAAF-CRU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAF-CSU': {
+  'NCAAF-CSU': {
     color: '#c8c372',
-    backgroundColor: '#1e4d2b',
+    backgroundColor: '#004c23',
   },
-    'NCAAF-DBQ': {
-    color: '#c59b27',
-    backgroundColor: '#002b49',
+  'NCAAF-DART': {
+    color: '#005730',
+    backgroundColor: '#000000',
+  },
+  'NCAAF-DBQ': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCAAF-DEL': {
     color: '#ffd200',
     backgroundColor: '#00539f',
   },
+  'NCAAF-DRKE': {
+    color: '#bec0c2',
+    backgroundColor: '#005596',
+  },
   'NCAAF-DSU': {
     color: '#009cdb',
     backgroundColor: '#d51c28',
   },
-    'NCAAF-DUKE': {
+  'NCAAF-DUKE': {
     color: '#ffffff',
-    backgroundColor: '#003087',
+    backgroundColor: '#00539b',
   },
   'NCAAF-DUQ': {
     color: '#b90b2e',
     backgroundColor: '#002D62',
   },
-    'NCAAF-ECU': {
-    color: '#fdc82f',
-    backgroundColor: '#592a8a',
+  'NCAAF-ECU': {
+    color: '#ffc72c',
+    backgroundColor: '#582c83',
   },
-    'NCAAF-EIU': {
-    color: '#919295',
-    backgroundColor: '#004b83',
+  'NCAAF-EIU': {
+    color: '#bebab9',
+    backgroundColor: '#000000',
   },
   'NCAAF-EKU': {
     color: '#f0f0f0',
     backgroundColor: '#660819',
   },
-    'NCAAF-ELMH': {
-    color: '#d99b00',
-    backgroundColor: '#002f6c',
-  },
-    'NCAAF-EMU': {
+  'NCAAF-ELMH': {
     color: '#ffffff',
-    backgroundColor: '#006633',
+    backgroundColor: '#000000',
   },
-    'NCAAF-ETAM': {
-    color: '#fdb813',
-    backgroundColor: '#002d62',
+  'NCAAF-EMU': {
+    color: '#ffffff',
+    backgroundColor: '#006938',
   },
-    'NCAAF-ETSU': {
-    color: '#ffc72c',
-    backgroundColor: '#041e42',
+  'NCAAF-ETAM': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAF-ETSU': {
+    color: '#ffc423',
+    backgroundColor: '#002d61',
   },
   'NCAAF-EWU': {
     color: '#abb4bc',
@@ -1163,15 +1499,15 @@ export const ColorsTeamEnum: Record<
     color: '#F89728',
     backgroundColor: '#00843d',
   },
-    'NCAAF-FAU': {
-    color: '#cc0000',
-    backgroundColor: '#003366',
+  'NCAAF-FAU': {
+    color: '#003366',
+    backgroundColor: '#cc0000',
   },
-    'NCAAF-FIU': {
-    color: '#b6862c',
-    backgroundColor: '#081e3f',
+  'NCAAF-FIU': {
+    color: '#c3993f',
+    backgroundColor: '#091f3f',
   },
-    'NCAAF-FLA': {
+  'NCAAF-FLA': {
     color: '#fa4616',
     backgroundColor: '#0021a5',
   },
@@ -1179,11 +1515,11 @@ export const ColorsTeamEnum: Record<
     color: '#909090',
     backgroundColor: '#830032',
   },
-    'NCAAF-FRES': {
-    color: '#db0032',
-    backgroundColor: '#002b5c',
+  'NCAAF-FRES': {
+    color: '#b1102b',
+    backgroundColor: '#13284c',
   },
-    'NCAAF-FSU': {
+  'NCAAF-FSU': {
     color: '#ceb888',
     backgroundColor: '#782f40',
   },
@@ -1191,25 +1527,25 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#582c83',
   },
-    'NCAAF-GASO': {
+  'NCAAF-GASO': {
     color: '#a3aaae',
-    backgroundColor: '#011e41',
+    backgroundColor: '#041e42',
   },
-    'NCAAF-GAST': {
-    color: '#cc0000',
+  'NCAAF-GAST': {
+    color: '#ffffff',
     backgroundColor: '#0039a6',
   },
   'NCAAF-GRAM': {
     color: '#ffd10a',
     backgroundColor: '#ee8601',
   },
-    'NCAAF-GRNL': {
-    color: '#c8102e',
+  'NCAAF-GRNL': {
+    color: '#ffffff',
     backgroundColor: '#000000',
   },
-    'NCAAF-GT': {
-    color: '#b3a369',
-    backgroundColor: '#003057',
+  'NCAAF-GT': {
+    color: '#ffffff',
+    backgroundColor: '#b3a369',
   },
   'NCAAF-GTWN': {
     color: '#001c58',
@@ -1223,9 +1559,13 @@ export const ColorsTeamEnum: Record<
     color: '#0067AC',
     backgroundColor: '#000000',
   },
-    'NCAAF-HAW': {
-    color: '#c8c8c8',
-    backgroundColor: '#024731',
+  'NCAAF-HARV': {
+    color: '#dbdbdb',
+    backgroundColor: '#990000',
+  },
+  'NCAAF-HAW': {
+    color: '#005737',
+    backgroundColor: '#000000',
   },
   'NCAAF-HC': {
     color: '#ffffff',
@@ -1235,7 +1575,7 @@ export const ColorsTeamEnum: Record<
     color: '#00539c',
     backgroundColor: '#000000',
   },
-    'NCAAF-HOU': {
+  'NCAAF-HOU': {
     color: '#ffffff',
     backgroundColor: '#c8102e',
   },
@@ -1251,31 +1591,35 @@ export const ColorsTeamEnum: Record<
     color: '#e9a126',
     backgroundColor: '#ef8c00',
   },
-    'NCAAF-ILL': {
-    color: '#e84a27',
+  'NCAAF-ILL': {
+    color: '#ff5f05',
     backgroundColor: '#13294b',
   },
-        'NCAAF-ILST': {
-    color: '#f9dd16',
-    backgroundColor: '#ce1126',
+  'NCAAF-ILST': {
+    color: '#ffe716',
+    backgroundColor: '#CE1126',
   },
   'NCAAF-INST': {
     color: '#f0f0f0',
     backgroundColor: '#00669a',
   },
-    'NCAAF-IOWA': {
-    color: '#ffcd00',
-    backgroundColor: '#000000',
+  'NCAAF-IOWA': {
+    color: '#fcd116',
+    backgroundColor: '#231f20',
   },
-    'NCAAF-ISU': {
-    color: '#f1be48',
-    backgroundColor: '#c8102e',
+  'NCAAF-ISU': {
+    color: '#ffc72a',
+    backgroundColor: '#ae192d',
   },
-    'NCAAF-IU': {
-    color: '#eeedeb',
-    backgroundColor: '#990000',
+  'NCAAF-IU': {
+    color: '#ffffff',
+    backgroundColor: '#970310',
   },
-    'NCAAF-JMU': {
+  'NCAAF-JKST': {
+    color: '#b5b7ba',
+    backgroundColor: '#123297',
+  },
+  'NCAAF-JMU': {
     color: '#cbb677',
     backgroundColor: '#450084',
   },
@@ -1287,103 +1631,103 @@ export const ColorsTeamEnum: Record<
     color: '#fdbb30',
     backgroundColor: '#0b1315',
   },
-    'NCAAF-KENT': {
+  'NCAAF-KENT': {
     color: '#eaab00',
     backgroundColor: '#002664',
   },
-    'NCAAF-KSU': {
-    color: '#d1d5db',
-    backgroundColor: '#512888',
+  'NCAAF-KSU': {
+    color: '#e2e3e4',
+    backgroundColor: '#330a57',
   },
-    'NCAAF-KU': {
-    color: '#e8000d',
-    backgroundColor: '#0051ba',
+  'NCAAF-KU': {
+    color: '#0051ba',
+    backgroundColor: '#e8000d',
   },
   'NCAAF-LAF': {
     color: '#a59474',
     backgroundColor: '#790000',
   },
-    'NCAAF-LAM': {
-    color: '#fcb034',
-    backgroundColor: '#dc0032',
-  },
-    'NCAAF-LIB': {
-    color: '#c41230',
-    backgroundColor: '#0c2340',
-  },
-        'NCAAF-LIN': {
-    color: '#b5a36a',
-    backgroundColor: '#101820',
-  },
-    'NCAAF-LIU': {
-    color: '#ffc72c',
-    backgroundColor: '#69b3e7',
-  },
-    'NCAAF-LOU': {
-    color: '#ad0000',
+  'NCAAF-LAM': {
+    color: '#ebebeb',
     backgroundColor: '#000000',
   },
-    'NCAAF-LSU': {
-    color: '#fdd023',
-    backgroundColor: '#461d7c',
+  'NCAAF-LIB': {
+    color: '#b72025',
+    backgroundColor: '#0a254e',
   },
-    'NCAAF-LT': {
-    color: '#e31b23',
-    backgroundColor: '#002f6c',
+  'NCAAF-LIN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAF-LIU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAF-LOU': {
+    color: '#ffffff',
+    backgroundColor: '#c9001f',
+  },
+  'NCAAF-LSU': {
+    color: '#fdd023',
+    backgroundColor: '#461d76',
+  },
+  'NCAAF-LT': {
+    color: '#cb333b',
+    backgroundColor: '#003087',
   },
   'NCAAF-LUTH': {
     color: '#a5bbda',
     backgroundColor: '#015a9c',
   },
-    'NCAAF-M-OH': {
+  'NCAAF-M-OH': {
     color: '#ffffff',
-    backgroundColor: '#b81f2d',
+    backgroundColor: '#c41230',
   },
   'NCAAF-MASS': {
     color: '#ffffff',
     backgroundColor: '#881c1c',
   },
-    'NCAAF-MD': {
-    color: '#ffd100',
-    backgroundColor: '#e21833',
+  'NCAAF-MD': {
+    color: '#ffffff',
+    backgroundColor: '#ce1126',
   },
-        'NCAAF-ME': {
-    color: '#b0d7ff',
-    backgroundColor: '#003263',
-  },
-    'NCAAF-MEM': {
-    color: '#8d9093',
-    backgroundColor: '#003087',
-  },
-    'NCAAF-MER': {
-    color: '#f76800',
+  'NCAAF-ME': {
+    color: '#127dbe',
     backgroundColor: '#000000',
   },
-        'NCAAF-MERC': {
-    color: '#07594d',
-    backgroundColor: '#182752',
+  'NCAAF-MEM': {
+    color: '#8e908f',
+    backgroundColor: '#004991',
   },
-    'NCAAF-MIA': {
-    color: '#f47321',
-    backgroundColor: '#005030',
+  'NCAAF-MER': {
+    color: '#ff7f29',
+    backgroundColor: '#080808',
   },
-    'NCAAF-MICH': {
+  'NCAAF-MERC': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAF-MIA': {
+    color: '#f47423',
+    backgroundColor: '#035131',
+  },
+  'NCAAF-MICH': {
     color: '#ffcb05',
     backgroundColor: '#00274c',
   },
-    'NCAAF-MILK': {
+  'NCAAF-MILK': {
     color: '#ffffff',
-    backgroundColor: '#0038a8',
+    backgroundColor: '#000000',
   },
-    'NCAAF-MINN': {
-    color: '#ffcc33',
-    backgroundColor: '#7a0019',
+  'NCAAF-MINN': {
+    color: '#fab41c',
+    backgroundColor: '#5e0a2f',
   },
-    'NCAAF-MISS': {
-    color: '#ce1126',
-    backgroundColor: '#14213d',
+  'NCAAF-MISS': {
+    color: '#cf142b',
+    backgroundColor: '#13294b',
   },
-    'NCAAF-MIZ': {
+  'NCAAF-MIZ': {
     color: '#f1b82d',
     backgroundColor: '#000000',
   },
@@ -1395,6 +1739,10 @@ export const ColorsTeamEnum: Record<
     color: '#666666',
     backgroundColor: '#751D4A',
   },
+  'NCAAF-MORE': {
+    color: '#fed91a',
+    backgroundColor: '#094FA3',
+  },
   'NCAAF-MORG': {
     color: '#f47937',
     backgroundColor: '#014786',
@@ -1403,33 +1751,37 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#5e0009',
   },
-        'NCAAF-MRHO': {
+  'NCAAF-MRHO': {
     color: '#ffffff',
-    backgroundColor: '#8b2433',
+    backgroundColor: '#000000',
   },
-    'NCAAF-MRMK': {
-    color: '#fdb813',
-    backgroundColor: '#003768',
+  'NCAAF-MRMK': {
+    color: '#2f4f93',
+    backgroundColor: '#000000',
   },
-    'NCAAF-MRSH': {
+  'NCAAF-MRSH': {
     color: '#00b140',
     backgroundColor: '#000000',
   },
-    'NCAAF-MSST': {
-    color: '#c2c1c2',
+  'NCAAF-MRST': {
+    color: '#f0f0f0',
+    backgroundColor: '#e53730',
+  },
+  'NCAAF-MSST': {
+    color: '#c1c6c8',
     backgroundColor: '#5d1725',
   },
-    'NCAAF-MSU': {
+  'NCAAF-MSU': {
     color: '#ffffff',
-    backgroundColor: '#18453b',
+    backgroundColor: '#173f35',
   },
   'NCAAF-MTST': {
     color: '#bc955c',
     backgroundColor: '#00205c',
   },
-    'NCAAF-MTSU': {
-    color: '#a7a9ac',
-    backgroundColor: '#0066cc',
+  'NCAAF-MTSU': {
+    color: '#ffffff',
+    backgroundColor: '#036eb7',
   },
   'NCAAF-MUR': {
     color: '#002148',
@@ -1443,93 +1795,109 @@ export const ColorsTeamEnum: Record<
     color: '#003976',
     backgroundColor: '#1b3069',
   },
-    'NCAAF-NAVY': {
-    color: '#c59b27',
-    backgroundColor: '#00205b',
+  'NCAAF-NAVY': {
+    color: '#b5a67c',
+    backgroundColor: '#00225b',
   },
   'NCAAF-NCAT': {
     color: '#004684',
     backgroundColor: '#0505aa',
   },
+  'NCAAF-NCCU': {
+    color: '#c2c3c0',
+    backgroundColor: '#880023',
+  },
   'NCAAF-NCSU': {
     color: '#ffffff',
     backgroundColor: '#cc0000',
   },
-    'NCAAF-ND': {
+  'NCAAF-ND': {
     color: '#c99700',
-    backgroundColor: '#0c2340',
+    backgroundColor: '#062340',
   },
   'NCAAF-NDSU': {
     color: '#ffffff',
     backgroundColor: '#01402A',
   },
-    'NCAAF-NEB': {
-    color: '#f5f1e6',
-    backgroundColor: '#e31837',
+  'NCAAF-NEB': {
+    color: '#ffffff',
+    backgroundColor: '#e31937',
   },
-    'NCAAF-NEV': {
-    color: '#807f84',
-    backgroundColor: '#003366',
+  'NCAAF-NEV': {
+    color: '#8a8d8f',
+    backgroundColor: '#041e42',
   },
   'NCAAF-NICH': {
     color: '#f0f0f0',
     backgroundColor: '#C41230',
   },
-    'NCAAF-NIU': {
-    color: '#ba0c2f',
+  'NCAAF-NIU': {
+    color: '#c8102e',
     backgroundColor: '#000000',
   },
-    'NCAAF-NMSU': {
-    color: '#ffffff',
-    backgroundColor: '#891226',
+  'NCAAF-NMSU': {
+    color: '#7e141b',
+    backgroundColor: '#231f20',
   },
   'NCAAF-NORF': {
     color: '#fdb813',
     backgroundColor: '#0c8968',
   },
-    'NCAAF-NPU': {
-    color: '#ffc72c',
-    backgroundColor: '#0033a0',
-  },
-    'NCAAF-NU': {
+  'NCAAF-NPU': {
     color: '#ffffff',
-    backgroundColor: '#4e2a84',
+    backgroundColor: '#000000',
+  },
+  'NCAAF-NU': {
+    color: '#ffffff',
+    backgroundColor: '#492f92',
   },
   'NCAAF-NWST': {
     color: '#ed6118',
     backgroundColor: '#492F91',
   },
-    'NCAAF-ODU': {
-    color: '#7c878e',
-    backgroundColor: '#003057',
+  'NCAAF-ODU': {
+    color: '#a1d2f1',
+    backgroundColor: '#003768',
   },
-    'NCAAF-OHIO': {
-    color: '#e0aa0f',
-    backgroundColor: '#00693e',
-  },
-    'NCAAF-OKST': {
-    color: '#ff7300',
-    backgroundColor: '#000000',
-  },
-    'NCAAF-ORE': {
-    color: '#fee12b',
+  'NCAAF-OHIO': {
+    color: '#ffffff',
     backgroundColor: '#154734',
   },
-    'NCAAF-ORST': {
+  'NCAAF-OKST': {
+    color: '#fe5c00',
+    backgroundColor: '#000000',
+  },
+  'NCAAF-ORE': {
+    color: '#fff41b',
+    backgroundColor: '#00934b',
+  },
+  'NCAAF-ORST': {
     color: '#dc4405',
     backgroundColor: '#000000',
   },
-    'NCAAF-OSU': {
-    color: '#666666',
-    backgroundColor: '#bb0000',
+  'NCAAF-OSU': {
+    color: '#a8adb4',
+    backgroundColor: '#ba0c2f',
   },
-    'NCAAF-OU': {
-    color: '#fdf9d8',
-    backgroundColor: '#841617',
+  'NCAAF-OU': {
+    color: '#ffffff',
+    backgroundColor: '#990000',
   },
-    'NCAAF-PITT': {
+  'NCAAF-PENN': {
+    color: '#a6163d',
+    backgroundColor: '#082A74',
+  },
+  'NCAAF-PITT': {
     color: '#ffb81c',
     backgroundColor: '#003594',
+  },
+  'NCAAF-PRES': {
+    color: '#194896',
+    backgroundColor: '#990134',
+  },
+  'NCAAF-PRIN': {
+    color: '#ff6000',
+    backgroundColor: '#000000',
   },
   'NCAAF-PRST': {
     color: '#ebebeb',
@@ -1539,7 +1907,7 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#061440',
   },
-    'NCAAF-PUR': {
+  'NCAAF-PUR': {
     color: '#ceb888',
     backgroundColor: '#000000',
   },
@@ -1551,7 +1919,7 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#751708',
   },
-    'NCAAF-RICE': {
+  'NCAAF-RICE': {
     color: '#c1c6c8',
     backgroundColor: '#00205b',
   },
@@ -1563,15 +1931,15 @@ export const ColorsTeamEnum: Record<
     color: '#a21d2b',
     backgroundColor: '#00214D',
   },
-    'NCAAF-RUTG': {
-    color: '#5f6062',
-    backgroundColor: '#cc0033',
+  'NCAAF-RUTG': {
+    color: '#ffffff',
+    backgroundColor: '#ce0e2d',
   },
   'NCAAF-SAC': {
     color: '#cdb97d',
     backgroundColor: '#00573C',
   },
-    'NCAAF-SC': {
+  'NCAAF-SC': {
     color: '#73000a',
     backgroundColor: '#000000',
   },
@@ -1579,21 +1947,25 @@ export const ColorsTeamEnum: Record<
     color: '#f0f0f0',
     backgroundColor: '#CD1241',
   },
-    'NCAAF-SDST': {
+  'NCAAF-SDST': {
     color: '#ffd100',
     backgroundColor: '#0033a0',
   },
-    'NCAAF-SDSU': {
+  'NCAAF-SDSU': {
     color: '#a6192e',
     backgroundColor: '#000000',
   },
-    'NCAAF-SELA': {
-    color: '#eaaa00',
-    backgroundColor: '#006341',
+  'NCAAF-SELA': {
+    color: '#ffc72c',
+    backgroundColor: '#215732',
   },
   'NCAAF-SEMO': {
     color: '#c8102e',
     backgroundColor: '#000000',
+  },
+  'NCAAF-SFA': {
+    color: '#bec0c2',
+    backgroundColor: '#393996',
   },
   'NCAAF-SHSU': {
     color: '#ffffff',
@@ -1607,19 +1979,23 @@ export const ColorsTeamEnum: Record<
     color: '#c2c3c0',
     backgroundColor: '#85283D',
   },
-    'NCAAF-SJSU': {
-    color: '#e5a823',
-    backgroundColor: '#0055a5',
+  'NCAAF-SJSU': {
+    color: '#ffb81a',
+    backgroundColor: '#0038a8',
   },
-    'NCAAF-SMU': {
-    color: '#cc0000',
-    backgroundColor: '#003366',
+  'NCAAF-SMU': {
+    color: '#0033a1',
+    backgroundColor: '#a80000',
   },
   'NCAAF-SOU': {
     color: '#ffc82d',
     backgroundColor: '#004B97',
   },
-    'NCAAF-STAN': {
+  'NCAAF-ST.': {
+    color: '#d6c682',
+    backgroundColor: '#55318c',
+  },
+  'NCAAF-STAN': {
     color: '#ffffff',
     backgroundColor: '#8c1515',
   },
@@ -1631,67 +2007,75 @@ export const ColorsTeamEnum: Record<
     color: '#56854e',
     backgroundColor: '#0a5640',
   },
-          'NCAAF-ST.': {
-    color: '#d6c682',
-    backgroundColor: '#55318c',
+  'NCAAF-STMN': {
+    color: '#512682',
+    backgroundColor: '#000000',
+  },
+  'NCAAF-STO': {
+    color: '#300A48',
+    backgroundColor: '#000000',
   },
   'NCAAF-SUU': {
     color: '#c72026',
     backgroundColor: '#000000',
   },
-    'NCAAF-SYR': {
-    color: '#d44500',
-    backgroundColor: '#3e3d4d',
+  'NCAAF-SYR': {
+    color: '#ff431b',
+    backgroundColor: '#000e54',
   },
-    'NCAAF-TA&M': {
+  'NCAAF-TA&M': {
     color: '#ffffff',
     backgroundColor: '#500000',
   },
-    'NCAAF-TAR': {
-    color: '#a7a8aa',
-    backgroundColor: '#4f2683',
+  'NCAAF-TAR': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAF-TCU': {
-    color: '#a3a9ac',
+  'NCAAF-TCU': {
+    color: '#ffffff',
     backgroundColor: '#4d1979',
   },
-    'NCAAF-TEM': {
-    color: '#ffc72c',
-    backgroundColor: '#9e182b',
-  },
-    'NCAAF-TENN': {
-    color: '#ff8200',
-    backgroundColor: '#58595b',
-  },
-    'NCAAF-TEX': {
+  'NCAAF-TEM': {
     color: '#ffffff',
-    backgroundColor: '#bf5700',
+    backgroundColor: '#a41e35',
   },
-    'NCAAF-TLSA': {
-    color: '#c8102e',
-    backgroundColor: '#002d62',
+  'NCAAF-TENN': {
+    color: '#ffffff',
+    backgroundColor: '#ff8200',
+  },
+  'NCAAF-TEX': {
+    color: '#ffffff',
+    backgroundColor: '#af5c37',
+  },
+  'NCAAF-TLSA': {
+    color: '#d0b787',
+    backgroundColor: '#003595',
   },
   'NCAAF-TNST': {
     color: '#f0f0f0',
     backgroundColor: '#171796',
   },
-    'NCAAF-TOL': {
-    color: '#ffc72c',
-    backgroundColor: '#002664',
+  'NCAAF-TNTC': {
+    color: '#ffde00',
+    backgroundColor: '#5A4099',
   },
-    'NCAAF-TOW': {
-    color: '#ffbb00',
-    backgroundColor: '#3c3c3c',
+  'NCAAF-TOL': {
+    color: '#ffcd00',
+    backgroundColor: '#0b2240',
   },
-    'NCAAF-TROY': {
-    color: '#8d9093',
-    backgroundColor: '#8a0538',
-  },
-    'NCAAF-TTU': {
-    color: '#cc0000',
+  'NCAAF-TOW': {
+    color: '#FFC229',
     backgroundColor: '#000000',
   },
-    'NCAAF-TULN': {
+  'NCAAF-TROY': {
+    color: '#b1b1b1',
+    backgroundColor: '#862633',
+  },
+  'NCAAF-TTU': {
+    color: '#da291c',
+    backgroundColor: '#000000',
+  },
+  'NCAAF-TULN': {
     color: '#418fde',
     backgroundColor: '#006747',
   },
@@ -1699,51 +2083,51 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#860038',
   },
-    'NCAAF-TXST': {
-    color: '#8d734a',
+  'NCAAF-TXST': {
+    color: '#6a5638',
     backgroundColor: '#501214',
   },
-    'NCAAF-UAB': {
-    color: '#cc9933',
-    backgroundColor: '#006341',
+  'NCAAF-UAB': {
+    color: '#fdb913',
+    backgroundColor: '#1a5632',
   },
-    'NCAAF-UAPB': {
-    color: '#ffc72c',
-    backgroundColor: '#000000',
+  'NCAAF-UAPB': {
+    color: '#eaaa00',
+    backgroundColor: '#e0aa0f',
   },
   'NCAAF-UCD': {
     color: '#c3c4c6',
     backgroundColor: '#002855',
   },
-    'NCAAF-UCF': {
-    color: '#ba9b37',
+  'NCAAF-UCF': {
+    color: '#b4a169',
     backgroundColor: '#000000',
   },
-    'NCAAF-UCLA': {
+  'NCAAF-UCLA': {
     color: '#f2a900',
-    backgroundColor: '#2d68c4',
+    backgroundColor: '#2774ae',
   },
-    'NCAAF-UGA': {
+  'NCAAF-UGA': {
     color: '#ba0c2f',
-    backgroundColor: '#000000',
+    backgroundColor: '#2c2a29',
   },
-    'NCAAF-UK': {
+  'NCAAF-UK': {
     color: '#ffffff',
     backgroundColor: '#0033a0',
   },
-    'NCAAF-UL': {
+  'NCAAF-UL': {
+    color: '#ce181e',
+    backgroundColor: '#000000',
+  },
+  'NCAAF-ULM': {
+    color: '#fdb913',
+    backgroundColor: '#840029',
+  },
+  'NCAAF-UNA': {
     color: '#ffffff',
-    backgroundColor: '#ce181e',
+    backgroundColor: '#000000',
   },
-    'NCAAF-ULM': {
-    color: '#ffc72c',
-    backgroundColor: '#800020',
-  },
-        'NCAAF-UNA': {
-    color: '#db9f11',
-    backgroundColor: '#46166b',
-  },
-    'NCAAF-UNC': {
+  'NCAAF-UNC': {
     color: '#7bafd4',
     backgroundColor: '#13294b',
   },
@@ -1763,93 +2147,105 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#473282',
   },
-    'NCAAF-UNLV': {
-    color: '#b1b3b3',
+  'NCAAF-UNLV': {
+    color: '#cac8c8',
     backgroundColor: '#cf0a2c',
   },
-    'NCAAF-UNM': {
+  'NCAAF-UNM': {
     color: '#a7a8aa',
     backgroundColor: '#ba0c2f',
   },
-    'NCAAF-UNT': {
-    color: '#00853e',
-    backgroundColor: '#000000',
+  'NCAAF-UNT': {
+    color: '#ffffff',
+    backgroundColor: '#068f33',
   },
   'NCAAF-URI': {
     color: '#5ab3e8',
     backgroundColor: '#091f3f',
   },
-    'NCAAF-USA': {
+  'NCAAF-USA': {
     color: '#bf0d3e',
     backgroundColor: '#00205b',
   },
-    'NCAAF-USC': {
+  'NCAAF-USC': {
     color: '#ffc72c',
-    backgroundColor: '#990000',
+    backgroundColor: '#9d2235',
   },
-    'NCAAF-USF': {
+  'NCAAF-USD': {
+    color: '#0d1361',
+    backgroundColor: '#000000',
+  },
+  'NCAAF-USF': {
     color: '#cfc493',
     backgroundColor: '#006747',
   },
-    'NCAAF-USM': {
+  'NCAAF-USM': {
     color: '#ffc72c',
-    backgroundColor: '#000000',
+    backgroundColor: '#231f20',
   },
-    'NCAAF-USU': {
-    color: '#8a9d8f',
-    backgroundColor: '#00263e',
+  'NCAAF-USU': {
+    color: '#ffffff',
+    backgroundColor: '#0f2439',
   },
-    'NCAAF-UTAH': {
-    color: '#cc0000',
-    backgroundColor: '#000000',
+  'NCAAF-UTAH': {
+    color: '#ffffff',
+    backgroundColor: '#be0000',
   },
-    'NCAAF-UTEP': {
-    color: '#ff6600',
-    backgroundColor: '#002855',
+  'NCAAF-UTEP': {
+    color: '#ff8200',
+    backgroundColor: '#041e42',
   },
   'NCAAF-UTM': {
     color: '#FF6700',
     backgroundColor: '#102a5c',
   },
-    'NCAAF-UTSA': {
+  'NCAAF-UTSA': {
     color: '#f15a22',
     backgroundColor: '#0c2340',
   },
-    'NCAAF-UTU': {
-    color: '#a7a8aa',
-    backgroundColor: '#ba0c2f',
+  'NCAAF-UTU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAF-UVA': {
+  'NCAAF-UVA': {
     color: '#f84c1e',
     backgroundColor: '#232d4b',
   },
-    'NCAAF-VAN': {
-    color: '#866d4b',
+  'NCAAF-VAL': {
+    color: '#794500',
+    backgroundColor: '#381e0e',
+  },
+  'NCAAF-VAN': {
+    color: '#cfae70',
     backgroundColor: '#000000',
   },
-    'NCAAF-VILL': {
+  'NCAAF-VILL': {
     color: '#13b5ea',
     backgroundColor: '#00205b',
   },
-    'NCAAF-VMI': {
-    color: '#ffd520',
-    backgroundColor: '#a71f23',
+  'NCAAF-VMI': {
+    color: '#ae122a',
+    backgroundColor: '#000000',
   },
-    'NCAAF-VT': {
+  'NCAAF-VT': {
     color: '#cf4520',
-    backgroundColor: '#630031',
+    backgroundColor: '#6a2c3e',
+  },
+  'NCAAF-W&M': {
+    color: '#f0b323',
+    backgroundColor: '#115740',
   },
   'NCAAF-WAG': {
     color: '#ffffff',
     backgroundColor: '#00483A',
   },
-    'NCAAF-WAKE': {
-    color: '#9e7e38',
-    backgroundColor: '#000000',
+  'NCAAF-WAKE': {
+    color: '#ceb888',
+    backgroundColor: '#2c2a29',
   },
-    'NCAAF-WASH': {
-    color: '#b7a57a',
-    backgroundColor: '#4b2e83',
+  'NCAAF-WASH': {
+    color: '#e8d3a2',
+    backgroundColor: '#33006f',
   },
   'NCAAF-WCU': {
     color: '#bf9e70',
@@ -1863,36 +2259,36 @@ export const ColorsTeamEnum: Record<
     color: '#db1a21',
     backgroundColor: '#0033a1',
   },
-    'NCAAF-WIS': {
+  'NCAAF-WIS': {
     color: '#ffffff',
-    backgroundColor: '#c5050c',
+    backgroundColor: '#a00000',
   },
   'NCAAF-WIU': {
     color: '#ffc90a',
     backgroundColor: '#4e1e8a',
   },
-    'NCAAF-WKU': {
-    color: '#f11010',
-    backgroundColor: '#101010',
+  'NCAAF-WKU': {
+    color: '#ffffff',
+    backgroundColor: '#e13a3e',
   },
-    'NCAAF-WMU': {
-    color: '#f1b82d',
-    backgroundColor: '#532a1d',
+  'NCAAF-WMU': {
+    color: '#f1c500',
+    backgroundColor: '#532e1f',
   },
-    'NCAAF-WOF': {
-    color: '#c7b37f',
-    backgroundColor: '#886e4c',
+  'NCAAF-WOF': {
+    color: '#f0f0f0',
+    backgroundColor: '#533B23',
   },
-    'NCAAF-WSU': {
-    color: '#5e6a71',
-    backgroundColor: '#981e32',
+  'NCAAF-WSU': {
+    color: '#4d4d4d',
+    backgroundColor: '#a60f2d',
   },
-    'NCAAF-WVU': {
+  'NCAAF-WVU': {
     color: '#eaaa00',
     backgroundColor: '#002855',
   },
-    'NCAAF-WYO': {
-    color: '#ffc72c',
+  'NCAAF-WYO': {
+    color: '#ffc425',
     backgroundColor: '#492f24',
   },
   'NCAAF-YALE': {
@@ -1903,112 +2299,93 @@ export const ColorsTeamEnum: Record<
     color: '#E51936',
     backgroundColor: '#690717',
   },
-  'NCAAF-BRWN': { color: '#54413a', backgroundColor: '#000000' },
-  'NCAAF-COLU': { color: '#9bcbeb', backgroundColor: '#003865' },
-  'NCAAF-COR': { color: '#d60027', backgroundColor: '#000000' },
-  'NCAAF-DART': { color: '#005730', backgroundColor: '#000000' },
-  'NCAAF-DRKE': { color: '#bec0c2', backgroundColor: '#005596' },
-  'NCAAF-HARV': { color: '#990000', backgroundColor: '#000000' },
-  'NCAAF-JKST': { color: '#008ed6', backgroundColor: '#002147' },
-  'NCAAF-MRST': { color: '#e53730', backgroundColor: '#000000' },
-  'NCAAF-MORE': { color: '#29109c', backgroundColor: '#000000' },
-  'NCAAF-NCCU': { color: '#c2c3c0', backgroundColor: '#880023' },
-  'NCAAF-PENN': { color: '#ffffff', backgroundColor: '#041e42' },
-  'NCAAF-PRES': { color: '#003372', backgroundColor: '#000000' },
-  'NCAAF-PRIN': { color: '#ff9408', backgroundColor: '#000000' },
-  'NCAAF-USD': { color: '#0d1361', backgroundColor: '#000000' },
-  'NCAAF-SFA': { color: '#230d3c', backgroundColor: '#000000' },
-  'NCAAF-STMN': { color: '#919396', backgroundColor: '#512682' },
-  'NCAAF-TNTC': { color: '#440e62', backgroundColor: '#000000' },
-  'NCAAF-VAL': { color: '#ffcc00', backgroundColor: '#381e0e' },
-  'NCAAF-W&M': { color: '#f0b323', backgroundColor: '#115740' },
   'NCAAMH-AF': {
-    color: '#8a8d8f',
-    backgroundColor: '#003087',
-  },
-        'NCAAMH-AH': {
     color: '#ffffff',
-    backgroundColor: '#0077c8',
-  },
-        'NCAAMH-AIC': {
-    color: '#ffb60f',
     backgroundColor: '#000000',
   },
-        'NCAAMH-AKFB': {
-    color: '#ffcd00',
-    backgroundColor: '#236192',
+  'NCAAMH-AH': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAMH-ARIZ': {
+  'NCAAMH-AIC': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAMH-AKFB': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAMH-ARIZ': {
     color: '#cc0033',
     backgroundColor: '#003366',
   },
-    'NCAAMH-ARMY': {
-    color: '#d4bf91',
+  'NCAAMH-ARMY': {
+    color: '#d3bc8d',
     backgroundColor: '#000000',
   },
-        'NCAAMH-ASMP': {
+  'NCAAMH-ASMP': {
     color: '#ffffff',
-    backgroundColor: '#004b87',
+    backgroundColor: '#000000',
   },
-        'NCAAMH-ASP': {
+  'NCAAMH-ASP': {
     color: '#ffffff',
-    backgroundColor: '#004b87',
+    backgroundColor: '#000000',
   },
-    'NCAAMH-ASU': {
+  'NCAAMH-ASU': {
     color: '#ffc627',
     backgroundColor: '#8c1d40',
   },
-    'NCAAMH-AUGS': {
-    color: '#a2aaad',
-    backgroundColor: '#8a1538',
+  'NCAAMH-AUGS': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCAAMH-AUSD': {
     color: '#NULL',
-    backgroundColor: '#NULL',
+    backgroundColor: '#000000',
   },
-    'NCAAMH-BC': {
-    color: '#bc9b6a',
-    backgroundColor: '#98002e',
+  'NCAAMH-BC': {
+    color: '#dbcca6',
+    backgroundColor: '#8c2232',
   },
-        'NCAAMH-BENT': {
-    color: '#88898a',
-    backgroundColor: '#1b5faa',
+  'NCAAMH-BENT': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAMH-BGSU': {
-    color: '#ff6600',
+  'NCAAMH-BGSU': {
+    color: '#fd5000',
     backgroundColor: '#4f2c1d',
   },
   'NCAAMH-BRWN': {
     color: '#54413A',
     backgroundColor: '#000000',
   },
-        'NCAAMH-BST': {
-    color: '#d4b67c',
-    backgroundColor: '#004d44',
+  'NCAAMH-BST': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAMH-BU': {
-    color: '#cc0000',
-    backgroundColor: '#231f20',
+  'NCAAMH-BU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAMH-CAN': {
-    color: '#ffba00',
-    backgroundColor: '#0c2340',
+  'NCAAMH-CAN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAMH-CLAR': {
-    color: '#ffc72c',
-    backgroundColor: '#004b23',
+  'NCAAMH-CLAR': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAMH-COLC': {
-    color: '#f2af36',
+  'NCAAMH-COLC': {
+    color: '#ffffff',
     backgroundColor: '#000000',
   },
   'NCAAMH-COLG': {
     color: '#ffffff',
     backgroundColor: '#821019',
   },
-    'NCAAMH-CONN': {
-    color: '#e00122',
-    backgroundColor: '#000e2e',
+  'NCAAMH-CONN': {
+    color: '#a2aaad',
+    backgroundColor: '#0c2340',
   },
   'NCAAMH-COR': {
     color: '#d60027',
@@ -2018,13 +2395,13 @@ export const ColorsTeamEnum: Record<
     color: '#005730',
     backgroundColor: '#000000',
   },
-    'NCAAMH-DEN': {
-    color: '#8b6f4b',
-    backgroundColor: '#8b2332',
+  'NCAAMH-DEN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAMH-FRST': {
-    color: '#fcc917',
-    backgroundColor: '#ba0c2f',
+  'NCAAMH-FRST': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCAAMH-HARV': {
     color: '#990000',
@@ -2034,69 +2411,69 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#582c83',
   },
-        'NCAAMH-IONA': {
-    color: '#f2a900',
-    backgroundColor: '#6f2c3f',
+  'NCAAMH-IONA': {
+    color: '#f0ab00',
+    backgroundColor: '#6f2c3e',
   },
-        'NCAAMH-LIN': {
-    color: '#b5a36a',
-    backgroundColor: '#101820',
-  },
-    'NCAAMH-LIU': {
-    color: '#ffc72c',
-    backgroundColor: '#69b3e7',
-  },
-        'NCAAMH-LSS': {
-    color: '#ffc61e',
-    backgroundColor: '#003f87',
-  },
-    'NCAAMH-M-OH': {
+  'NCAAMH-LIN': {
     color: '#ffffff',
-    backgroundColor: '#b81f2d',
+    backgroundColor: '#000000',
+  },
+  'NCAAMH-LIU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAMH-LSS': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAMH-M-OH': {
+    color: '#ffffff',
+    backgroundColor: '#c41230',
   },
   'NCAAMH-MASS': {
     color: '#ffffff',
     backgroundColor: '#881c1c',
   },
-        'NCAAMH-MDAR': {
-    color: '#f9ad16',
-    backgroundColor: '#3b4f8c',
+  'NCAAMH-MDAR': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAMH-ME': {
-    color: '#b0d7ff',
-    backgroundColor: '#003263',
+  'NCAAMH-ME': {
+    color: '#127dbe',
+    backgroundColor: '#000000',
   },
-        'NCAAMH-MERC': {
-    color: '#07594d',
-    backgroundColor: '#182752',
+  'NCAAMH-MERC': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAMH-MICH': {
+  'NCAAMH-MICH': {
     color: '#ffcb05',
     backgroundColor: '#00274c',
   },
-    'NCAAMH-MINN': {
-    color: '#ffcc33',
-    backgroundColor: '#7a0019',
+  'NCAAMH-MINN': {
+    color: '#fab41c',
+    backgroundColor: '#5e0a2f',
   },
-        'NCAAMH-MNST': {
-    color: '#f7e400',
-    backgroundColor: '#480059',
-  },
-    'NCAAMH-MRMK': {
-    color: '#fdb813',
-    backgroundColor: '#003768',
-  },
-    'NCAAMH-MSU': {
+  'NCAAMH-MNST': {
     color: '#ffffff',
-    backgroundColor: '#18453b',
-  },
-        'NCAAMH-MTU': {
-    color: '#ffcd00',
     backgroundColor: '#000000',
   },
-    'NCAAMH-ND': {
+  'NCAAMH-MRMK': {
+    color: '#e8c535',
+    backgroundColor: '#2f4f93',
+  },
+  'NCAAMH-MSU': {
+    color: '#ffffff',
+    backgroundColor: '#173f35',
+  },
+  'NCAAMH-MTU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAMH-ND': {
     color: '#c99700',
-    backgroundColor: '#0c2340',
+    backgroundColor: '#062340',
   },
   'NCAAMH-NE': {
     color: '#CC0001',
@@ -2106,34 +2483,33 @@ export const ColorsTeamEnum: Record<
     color: '#641460',
     backgroundColor: '#000000',
   },
-        'NCAAMH-NMI': {
-    color: '#ffc425',
-    backgroundColor: '#095339',
+  'NCAAMH-NMI': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAMH-NYPM': {
-    color: '#b3b5b7',
-    backgroundColor: '#8b1535',
+  'NCAAMH-NYPM': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-  // Oakland ACHA club: reuse the existing NCCABB-OAK school colors.
   'NCAAMH-OAK': {
     color: '#04091c',
     backgroundColor: '#000000',
   },
   'NCAAMH-OHIO': {
-    color: '#e0aa0f',
-    backgroundColor: '#00693e',
+    color: '#ffffff',
+    backgroundColor: '#154734',
   },
   'NCAAMH-OMA': {
     color: '#e3193e',
     backgroundColor: '#000000',
   },
-    'NCAAMH-OSU': {
-    color: '#666666',
-    backgroundColor: '#bb0000',
+  'NCAAMH-OSU': {
+    color: '#a8adb4',
+    backgroundColor: '#ba0c2f',
   },
-        'NCAAMH-POST': {
-    color: '#f47216',
-    backgroundColor: '#5b254b',
+  'NCAAMH-POST': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCAAMH-PRIN': {
     color: '#FF9408',
@@ -2151,49 +2527,57 @@ export const ColorsTeamEnum: Record<
     color: '#002162',
     backgroundColor: '#000000',
   },
-      'NCAAMH-RIT': {
-    color: '#f76900',
-    backgroundColor: '#512604',
+  'NCAAMH-RIT': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAMH-RM': {
-    color: '#a6192e',
-    backgroundColor: '#14234b',
+  'NCAAMH-RM': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCAAMH-RMU': {
     color: '#a21d2b',
     backgroundColor: '#00214D',
   },
-    'NCAAMH-RPI': {
+  'NCAAMH-RPI': {
     color: '#ffffff',
-    backgroundColor: '#d6001c',
+    backgroundColor: '#000000',
   },
-        'NCAAMH-SCSU': {
-    color: '#a10209',
+  'NCAAMH-SCSU': {
+    color: '#ffffff',
     backgroundColor: '#000000',
   },
   'NCAAMH-SHU': {
     color: '#c29472',
     backgroundColor: '#a40012',
   },
-    'NCAAMH-STMN': {
-    color: '#919396',
-    backgroundColor: '#512682',
-  },
-          'NCAAMH-ST.': {
+  'NCAAMH-ST.': {
     color: '#d6c682',
     backgroundColor: '#55318c',
   },
-        'NCAAMH-UAA': {
-    color: '#ffc425',
-    backgroundColor: '#00583d',
+  'NCAAMH-STM': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAMH-UMD': {
-    color: '#fab937',
-    backgroundColor: '#8e0a26',
+  'NCAAMH-STMN': {
+    color: '#512682',
+    backgroundColor: '#000000',
   },
-    'NCAAMH-UML': {
-    color: '#c8102e',
-    backgroundColor: '#003da5',
+  'NCAAMH-STO': {
+    color: '#300A48',
+    backgroundColor: '#000000',
+  },
+  'NCAAMH-UAA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAMH-UMD': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCAAMH-UML': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCAAMH-UND': {
     color: '#c2c3c0',
@@ -2203,65 +2587,65 @@ export const ColorsTeamEnum: Record<
     color: '#c3c4c6',
     backgroundColor: '#004990',
   },
-    'NCAAMH-UNNY': {
+  'NCAAMH-UNNY': {
     color: '#ffffff',
-    backgroundColor: '#800020',
+    backgroundColor: '#000000',
   },
-    'NCAAMH-USL': {
-    color: '#af1e2d',
-    backgroundColor: '#4e2a1e',
+  'NCAAMH-USL': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAMH-UVM': {
+  'NCAAMH-UVM': {
     color: '#ffc72c',
     backgroundColor: '#154734',
   },
-    'NCAAMH-WAY': {
-    color: '#ffc72c',
-    backgroundColor: '#00462a',
-  },
-    'NCAAMH-WIS': {
+  'NCAAMH-WAY': {
     color: '#ffffff',
-    backgroundColor: '#c5050c',
+    backgroundColor: '#000000',
   },
-    'NCAAMH-WMU': {
-    color: '#f1b82d',
-    backgroundColor: '#532a1d',
+  'NCAAMH-WIS': {
+    color: '#ffffff',
+    backgroundColor: '#a00000',
+  },
+  'NCAAMH-WMU': {
+    color: '#f1c500',
+    backgroundColor: '#532e1f',
   },
   'NCAAMH-YALE': {
     color: '#286dc0',
     backgroundColor: '#004a81',
   },
-        'NCAAWH-ASP': {
+  'NCAAWH-ASP': {
     color: '#ffffff',
-    backgroundColor: '#004b87',
+    backgroundColor: '#000000',
   },
-    'NCAAWH-BC': {
-    color: '#bc9b6a',
-    backgroundColor: '#98002e',
+  'NCAAWH-BC': {
+    color: '#dbcca6',
+    backgroundColor: '#8c2232',
   },
   'NCAAWH-BRWN': {
     color: '#54413A',
     backgroundColor: '#000000',
   },
-        'NCAAWH-BST': {
-    color: '#d4b67c',
-    backgroundColor: '#004d44',
+  'NCAAWH-BST': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAWH-BU': {
-    color: '#cc0000',
-    backgroundColor: '#231f20',
+  'NCAAWH-BU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAWH-CLAR': {
-    color: '#ffc72c',
-    backgroundColor: '#004b23',
+  'NCAAWH-CLAR': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCAAWH-COLG': {
     color: '#ffffff',
     backgroundColor: '#821019',
   },
-    'NCAAWH-CONN': {
-    color: '#e00122',
-    backgroundColor: '#000e2e',
+  'NCAAWH-CONN': {
+    color: '#a2aaad',
+    backgroundColor: '#0c2340',
   },
   'NCAAWH-COR': {
     color: '#d60027',
@@ -2271,13 +2655,13 @@ export const ColorsTeamEnum: Record<
     color: '#005730',
     backgroundColor: '#000000',
   },
-        'NCAAWH-FP': {
-    color: '#6d6e71',
-    backgroundColor: '#a91938',
+  'NCAAWH-FP': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAWH-FRANK': {
-    color: '#6d6e71',
-    backgroundColor: '#a91938',
+  'NCAAWH-FRANK': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCAAWH-HARV': {
     color: '#990000',
@@ -2287,33 +2671,33 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#582c83',
   },
-        'NCAAWH-LIN': {
-    color: '#b5a36a',
-    backgroundColor: '#101820',
+  'NCAAWH-LIN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAWH-LIU': {
-    color: '#ffc72c',
-    backgroundColor: '#69b3e7',
+  'NCAAWH-LIU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAWH-ME': {
-    color: '#b0d7ff',
-    backgroundColor: '#003263',
+  'NCAAWH-ME': {
+    color: '#127dbe',
+    backgroundColor: '#000000',
   },
-        'NCAAWH-MERC': {
-    color: '#07594d',
-    backgroundColor: '#182752',
+  'NCAAWH-MERC': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAWH-MINN': {
-    color: '#ffcc33',
-    backgroundColor: '#7a0019',
+  'NCAAWH-MINN': {
+    color: '#fab41c',
+    backgroundColor: '#5e0a2f',
   },
-        'NCAAWH-MNST': {
-    color: '#f7e400',
-    backgroundColor: '#480059',
+  'NCAAWH-MNST': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAWH-MRMK': {
-    color: '#fdb813',
-    backgroundColor: '#003768',
+  'NCAAWH-MRMK': {
+    color: '#e8c535',
+    backgroundColor: '#2f4f93',
   },
   'NCAAWH-NE': {
     color: '#CC0001',
@@ -2323,18 +2707,17 @@ export const ColorsTeamEnum: Record<
     color: '#641460',
     backgroundColor: '#000000',
   },
-  // Northern Michigan ACHA club: reuse NCAAMH-NMI school colors.
   'NCAAWH-NMU': {
     color: '#ffc425',
     backgroundColor: '#095339',
   },
-    'NCAAWH-OSU': {
-    color: '#666666',
-    backgroundColor: '#bb0000',
+  'NCAAWH-OSU': {
+    color: '#a8adb4',
+    backgroundColor: '#ba0c2f',
   },
-        'NCAAWH-POST': {
-    color: '#f47216',
-    backgroundColor: '#5b254b',
+  'NCAAWH-POST': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCAAWH-PRIN': {
     color: '#FF9408',
@@ -2348,57 +2731,69 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#061440',
   },
-        'NCAAWH-PU': {
-    color: '#f47216',
-    backgroundColor: '#5b254b',
+  'NCAAWH-PU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCAAWH-QUIN': {
     color: '#002162',
     backgroundColor: '#000000',
   },
-      'NCAAWH-RIT': {
-    color: '#f76900',
-    backgroundColor: '#512604',
+  'NCAAWH-RIT': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCAAWH-RMU': {
     color: '#a21d2b',
     backgroundColor: '#00214D',
   },
-    'NCAAWH-RPI': {
+  'NCAAWH-RPI': {
     color: '#ffffff',
-    backgroundColor: '#d6001c',
+    backgroundColor: '#000000',
   },
-        'NCAAWH-SANS': {
+  'NCAAWH-SANS': {
     color: '#ffffff',
-    backgroundColor: '#002b5c',
+    backgroundColor: '#000000',
   },
-        'NCAAWH-SCSU': {
-    color: '#a10209',
+  'NCAAWH-SCSU': {
+    color: '#ffffff',
     backgroundColor: '#000000',
   },
   'NCAAWH-SHU': {
     color: '#c29472',
     backgroundColor: '#a40012',
   },
-        'NCAAWH-STMIK': {
+  'NCAAWH-ST.': {
     color: '#d6c682',
     backgroundColor: '#55318c',
   },
-    'NCAAWH-STMN': {
-    color: '#919396',
-    backgroundColor: '#512682',
+  'NCAAWH-STA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-          'NCAAWH-ST.': {
-    color: '#d6c682',
-    backgroundColor: '#55318c',
+  'NCAAWH-STM': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCAAWH-SYR': {
-    color: '#d44500',
-    backgroundColor: '#3e3d4d',
+  'NCAAWH-STMIK': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAWH-UMD': {
-    color: '#fab937',
-    backgroundColor: '#8e0a26',
+  'NCAAWH-STMN': {
+    color: '#512682',
+    backgroundColor: '#000000',
+  },
+  'NCAAWH-STO': {
+    color: '#300A48',
+    backgroundColor: '#000000',
+  },
+  'NCAAWH-SYR': {
+    color: '#ff431b',
+    backgroundColor: '#000e54',
+  },
+  'NCAAWH-UMD': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCAAWH-UND': {
     color: '#c2c3c0',
@@ -2408,21 +2803,21 @@ export const ColorsTeamEnum: Record<
     color: '#c3c4c6',
     backgroundColor: '#004990',
   },
-    'NCAAWH-UNNY': {
+  'NCAAWH-UNNY': {
     color: '#ffffff',
-    backgroundColor: '#800020',
+    backgroundColor: '#000000',
   },
-    'NCAAWH-USL': {
-    color: '#af1e2d',
-    backgroundColor: '#4e2a1e',
+  'NCAAWH-USL': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCAAWH-UVM': {
+  'NCAAWH-UVM': {
     color: '#ffc72c',
     backgroundColor: '#154734',
   },
-    'NCAAWH-WIS': {
+  'NCAAWH-WIS': {
     color: '#ffffff',
-    backgroundColor: '#c5050c',
+    backgroundColor: '#a00000',
   },
   'NCAAWH-YALE': {
     color: '#286dc0',
@@ -2432,21 +2827,21 @@ export const ColorsTeamEnum: Record<
     color: '#790000',
     backgroundColor: '#000000',
   },
-    'NCCABB-ACU': {
-    color: '#ffffff',
-    backgroundColor: '#4f2170',
+  'NCCABB-ACU': {
+    color: '#000000',
+    backgroundColor: '#000000',
   },
-    'NCCABB-AFA': {
-    color: '#8a9db1',
-    backgroundColor: '#003366',
+  'NCCABB-AFA': {
+    color: '#004A7B',
+    backgroundColor: '#000000',
   },
-    'NCCABB-AKR': {
-    color: '#a28d5b',
-    backgroundColor: '#041e42',
+  'NCCABB-AKR': {
+    color: '#0A1E5B',
+    backgroundColor: '#000000',
   },
-    'NCCABB-ALA': {
-    color: '#828a8f',
-    backgroundColor: '#9e1b32',
+  'NCCABB-ALA': {
+    color: '#A42D47',
+    backgroundColor: '#000000',
   },
   'NCCABB-ALB': {
     color: '#56438E',
@@ -2464,49 +2859,49 @@ export const ColorsTeamEnum: Record<
     color: '#00639c',
     backgroundColor: '#000000',
   },
-    'NCCABB-APP': {
-    color: '#ffc72c',
-    backgroundColor: '#222222',
+  'NCCABB-APP': {
+    color: '#ffcd00',
+    backgroundColor: '#000000',
   },
   'NCCABB-APSU': {
     color: '#8E0B0B',
     backgroundColor: '#000000',
   },
-    'NCCABB-ARIZ': {
-    color: '#cc0033',
-    backgroundColor: '#003366',
-  },
-    'NCCABB-ARK': {
-    color: '#9d2235',
+  'NCCABB-ARIZ': {
+    color: '#102142',
     backgroundColor: '#000000',
   },
-    'NCCABB-ARMY': {
-    color: '#d4bf91',
+  'NCCABB-ARK': {
+    color: '#9C1831',
     backgroundColor: '#000000',
   },
-    'NCCABB-ARST': {
-    color: '#cc0000',
+  'NCCABB-ARMY': {
+    color: '#CE9C00',
     backgroundColor: '#000000',
   },
-    'NCCABB-ASU': {
-    color: '#ffc627',
-    backgroundColor: '#8c1d40',
-  },
-    'NCCABB-AUB': {
-    color: '#e87722',
-    backgroundColor: '#0c2340',
-  },
-    'NCCABB-BALL': {
-    color: '#ba0c2f',
+  'NCCABB-ARST': {
+    color: '#e81018',
     backgroundColor: '#000000',
   },
-    'NCCABB-BAY': {
-    color: '#fecb00',
-    backgroundColor: '#003015',
+  'NCCABB-ASU': {
+    color: '#942139',
+    backgroundColor: '#000000',
   },
-    'NCCABB-BC': {
-    color: '#bc9b6a',
-    backgroundColor: '#98002e',
+  'NCCABB-AUB': {
+    color: '#182942',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-BALL': {
+    color: '#DE0000',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-BAY': {
+    color: '#00844A',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-BC': {
+    color: '#111111',
+    backgroundColor: '#000000',
   },
   'NCCABB-BCU': {
     color: '#7B1831',
@@ -2516,17 +2911,17 @@ export const ColorsTeamEnum: Record<
     color: '#182142',
     backgroundColor: '#000000',
   },
-        'NCCABB-BELL': {
-    color: '#c8c8c8',
-    backgroundColor: '#752936',
+  'NCCABB-BELL': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCCABB-BGSU': {
-    color: '#ff6600',
-    backgroundColor: '#4f2c1d',
+  'NCCABB-BGSU': {
+    color: '#663300',
+    backgroundColor: '#000000',
   },
-    'NCCABB-BING': {
-    color: '#169b62',
-    backgroundColor: '#005a43',
+  'NCCABB-BING': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCCABB-BRAD': {
     color: '#b70002',
@@ -2536,89 +2931,89 @@ export const ColorsTeamEnum: Record<
     color: '#54413A',
     backgroundColor: '#000000',
   },
-    'NCCABB-BRY': {
-    color: '#b4975b',
+  'NCCABB-BRY': {
+    color: '#000000',
     backgroundColor: '#000000',
   },
-    'NCCABB-BSC': {
-    color: '#cc9900',
-    backgroundColor: '#000000',
-  },
-    'NCCABB-BUCK': {
-    color: '#e87722',
-    backgroundColor: '#003865',
-  },
-    'NCCABB-BUT': {
-    color: '#708090',
-    backgroundColor: '#002d62',
-  },
-    'NCCABB-BYU': {
+  'NCCABB-BSC': {
     color: '#ffffff',
-    backgroundColor: '#002e5d',
+    backgroundColor: '#000000',
   },
-    'NCCABB-CAL': {
-    color: '#fdb515',
-    backgroundColor: '#003262',
+  'NCCABB-BUCK': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCCABB-CAM': {
-    color: '#f58025',
-    backgroundColor: '#231f20',
+  'NCCABB-BUT': {
+    color: '#0d1361',
+    backgroundColor: '#000000',
   },
-        'NCCABB-CAN': {
-    color: '#ffba00',
-    backgroundColor: '#0c2340',
+  'NCCABB-BYU': {
+    color: '#002942',
+    backgroundColor: '#000000',
   },
-    'NCCABB-CARK': {
-    color: '#818a8f',
-    backgroundColor: '#4f2d7f',
+  'NCCABB-CAL': {
+    color: '#002942',
+    backgroundColor: '#000000',
   },
-    'NCCABB-CBU': {
-    color: '#a37400',
-    backgroundColor: '#002554',
+  'NCCABB-CAM': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-CAN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-CARK': {
+    color: '#8e959a',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-CBU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCCABB-CCSU': {
     color: '#1E489C',
     backgroundColor: '#000000',
   },
-    'NCCABB-CCU': {
-    color: '#a27752',
-    backgroundColor: '#006f71',
+  'NCCABB-CCU': {
+    color: '#59A0A0',
+    backgroundColor: '#000000',
   },
   'NCCABB-CHSO': {
     color: '#2e3192',
     backgroundColor: '#000000',
   },
-    'NCCABB-CIN': {
+  'NCCABB-CIN': {
     color: '#e00122',
     backgroundColor: '#000000',
   },
-    'NCCABB-CIT': {
-    color: '#3975b7',
-    backgroundColor: '#1f3a60',
+  'NCCABB-CIT': {
+    color: '#002856',
+    backgroundColor: '#000000',
   },
-    'NCCABB-CLEM': {
-    color: '#f56600',
-    backgroundColor: '#522d80',
+  'NCCABB-CLEM': {
+    color: '#F35B0F',
+    backgroundColor: '#000000',
   },
-    'NCCABB-CLT': {
-    color: '#a49665',
-    backgroundColor: '#005035',
+  'NCCABB-CLT': {
+    color: '#0C562D',
+    backgroundColor: '#000000',
   },
-    'NCCABB-CMU': {
-    color: '#ffc82e',
-    backgroundColor: '#6a0032',
+  'NCCABB-CMU': {
+    color: '#7b0000',
+    backgroundColor: '#000000',
   },
   'NCCABB-COFC': {
     color: '#9C8456',
     backgroundColor: '#000000',
   },
-        'NCCABB-COLU': {
-    color: '#9bcbeb',
-    backgroundColor: '#003865',
+  'NCCABB-COLU': {
+    color: '#000000',
+    backgroundColor: '#000000',
   },
-    'NCCABB-CONN': {
-    color: '#e00122',
-    backgroundColor: '#000e2e',
+  'NCCABB-CONN': {
+    color: '#0A1E5B',
+    backgroundColor: '#000000',
   },
   'NCCABB-COPP': {
     color: '#2E3192',
@@ -2632,9 +3027,9 @@ export const ColorsTeamEnum: Record<
     color: '#083808',
     backgroundColor: '#000000',
   },
-    'NCCABB-CREI': {
-    color: '#63666a',
-    backgroundColor: '#005ca9',
+  'NCCABB-CREI': {
+    color: '#13299E',
+    backgroundColor: '#000000',
   },
   'NCCABB-CSUB': {
     color: '#003BAB',
@@ -2652,17 +3047,17 @@ export const ColorsTeamEnum: Record<
     color: '#005730',
     backgroundColor: '#000000',
   },
-        'NCCABB-DAV': {
-    color: '#ac1a2f',
+  'NCCABB-DAV': {
+    color: '#000000',
     backgroundColor: '#000000',
   },
-    'NCCABB-DAY': {
-    color: '#d71920',
-    backgroundColor: '#002244',
+  'NCCABB-DAY': {
+    color: '#e50b0d',
+    backgroundColor: '#000000',
   },
-        'NCCABB-DBU': {
-    color: '#c41230',
-    backgroundColor: '#0b1f2c',
+  'NCCABB-DBU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCCABB-DEL': {
     color: '#285998',
@@ -2672,85 +3067,85 @@ export const ColorsTeamEnum: Record<
     color: '#FF3630',
     backgroundColor: '#000000',
   },
-    'NCCABB-DUKE': {
-    color: '#ffffff',
-    backgroundColor: '#003087',
+  'NCCABB-DUKE': {
+    color: '#004A7B',
+    backgroundColor: '#000000',
   },
-    'NCCABB-ECU': {
-    color: '#fdc82f',
-    backgroundColor: '#592a8a',
+  'NCCABB-ECU': {
+    color: '#4B1869',
+    backgroundColor: '#000000',
   },
-    'NCCABB-EIU': {
-    color: '#919295',
-    backgroundColor: '#004b83',
+  'NCCABB-EIU': {
+    color: '#000000',
+    backgroundColor: '#000000',
   },
   'NCCABB-EKU': {
     color: '#800000',
     backgroundColor: '#000000',
   },
-    'NCCABB-ELON': {
-    color: '#b59a57',
-    backgroundColor: '#73000a',
-  },
-    'NCCABB-EMU': {
+  'NCCABB-ELON': {
     color: '#ffffff',
-    backgroundColor: '#006633',
+    backgroundColor: '#000000',
   },
-    'NCCABB-ETSU': {
-    color: '#ffc72c',
-    backgroundColor: '#041e42',
+  'NCCABB-EMU': {
+    color: '#217038',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-ETSU': {
+    color: '#000000',
+    backgroundColor: '#000000',
   },
   'NCCABB-EVAN': {
     color: '#663399',
     backgroundColor: '#000000',
   },
-        'NCCABB-FAIR': {
-    color: '#a2aaad',
-    backgroundColor: '#c8102e',
+  'NCCABB-FAIR': {
+    color: '#ebebeb',
+    backgroundColor: '#000000',
   },
   'NCCABB-FAMU': {
     color: '#ff7329',
     backgroundColor: '#000000',
   },
-    'NCCABB-FAU': {
-    color: '#cc0000',
-    backgroundColor: '#003366',
+  'NCCABB-FAU': {
+    color: '#000099',
+    backgroundColor: '#000000',
   },
   'NCCABB-FDU': {
     color: '#00449C',
     backgroundColor: '#000000',
   },
-        'NCCABB-FGCU': {
-    color: '#b9975b',
-    backgroundColor: '#002d72',
+  'NCCABB-FGCU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCCABB-FIU': {
-    color: '#b6862c',
-    backgroundColor: '#081e3f',
+  'NCCABB-FIU': {
+    color: '#091731',
+    backgroundColor: '#000000',
   },
-    'NCCABB-FLA': {
-    color: '#fa4616',
-    backgroundColor: '#0021a5',
+  'NCCABB-FLA': {
+    color: '#2A42CE',
+    backgroundColor: '#000000',
   },
   'NCCABB-FOR': {
     color: '#a50019',
     backgroundColor: '#000000',
   },
-    'NCCABB-FRES': {
-    color: '#db0032',
-    backgroundColor: '#002b5c',
+  'NCCABB-FRES': {
+    color: '#E73139',
+    backgroundColor: '#000000',
   },
-    'NCCABB-FSU': {
-    color: '#ceb888',
-    backgroundColor: '#782f40',
+  'NCCABB-FSU': {
+    color: '#B72931',
+    backgroundColor: '#000000',
   },
-    'NCCABB-GASO': {
-    color: '#a3aaae',
-    backgroundColor: '#011e41',
+  'NCCABB-GASO': {
+    color: '#0A3861',
+    backgroundColor: '#000000',
   },
-    'NCCABB-GAST': {
-    color: '#cc0000',
-    backgroundColor: '#0039a6',
+  'NCCABB-GAST': {
+    color: '#1e539a',
+    backgroundColor: '#000000',
   },
   'NCCABB-GCU': {
     color: '#ffffff',
@@ -2760,17 +3155,17 @@ export const ColorsTeamEnum: Record<
     color: '#016600',
     backgroundColor: '#000000',
   },
-    'NCCABB-GONZ': {
-    color: '#c1c6c8',
-    backgroundColor: '#041e42',
+  'NCCABB-GONZ': {
+    color: '#041e42',
+    backgroundColor: '#000000',
   },
   'NCCABB-GRAM': {
     color: '#ee8601',
     backgroundColor: '#000000',
   },
-    'NCCABB-GT': {
+  'NCCABB-GT': {
     color: '#b3a369',
-    backgroundColor: '#003057',
+    backgroundColor: '#000000',
   },
   'NCCABB-GTWN': {
     color: '#38427a',
@@ -2796,9 +3191,9 @@ export const ColorsTeamEnum: Record<
     color: '#990000',
     backgroundColor: '#000000',
   },
-    'NCCABB-HAW': {
-    color: '#c8c8c8',
-    backgroundColor: '#024731',
+  'NCCABB-HAW': {
+    color: '#004231',
+    backgroundColor: '#000000',
   },
   'NCCABB-HC': {
     color: '#0a0a0a',
@@ -2808,53 +3203,53 @@ export const ColorsTeamEnum: Record<
     color: '#00539c',
     backgroundColor: '#000000',
   },
-        'NCCABB-HILO': {
-    color: '#ed2d23',
+  'NCCABB-HILO': {
+    color: '#ffffff',
     backgroundColor: '#000000',
   },
   'NCCABB-HOF': {
     color: '#27297c',
     backgroundColor: '#000000',
   },
-    'NCCABB-HOU': {
-    color: '#ffffff',
-    backgroundColor: '#c8102e',
+  'NCCABB-HOU': {
+    color: '#E73139',
+    backgroundColor: '#000000',
   },
   'NCCABB-HPU': {
     color: '#b0b7bc',
     backgroundColor: '#000000',
   },
-    'NCCABB-ILL': {
-    color: '#e84a27',
-    backgroundColor: '#13294b',
+  'NCCABB-ILL': {
+    color: '#F77329',
+    backgroundColor: '#000000',
   },
-        'NCCABB-ILST': {
-    color: '#f9dd16',
-    backgroundColor: '#ce1126',
+  'NCCABB-ILST': {
+    color: '#000000',
+    backgroundColor: '#000000',
   },
   'NCCABB-INST': {
     color: '#f0f0f0',
     backgroundColor: '#00669a',
   },
-    'NCCABB-IOWA': {
-    color: '#ffcd00',
+  'NCCABB-IOWA': {
+    color: '#231f20',
     backgroundColor: '#000000',
   },
-    'NCCABB-IU': {
-    color: '#eeedeb',
-    backgroundColor: '#990000',
+  'NCCABB-IU': {
+    color: '#970310',
+    backgroundColor: '#000000',
   },
   'NCCABB-JAX': {
     color: '#008568',
     backgroundColor: '#000000',
   },
-    'NCCABB-JKST': {
-    color: '#008ed6',
-    backgroundColor: '#002147',
+  'NCCABB-JKST': {
+    color: '#000000',
+    backgroundColor: '#000000',
   },
-    'NCCABB-JMU': {
-    color: '#cbb677',
-    backgroundColor: '#450084',
+  'NCCABB-JMU': {
+    color: '#0F1358',
+    backgroundColor: '#000000',
   },
   'NCCABB-JOES': {
     color: '#BB003A',
@@ -2872,57 +3267,57 @@ export const ColorsTeamEnum: Record<
     color: '#fdbb30',
     backgroundColor: '#0b1315',
   },
-    'NCCABB-KENT': {
-    color: '#eaab00',
-    backgroundColor: '#002664',
+  'NCCABB-KENT': {
+    color: '#212142',
+    backgroundColor: '#000000',
   },
-    'NCCABB-KSU': {
-    color: '#d1d5db',
-    backgroundColor: '#512888',
+  'NCCABB-KSU': {
+    color: '#633194',
+    backgroundColor: '#000000',
   },
-    'NCCABB-KU': {
-    color: '#e8000d',
-    backgroundColor: '#0051ba',
+  'NCCABB-KU': {
+    color: '#0337B4',
+    backgroundColor: '#000000',
   },
   'NCCABB-LAF': {
     color: '#790000',
     backgroundColor: '#000000',
   },
-    'NCCABB-LAM': {
-    color: '#fcb034',
-    backgroundColor: '#dc0032',
+  'NCCABB-LAM': {
+    color: '#000000',
+    backgroundColor: '#000000',
   },
   'NCCABB-LAS': {
     color: '#000063',
     backgroundColor: '#000000',
   },
-        'NCCABB-LBSU': {
-    color: '#ffc72a',
+  'NCCABB-LBSU': {
+    color: '#f1f2f3',
     backgroundColor: '#000000',
   },
   'NCCABB-LEH': {
     color: '#6c2b2a',
     backgroundColor: '#000000',
   },
-        'NCCABB-LEM': {
-    color: '#fce300',
-    backgroundColor: '#00452a',
+  'NCCABB-LEM': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCCABB-LIB': {
-    color: '#c41230',
-    backgroundColor: '#0c2340',
+  'NCCABB-LIB': {
+    color: '#000073',
+    backgroundColor: '#000000',
   },
-        'NCCABB-LIN': {
-    color: '#b5a36a',
-    backgroundColor: '#101820',
+  'NCCABB-LIN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCCABB-LIP': {
     color: '#20366C',
     backgroundColor: '#000000',
   },
-    'NCCABB-LIU': {
-    color: '#ffc72c',
-    backgroundColor: '#69b3e7',
+  'NCCABB-LIU': {
+    color: '#000000',
+    backgroundColor: '#000000',
   },
   'NCCABB-LMU': {
     color: '#880029',
@@ -2932,29 +3327,29 @@ export const ColorsTeamEnum: Record<
     color: '#003273',
     backgroundColor: '#000000',
   },
-        'NCCABB-LOR': {
-    color: '#c9b281',
-    backgroundColor: '#3b2b66',
+  'NCCABB-LOR': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCCABB-LOU': {
-    color: '#ad0000',
+  'NCCABB-LOU': {
+    color: '#DE0018',
     backgroundColor: '#000000',
   },
   'NCCABB-LR': {
     color: '#AD0000',
     backgroundColor: '#000000',
   },
-    'NCCABB-LSU': {
-    color: '#fdd023',
-    backgroundColor: '#461d7c',
+  'NCCABB-LSU': {
+    color: '#2B0D57',
+    backgroundColor: '#000000',
   },
-    'NCCABB-LT': {
-    color: '#e31b23',
-    backgroundColor: '#002f6c',
+  'NCCABB-LT': {
+    color: '#3129E7',
+    backgroundColor: '#000000',
   },
-    'NCCABB-M-OH': {
-    color: '#ffffff',
-    backgroundColor: '#b81f2d',
+  'NCCABB-M-OH': {
+    color: '#CE2229',
+    backgroundColor: '#000000',
   },
   'NCCABB-MAN': {
     color: '#4F8537',
@@ -2968,48 +3363,48 @@ export const ColorsTeamEnum: Record<
     color: '#003366',
     backgroundColor: '#000000',
   },
-    'NCCABB-MD': {
-    color: '#ffd100',
-    backgroundColor: '#e21833',
-  },
-        'NCCABB-ME': {
-    color: '#b0d7ff',
-    backgroundColor: '#003263',
-  },
-    'NCCABB-MEM': {
-    color: '#8d9093',
-    backgroundColor: '#003087',
-  },
-    'NCCABB-MER': {
-    color: '#f76800',
+  'NCCABB-MD': {
+    color: '#D60039',
     backgroundColor: '#000000',
   },
-    'NCCABB-MIA': {
-    color: '#f47321',
-    backgroundColor: '#005030',
-  },
-    'NCCABB-MICH': {
-    color: '#ffcb05',
-    backgroundColor: '#00274c',
-  },
-        'NCCABB-MILW': {
-    color: '#ffbd00',
+  'NCCABB-ME': {
+    color: '#127dbe',
     backgroundColor: '#000000',
   },
-    'NCCABB-MINN': {
-    color: '#ffcc33',
-    backgroundColor: '#7a0019',
-  },
-    'NCCABB-MISS': {
-    color: '#ce1126',
-    backgroundColor: '#14213d',
-  },
-    'NCCABB-MIZ': {
-    color: '#f1b82d',
+  'NCCABB-MEM': {
+    color: '#29299C',
     backgroundColor: '#000000',
   },
-    'NCCABB-MIZZ': {
-    color: '#f1b82d',
+  'NCCABB-MER': {
+    color: '#080808',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-MIA': {
+    color: '#004325',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-MICH': {
+    color: '#292942',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-MILW': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-MINN': {
+    color: '#752132',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-MISS': {
+    color: '#101894',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-MIZ': {
+    color: '#000000',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-MIZZ': {
+    color: '#ffffff',
     backgroundColor: '#000000',
   },
   'NCCABB-MONM': {
@@ -3024,12 +3419,12 @@ export const ColorsTeamEnum: Record<
     color: '#4A0010',
     backgroundColor: '#000000',
   },
-    'NCCABB-MRMK': {
-    color: '#fdb813',
-    backgroundColor: '#003768',
+  'NCCABB-MRMK': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCCABB-MRSH': {
-    color: '#00b140',
+  'NCCABB-MRSH': {
+    color: '#186329',
     backgroundColor: '#000000',
   },
   'NCCABB-MRST': {
@@ -3040,17 +3435,17 @@ export const ColorsTeamEnum: Record<
     color: '#001259',
     backgroundColor: '#000000',
   },
-    'NCCABB-MSST': {
-    color: '#c2c1c2',
-    backgroundColor: '#5d1725',
+  'NCCABB-MSST': {
+    color: '#531122',
+    backgroundColor: '#000000',
   },
-    'NCCABB-MSU': {
-    color: '#ffffff',
-    backgroundColor: '#18453b',
+  'NCCABB-MSU': {
+    color: '#226B31',
+    backgroundColor: '#000000',
   },
-    'NCCABB-MTSU': {
-    color: '#a7a9ac',
-    backgroundColor: '#0066cc',
+  'NCCABB-MTSU': {
+    color: '#1842D6',
+    backgroundColor: '#000000',
   },
   'NCCABB-MUR': {
     color: '#182356',
@@ -3060,25 +3455,25 @@ export const ColorsTeamEnum: Record<
     color: '#054105',
     backgroundColor: '#000000',
   },
-    'NCCABB-NAVY': {
-    color: '#c59b27',
-    backgroundColor: '#00205b',
+  'NCCABB-NAVY': {
+    color: '#0F1021',
+    backgroundColor: '#000000',
   },
   'NCCABB-NCAT': {
     color: '#0505aa',
     backgroundColor: '#000000',
   },
-    'NCCABB-NCST': {
-    color: '#cc0000',
+  'NCCABB-NCST': {
+    color: '#D60039',
     backgroundColor: '#000000',
   },
   'NCCABB-NCSU': {
     color: '#D60039',
     backgroundColor: '#000000',
   },
-    'NCCABB-ND': {
-    color: '#c99700',
-    backgroundColor: '#0c2340',
+  'NCCABB-ND': {
+    color: '#313A98',
+    backgroundColor: '#000000',
   },
   'NCCABB-NDSU': {
     color: '#ffffff',
@@ -3088,17 +3483,17 @@ export const ColorsTeamEnum: Record<
     color: '#CC0001',
     backgroundColor: '#000000',
   },
-    'NCCABB-NEB': {
-    color: '#f5f1e6',
-    backgroundColor: '#e31837',
+  'NCCABB-NEB': {
+    color: '#FE0D04',
+    backgroundColor: '#000000',
   },
-    'NCCABB-NEV': {
-    color: '#807f84',
-    backgroundColor: '#003366',
+  'NCCABB-NEV': {
+    color: '#084A73',
+    backgroundColor: '#000000',
   },
-        'NCCABB-NHVN': {
-    color: '#ffc423',
-    backgroundColor: '#004b8d',
+  'NCCABB-NHVN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCCABB-NIA': {
     color: '#641460',
@@ -3108,29 +3503,29 @@ export const ColorsTeamEnum: Record<
     color: '#2a5074',
     backgroundColor: '#000000',
   },
-    'NCCABB-NIU': {
-    color: '#ba0c2f',
+  'NCCABB-NIU': {
+    color: '#e73139',
     backgroundColor: '#000000',
   },
   'NCCABB-NJIT': {
     color: '#ff3333',
     backgroundColor: '#000000',
   },
-        'NCCABB-NKU': {
-    color: '#ffc72c',
+  'NCCABB-NKU': {
+    color: '#ffc82e',
     backgroundColor: '#000000',
   },
-    'NCCABB-NMSU': {
-    color: '#ffffff',
-    backgroundColor: '#891226',
+  'NCCABB-NMSU': {
+    color: '#730000',
+    backgroundColor: '#000000',
   },
   'NCCABB-NORF': {
     color: '#08614f',
     backgroundColor: '#000000',
   },
-    'NCCABB-NU': {
-    color: '#ffffff',
-    backgroundColor: '#4e2a84',
+  'NCCABB-NU': {
+    color: '#372286',
+    backgroundColor: '#000000',
   },
   'NCCABB-NWST': {
     color: '#68565F',
@@ -3140,27 +3535,27 @@ export const ColorsTeamEnum: Record<
     color: '#04091c',
     backgroundColor: '#000000',
   },
-    'NCCABB-ODU': {
-    color: '#7c878e',
-    backgroundColor: '#003057',
+  'NCCABB-ODU': {
+    color: '#00507D',
+    backgroundColor: '#000000',
   },
-    'NCCABB-OHIO': {
-    color: '#e0aa0f',
-    backgroundColor: '#00693e',
+  'NCCABB-OHIO': {
+    color: '#006342',
+    backgroundColor: '#000000',
   },
-    'NCCABB-OKST': {
-    color: '#ff7300',
+  'NCCABB-OKST': {
+    color: '#fe5c00',
     backgroundColor: '#000000',
   },
   'NCCABB-OMA': {
     color: '#e3193e',
     backgroundColor: '#000000',
   },
-    'NCCABB-ORE': {
-    color: '#fee12b',
-    backgroundColor: '#154734',
+  'NCCABB-ORE': {
+    color: '#044520',
+    backgroundColor: '#000000',
   },
-    'NCCABB-ORST': {
+  'NCCABB-ORST': {
     color: '#dc4405',
     backgroundColor: '#000000',
   },
@@ -3168,21 +3563,21 @@ export const ColorsTeamEnum: Record<
     color: '#002955',
     backgroundColor: '#000000',
   },
-    'NCCABB-OSU': {
-    color: '#666666',
-    backgroundColor: '#bb0000',
+  'NCCABB-OSU': {
+    color: '#DE3129',
+    backgroundColor: '#000000',
   },
-    'NCCABB-OU': {
-    color: '#fdf9d8',
-    backgroundColor: '#841617',
+  'NCCABB-OU': {
+    color: '#7B0000',
+    backgroundColor: '#000000',
   },
   'NCCABB-PAC': {
     color: '#ff5109',
     backgroundColor: '#000000',
   },
-    'NCCABB-PENN': {
-    color: '#ffffff',
-    backgroundColor: '#041e42',
+  'NCCABB-PENN': {
+    color: '#B10021',
+    backgroundColor: '#000000',
   },
   'NCCABB-PEPP': {
     color: '#009C98',
@@ -3192,9 +3587,9 @@ export const ColorsTeamEnum: Record<
     color: '#00378A',
     backgroundColor: '#000000',
   },
-    'NCCABB-PITT': {
-    color: '#ffb81c',
-    backgroundColor: '#003594',
+  'NCCABB-PITT': {
+    color: '#313169',
+    backgroundColor: '#000000',
   },
   'NCCABB-PORT': {
     color: '#4200a0',
@@ -3212,17 +3607,17 @@ export const ColorsTeamEnum: Record<
     color: '#29294a',
     backgroundColor: '#000000',
   },
-    'NCCABB-PUR': {
-    color: '#ceb888',
+  'NCCABB-PUR': {
+    color: '#211818',
     backgroundColor: '#000000',
   },
   'NCCABB-PV': {
     color: '#4D0960',
     backgroundColor: '#000000',
   },
-    'NCCABB-QUC': {
-    color: '#c59b27',
-    backgroundColor: '#002d62',
+  'NCCABB-QUC': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCCABB-QUIN': {
     color: '#002162',
@@ -3232,13 +3627,13 @@ export const ColorsTeamEnum: Record<
     color: '#bd1818',
     backgroundColor: '#000000',
   },
-    'NCCABB-RGV': {
-    color: '#ffa300',
-    backgroundColor: '#0c2340',
+  'NCCABB-RGV': {
+    color: '#e1732d',
+    backgroundColor: '#dc6000',
   },
-    'NCCABB-RICE': {
-    color: '#c1c6c8',
-    backgroundColor: '#00205b',
+  'NCCABB-RICE': {
+    color: '#00315A',
+    backgroundColor: '#000000',
   },
   'NCCABB-RICH': {
     color: '#004371',
@@ -3248,13 +3643,13 @@ export const ColorsTeamEnum: Record<
     color: '#c82223',
     backgroundColor: '#000000',
   },
-    'NCCABB-ROO': {
-    color: '#4f2683',
-    backgroundColor: '#005a36',
+  'NCCABB-ROO': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCCABB-RUTG': {
-    color: '#5f6062',
-    backgroundColor: '#cc0033',
+  'NCCABB-RUTG': {
+    color: '#ce0e2d',
+    backgroundColor: '#000000',
   },
   'NCCABB-S ALA': {
     color: '#004A7B',
@@ -3272,7 +3667,7 @@ export const ColorsTeamEnum: Record<
     color: '#712A1B',
     backgroundColor: '#000000',
   },
-    'NCCABB-SC': {
+  'NCCABB-SC': {
     color: '#73000a',
     backgroundColor: '#000000',
   },
@@ -3280,21 +3675,21 @@ export const ColorsTeamEnum: Record<
     color: '#690b0b',
     backgroundColor: '#000000',
   },
-    'NCCABB-SDST': {
-    color: '#ffd100',
-    backgroundColor: '#0033a0',
+  'NCCABB-SDST': {
+    color: '#0033a0',
+    backgroundColor: '#000000',
   },
-    'NCCABB-SDSU': {
-    color: '#a6192e',
+  'NCCABB-SDSU': {
+    color: '#D60039',
     backgroundColor: '#000000',
   },
   'NCCABB-SEA': {
     color: '#bd2d1a',
     backgroundColor: '#000000',
   },
-    'NCCABB-SELA': {
-    color: '#eaaa00',
-    backgroundColor: '#006341',
+  'NCCABB-SELA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCCABB-SEMO': {
     color: '#CC0000',
@@ -3316,9 +3711,9 @@ export const ColorsTeamEnum: Record<
     color: '#BB003A',
     backgroundColor: '#000000',
   },
-        'NCCABB-SIE': {
-    color: '#ffc72c',
-    backgroundColor: '#006747',
+  'NCCABB-SIE': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'NCCABB-SIU': {
     color: '#85283D',
@@ -3328,20 +3723,20 @@ export const ColorsTeamEnum: Record<
     color: '#eb1c23',
     backgroundColor: '#000000',
   },
-    'NCCABB-SJSU': {
-    color: '#e5a823',
-    backgroundColor: '#0055a5',
+  'NCCABB-SJSU': {
+    color: '#005A94',
+    backgroundColor: '#000000',
   },
   'NCCABB-SJU': {
     color: '#E24552',
     backgroundColor: '#000000',
   },
-        'NCCABB-SLU': {
-    color: '#c8c9c7',
-    backgroundColor: '#003da5',
+  'NCCABB-SLU': {
+    color: '#00539C',
+    backgroundColor: '#000000',
   },
-        'NCCABB-SM': {
-    color: '#ba0c2f',
+  'NCCABB-SM': {
+    color: '#ffffff',
     backgroundColor: '#000000',
   },
   'NCCABB-SMC': {
@@ -3356,9 +3751,13 @@ export const ColorsTeamEnum: Record<
     color: '#001555',
     backgroundColor: '#000000',
   },
-    'NCCABB-STAN': {
-    color: '#ffffff',
-    backgroundColor: '#8c1515',
+  'NCCABB-ST.': {
+    color: '#d6c682',
+    backgroundColor: '#55318c',
+  },
+  'NCCABB-STAN': {
+    color: '#B72931',
+    backgroundColor: '#000000',
   },
   'NCCABB-STBK': {
     color: '#003559',
@@ -3368,89 +3767,89 @@ export const ColorsTeamEnum: Record<
     color: '#18581C',
     backgroundColor: '#000000',
   },
-    'NCCABB-STMN': {
-    color: '#919396',
-    backgroundColor: '#512682',
-  },
-          'NCCABB-ST.': {
-    color: '#d6c682',
-    backgroundColor: '#55318c',
-  },
-    'NCCABB-TA&M': {
+  'NCCABB-STMN': {
     color: '#ffffff',
-    backgroundColor: '#500000',
+    backgroundColor: '#000000',
   },
-    'NCCABB-TAR': {
-    color: '#a7a8aa',
-    backgroundColor: '#4f2683',
+  'NCCABB-STO': {
+    color: '#300A48',
+    backgroundColor: '#000000',
   },
-    'NCCABB-TCU': {
-    color: '#a3a9ac',
-    backgroundColor: '#4d1979',
+  'NCCABB-TA&M': {
+    color: '#6A3333',
+    backgroundColor: '#000000',
   },
-    'NCCABB-TENN': {
-    color: '#ff8200',
-    backgroundColor: '#58595b',
-  },
-    'NCCABB-TEX': {
+  'NCCABB-TAR': {
     color: '#ffffff',
-    backgroundColor: '#bf5700',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-TCU': {
+    color: '#201852',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-TENN': {
+    color: '#EE9627',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-TEX': {
+    color: '#EF7321',
+    backgroundColor: '#000000',
   },
   'NCCABB-TNTC': {
     color: '#440e62',
     backgroundColor: '#000000',
   },
-    'NCCABB-TOL': {
-    color: '#ffc72c',
-    backgroundColor: '#002664',
-  },
-    'NCCABB-TOW': {
-    color: '#ffbb00',
-    backgroundColor: '#3c3c3c',
-  },
-    'NCCABB-TROY': {
-    color: '#8d9093',
-    backgroundColor: '#8a0538',
-  },
-    'NCCABB-TTU': {
-    color: '#cc0000',
+  'NCCABB-TOL': {
+    color: '#00275D',
     backgroundColor: '#000000',
   },
-    'NCCABB-TULN': {
-    color: '#418fde',
-    backgroundColor: '#006747',
+  'NCCABB-TOW': {
+    color: '#FFC229',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-TROY': {
+    color: '#843131',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-TTU': {
+    color: '#D60039',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-TULN': {
+    color: '#084A38',
+    backgroundColor: '#000000',
   },
   'NCCABB-TXSO': {
     color: '#680100',
     backgroundColor: '#000000',
   },
-    'NCCABB-TXST': {
-    color: '#8d734a',
-    backgroundColor: '#501214',
+  'NCCABB-TXST': {
+    color: '#94314A',
+    backgroundColor: '#000000',
   },
-    'NCCABB-UAB': {
-    color: '#cc9933',
-    backgroundColor: '#006341',
+  'NCCABB-UAB': {
+    color: '#1a5632',
+    backgroundColor: '#000000',
   },
-    'NCCABB-UAPB': {
-    color: '#ffc72c',
+  'NCCABB-UAPB': {
+    color: '#000000',
     backgroundColor: '#000000',
   },
   'NCCABB-UCD': {
     color: '#103670',
     backgroundColor: '#000000',
   },
-    'NCCABB-UCF': {
-    color: '#ba9b37',
+  'NCCABB-UCF': {
+    color: '#b4a169',
     backgroundColor: '#000000',
   },
   'NCCABB-UCI': {
     color: '#00108C',
     backgroundColor: '#000000',
   },
-    'NCCABB-UCLA': {
-    color: '#f2a900',
-    backgroundColor: '#2d68c4',
+  'NCCABB-UCLA': {
+    color: '#005A94',
+    backgroundColor: '#000000',
   },
   'NCCABB-UCR': {
     color: '#13214E',
@@ -3460,57 +3859,57 @@ export const ColorsTeamEnum: Record<
     color: '#13214E',
     backgroundColor: '#000000',
   },
-        'NCCABB-UCSB': {
-    color: '#febc11',
-    backgroundColor: '#003660',
+  'NCCABB-UCSB': {
+    color: '#1e1840',
+    backgroundColor: '#000000',
   },
   'NCCABB-UCSD': {
     color: '#ffcd00',
     backgroundColor: '#000000',
   },
-    'NCCABB-UGA': {
-    color: '#ba0c2f',
+  'NCCABB-UGA': {
+    color: '#D60022',
     backgroundColor: '#000000',
   },
   'NCCABB-UIC': {
     color: '#234077',
     backgroundColor: '#000000',
   },
-    'NCCABB-UIW': {
-    color: '#cb333b',
+  'NCCABB-UIW': {
+    color: '#000000',
     backgroundColor: '#000000',
   },
-    'NCCABB-UK': {
-    color: '#ffffff',
-    backgroundColor: '#0033a0',
+  'NCCABB-UK': {
+    color: '#003399',
+    backgroundColor: '#000000',
   },
-    'NCCABB-UL': {
-    color: '#ffffff',
-    backgroundColor: '#ce181e',
+  'NCCABB-UL': {
+    color: '#CE2842',
+    backgroundColor: '#000000',
   },
-    'NCCABB-ULM': {
-    color: '#ffc72c',
-    backgroundColor: '#800020',
+  'NCCABB-ULM': {
+    color: '#98012e',
+    backgroundColor: '#000000',
   },
-    'NCCABB-UMBC': {
-    color: '#ffc20e',
-    backgroundColor: '#b18906',
+  'NCCABB-UMBC': {
+    color: '#000000',
+    backgroundColor: '#000000',
   },
   'NCCABB-UMES': {
     color: '#5c2301',
     backgroundColor: '#000000',
   },
-    'NCCABB-UML': {
-    color: '#c8102e',
-    backgroundColor: '#003da5',
+  'NCCABB-UML': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-        'NCCABB-UNA': {
-    color: '#db9f11',
-    backgroundColor: '#46166b',
+  'NCCABB-UNA': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCCABB-UNC': {
-    color: '#7bafd4',
-    backgroundColor: '#13294b',
+  'NCCABB-UNC': {
+    color: '#002942',
+    backgroundColor: '#000000',
   },
   'NCCABB-UNCA': {
     color: '#092575',
@@ -3528,17 +3927,17 @@ export const ColorsTeamEnum: Record<
     color: '#1D2F68',
     backgroundColor: '#000000',
   },
-        'NCCABB-UNF': {
-    color: '#d9d9d9',
-    backgroundColor: '#00246b',
+  'NCCABB-UNF': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCCABB-UNLV': {
-    color: '#b1b3b3',
-    backgroundColor: '#cf0a2c',
+  'NCCABB-UNLV': {
+    color: '#cf0a2c',
+    backgroundColor: '#000000',
   },
-    'NCCABB-UNM': {
-    color: '#a7a8aa',
-    backgroundColor: '#ba0c2f',
+  'NCCABB-UNM': {
+    color: '#ba0c2f',
+    backgroundColor: '#000000',
   },
   'NCCABB-UNO': {
     color: '#2B3986',
@@ -3552,101 +3951,101 @@ export const ColorsTeamEnum: Record<
     color: '#003559',
     backgroundColor: '#000000',
   },
-    'NCCABB-USA': {
-    color: '#bf0d3e',
-    backgroundColor: '#00205b',
+  'NCCABB-USA': {
+    color: '#004A7B',
+    backgroundColor: '#000000',
   },
-    'NCCABB-USC': {
-    color: '#ffc72c',
-    backgroundColor: '#990000',
+  'NCCABB-USC': {
+    color: '#A50010',
+    backgroundColor: '#000000',
   },
   'NCCABB-USD': {
     color: '#0D1361',
     backgroundColor: '#000000',
   },
-    'NCCABB-USF': {
-    color: '#cfc493',
-    backgroundColor: '#006747',
+  'NCCABB-USF': {
+    color: '#004231',
+    backgroundColor: '#000000',
   },
-        'NCCABB-USI': {
-    color: '#cf102d',
-    backgroundColor: '#002d5d',
+  'NCCABB-USI': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCCABB-USM': {
-    color: '#ffc72c',
+  'NCCABB-USM': {
+    color: '#FFAA3C',
     backgroundColor: '#000000',
   },
   'NCCABB-UTA': {
     color: '#004B7C',
     backgroundColor: '#000000',
   },
-    'NCCABB-UTAH': {
-    color: '#cc0000',
+  'NCCABB-UTAH': {
+    color: '#CE4242',
     backgroundColor: '#000000',
   },
   'NCCABB-UTM': {
     color: '#000099',
     backgroundColor: '#000000',
   },
-    'NCCABB-UTSA': {
-    color: '#f15a22',
-    backgroundColor: '#0c2340',
+  'NCCABB-UTSA': {
+    color: '#0c2340',
+    backgroundColor: '#000000',
   },
-    'NCCABB-UTU': {
-    color: '#a7a8aa',
-    backgroundColor: '#ba0c2f',
+  'NCCABB-UTU': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
-    'NCCABB-UVA': {
-    color: '#f84c1e',
-    backgroundColor: '#232d4b',
+  'NCCABB-UVA': {
+    color: '#000066',
+    backgroundColor: '#000000',
   },
   'NCCABB-UVU': {
     color: '#702d07',
     backgroundColor: '#000000',
   },
-    'NCCABB-UWP': {
-    color: '#ffc72c',
-    backgroundColor: '#0033a0',
-  },
-        'NCCABB-VAL': {
-    color: '#ffcc00',
-    backgroundColor: '#381e0e',
-  },
-    'NCCABB-VAN': {
-    color: '#866d4b',
+  'NCCABB-UWP': {
+    color: '#ffffff',
     backgroundColor: '#000000',
   },
-    'NCCABB-VCU': {
-    color: '#ffb300',
+  'NCCABB-VAL': {
+    color: '#000000',
     backgroundColor: '#000000',
   },
-    'NCCABB-VILL': {
-    color: '#13b5ea',
-    backgroundColor: '#00205b',
+  'NCCABB-VAN': {
+    color: '#cfae70',
+    backgroundColor: '#000000',
   },
-    'NCCABB-VMI': {
-    color: '#ffd520',
-    backgroundColor: '#a71f23',
+  'NCCABB-VCU': {
+    color: '#929292',
+    backgroundColor: '#000000',
   },
-    'NCCABB-VT': {
-    color: '#cf4520',
-    backgroundColor: '#630031',
+  'NCCABB-VILL': {
+    color: '#006699',
+    backgroundColor: '#000000',
   },
-    'NCCABB-W&M': {
-    color: '#f0b323',
-    backgroundColor: '#115740',
+  'NCCABB-VMI': {
+    color: '#000000',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-VT': {
+    color: '#7B2129',
+    backgroundColor: '#000000',
+  },
+  'NCCABB-W&M': {
+    color: '#115740',
+    backgroundColor: '#000000',
   },
   'NCCABB-WAG': {
     color: '#003e22',
     backgroundColor: '#000000',
   },
-    'NCCABB-WAKE': {
-    color: '#9e7e38',
+  'NCCABB-WAKE': {
+    color: '#2c2a29',
     backgroundColor: '#000000',
   },
-    'NCCABB-WASH': {
-    color: '#b7a57a',
-    backgroundColor: '#4b2e83',
+  'NCCABB-WASH': {
+    color: '#3E3468',
+    backgroundColor: '#000000',
   },
   'NCCABB-WCU': {
     color: '#6E268B',
@@ -3668,33 +4067,33 @@ export const ColorsTeamEnum: Record<
     color: '#4e1e8a',
     backgroundColor: '#000000',
   },
-    'NCCABB-WKU': {
-    color: '#f11010',
-    backgroundColor: '#101010',
+  'NCCABB-WKU': {
+    color: '#e13a3e',
+    backgroundColor: '#000000',
   },
-    'NCCABB-WMU': {
-    color: '#f1b82d',
-    backgroundColor: '#532a1d',
+  'NCCABB-WMU': {
+    color: '#825229',
+    backgroundColor: '#000000',
   },
-    'NCCABB-WOF': {
-    color: '#c7b37f',
-    backgroundColor: '#886e4c',
+  'NCCABB-WOF': {
+    color: '#000000',
+    backgroundColor: '#000000',
   },
   'NCCABB-WRST': {
     color: '#A36209',
     backgroundColor: '#000000',
   },
-    'NCCABB-WSU': {
-    color: '#5e6a71',
-    backgroundColor: '#981e32',
+  'NCCABB-WSU': {
+    color: '#94022A',
+    backgroundColor: '#000000',
   },
-    'NCCABB-WVU': {
-    color: '#eaaa00',
-    backgroundColor: '#002855',
+  'NCCABB-WVU': {
+    color: '#395AB5',
+    backgroundColor: '#000000',
   },
-    'NCCABB-XAV': {
-    color: '#9ea2a2',
-    backgroundColor: '#0c2340',
+  'NCCABB-XAV': {
+    color: '#a5a7a8',
+    backgroundColor: '#21304e',
   },
   'NCCABB-YALE': {
     color: '#004a81',
@@ -4224,43 +4623,47 @@ export const ColorsTeamEnum: Record<
     color: '#e03a3e',
     backgroundColor: '#002b5c',
   },
-    'WNCAAB-ALA': {
-    color: '#828a8f',
+  'WNCAAB-ALA': {
+    color: '#ffffff',
     backgroundColor: '#9e1b32',
   },
   'WNCAAB-AMER': {
     color: '#c41130',
     backgroundColor: '#c8102e',
   },
-    'WNCAAB-ARIZ': {
+  'WNCAAB-ARIZ': {
     color: '#cc0033',
     backgroundColor: '#003366',
   },
-    'WNCAAB-ARK': {
-    color: '#9d2235',
-    backgroundColor: '#000000',
+  'WNCAAB-ARK': {
+    color: '#ffffff',
+    backgroundColor: '#a32136',
   },
-    'WNCAAB-ASU': {
+  'WNCAAB-ASU': {
     color: '#ffc627',
     backgroundColor: '#8c1d40',
   },
-    'WNCAAB-AUB': {
-    color: '#e87722',
-    backgroundColor: '#0c2340',
+  'WNCAAB-AUB': {
+    color: '#f26522',
+    backgroundColor: '#002b5c',
   },
-    'WNCAAB-BAY': {
-    color: '#fecb00',
-    backgroundColor: '#003015',
+  'WNCAAB-BAY': {
+    color: '#ffb81c',
+    backgroundColor: '#154734',
   },
-    'WNCAAB-BC': {
-    color: '#bc9b6a',
-    backgroundColor: '#98002e',
+  'WNCAAB-BC': {
+    color: '#dbcca6',
+    backgroundColor: '#8c2232',
   },
-        'WNCAAB-BELL': {
-    color: '#c8c8c8',
-    backgroundColor: '#752936',
+  'WNCAAB-BEL': {
+    color: '#c9262d',
+    backgroundColor: '#182142',
   },
-    'WNCAAB-BOIS': {
+  'WNCAAB-BELL': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'WNCAAB-BOIS': {
     color: '#d64309',
     backgroundColor: '#0033a0',
   },
@@ -4272,33 +4675,37 @@ export const ColorsTeamEnum: Record<
     color: '#949300',
     backgroundColor: '#411e09',
   },
-    'WNCAAB-BYU': {
-    color: '#ffffff',
+  'WNCAAB-BTLR': {
+    color: '#00a3e0',
+    backgroundColor: '#0d1361',
+  },
+  'WNCAAB-BYU': {
+    color: '#0047ba',
     backgroundColor: '#002e5d',
   },
-    'WNCAAB-CAL': {
-    color: '#fdb515',
-    backgroundColor: '#003262',
+  'WNCAAB-CAL': {
+    color: '#ffc72c',
+    backgroundColor: '#041e42',
   },
-    'WNCAAB-CIN': {
+  'WNCAAB-CIN': {
     color: '#e00122',
     backgroundColor: '#000000',
   },
-    'WNCAAB-CLEM': {
-    color: '#f56600',
-    backgroundColor: '#522d80',
+  'WNCAAB-CLEM': {
+    color: '#ffffff',
+    backgroundColor: '#f56600',
   },
-    'WNCAAB-COLO': {
+  'WNCAAB-COLO': {
     color: '#cfb87c',
     backgroundColor: '#000000',
   },
-        'WNCAAB-COLU': {
-    color: '#9bcbeb',
-    backgroundColor: '#003865',
+  'WNCAAB-COLU': {
+    color: '#7ba4db',
+    backgroundColor: '#183863',
   },
-    'WNCAAB-CONN': {
-    color: '#e00122',
-    backgroundColor: '#000e2e',
+  'WNCAAB-CONN': {
+    color: '#a2aaad',
+    backgroundColor: '#0c2340',
   },
   'WNCAAB-COPP': {
     color: '#ffd204',
@@ -4312,13 +4719,13 @@ export const ColorsTeamEnum: Record<
     color: '#eed897',
     backgroundColor: '#1E4D2B',
   },
-    'WNCAAB-CREI': {
-    color: '#63666a',
+  'WNCAAB-CREI': {
+    color: '#6cadde',
     backgroundColor: '#005ca9',
   },
-    'WNCAAB-CSU': {
+  'WNCAAB-CSU': {
     color: '#c8c372',
-    backgroundColor: '#1e4d2b',
+    backgroundColor: '#004c23',
   },
   'WNCAAB-DART': {
     color: '#005730',
@@ -4332,29 +4739,37 @@ export const ColorsTeamEnum: Record<
     color: '#2d649c',
     backgroundColor: '#ce1125',
   },
-    'WNCAAB-DUKE': {
-    color: '#ffffff',
-    backgroundColor: '#003087',
+  'WNCAAB-DRKE': {
+    color: '#bec0c2',
+    backgroundColor: '#005596',
   },
-        'WNCAAB-FAIR': {
-    color: '#a2aaad',
-    backgroundColor: '#c8102e',
+  'WNCAAB-DUKE': {
+    color: '#ffffff',
+    backgroundColor: '#00539b',
+  },
+  'WNCAAB-EVAN': {
+    color: '#ef6f00',
+    backgroundColor: '#663399',
+  },
+  'WNCAAB-FAIR': {
+    color: '#ebebeb',
+    backgroundColor: '#000000',
   },
   'WNCAAB-FAMU': {
     color: '#F89728',
     backgroundColor: '#00843d',
   },
-    'WNCAAB-FLA': {
+  'WNCAAB-FLA': {
     color: '#fa4616',
     backgroundColor: '#0021a5',
   },
-    'WNCAAB-FSU': {
+  'WNCAAB-FSU': {
     color: '#ceb888',
     backgroundColor: '#782f40',
   },
-    'WNCAAB-GT': {
-    color: '#b3a369',
-    backgroundColor: '#003057',
+  'WNCAAB-GT': {
+    color: '#ffffff',
+    backgroundColor: '#b3a369',
   },
   'WNCAAB-GTWN': {
     color: '#001c58',
@@ -4372,11 +4787,11 @@ export const ColorsTeamEnum: Record<
     color: '#dbdbdb',
     backgroundColor: '#990000',
   },
-    'WNCAAB-HAW': {
-    color: '#c8c8c8',
-    backgroundColor: '#024731',
+  'WNCAAB-HAW': {
+    color: '#005737',
+    backgroundColor: '#000000',
   },
-    'WNCAAB-HOU': {
+  'WNCAAB-HOU': {
     color: '#ffffff',
     backgroundColor: '#c8102e',
   },
@@ -4388,21 +4803,29 @@ export const ColorsTeamEnum: Record<
     color: '#8c6e4a',
     backgroundColor: '#000000',
   },
-    'WNCAAB-ILL': {
-    color: '#e84a27',
+  'WNCAAB-ILL': {
+    color: '#ff5f05',
     backgroundColor: '#13294b',
   },
-    'WNCAAB-IOWA': {
-    color: '#ffcd00',
-    backgroundColor: '#000000',
+  'WNCAAB-ILST': {
+    color: '#ffe716',
+    backgroundColor: '#CE1126',
   },
-    'WNCAAB-ISU': {
-    color: '#f1be48',
-    backgroundColor: '#c8102e',
+  'WNCAAB-INST': {
+    color: '#f0f0f0',
+    backgroundColor: '#00669a',
   },
-    'WNCAAB-IU': {
-    color: '#eeedeb',
-    backgroundColor: '#990000',
+  'WNCAAB-IOWA': {
+    color: '#fcd116',
+    backgroundColor: '#231f20',
+  },
+  'WNCAAB-ISU': {
+    color: '#ffc72a',
+    backgroundColor: '#ae192d',
+  },
+  'WNCAAB-IU': {
+    color: '#ffffff',
+    backgroundColor: '#970310',
   },
   'WNCAAB-IUIN': {
     color: '#d59f0f',
@@ -4412,43 +4835,47 @@ export const ColorsTeamEnum: Record<
     color: '#cc0000',
     backgroundColor: '#000000',
   },
-    'WNCAAB-KSU': {
-    color: '#d1d5db',
-    backgroundColor: '#512888',
+  'WNCAAB-KSU': {
+    color: '#e2e3e4',
+    backgroundColor: '#330a57',
   },
-    'WNCAAB-KU': {
-    color: '#e8000d',
-    backgroundColor: '#0051ba',
+  'WNCAAB-KU': {
+    color: '#0051ba',
+    backgroundColor: '#e8000d',
   },
-    'WNCAAB-LOU': {
-    color: '#ad0000',
-    backgroundColor: '#000000',
+  'WNCAAB-LOU': {
+    color: '#ffffff',
+    backgroundColor: '#c9001f',
   },
-    'WNCAAB-LSU': {
+  'WNCAAB-LSU': {
     color: '#fdd023',
-    backgroundColor: '#461d7c',
+    backgroundColor: '#461d76',
   },
-    'WNCAAB-MD': {
-    color: '#ffd100',
-    backgroundColor: '#e21833',
+  'WNCAAB-MARQ': {
+    color: '#ffcc00',
+    backgroundColor: '#003366',
   },
-    'WNCAAB-MIA': {
-    color: '#f47321',
-    backgroundColor: '#005030',
+  'WNCAAB-MD': {
+    color: '#ffffff',
+    backgroundColor: '#ce1126',
   },
-    'WNCAAB-MICH': {
+  'WNCAAB-MIA': {
+    color: '#f47423',
+    backgroundColor: '#035131',
+  },
+  'WNCAAB-MICH': {
     color: '#ffcb05',
     backgroundColor: '#00274c',
   },
-    'WNCAAB-MINN': {
-    color: '#ffcc33',
-    backgroundColor: '#7a0019',
+  'WNCAAB-MINN': {
+    color: '#fab41c',
+    backgroundColor: '#5e0a2f',
   },
-    'WNCAAB-MISS': {
-    color: '#ce1126',
-    backgroundColor: '#14213d',
+  'WNCAAB-MISS': {
+    color: '#cf142b',
+    backgroundColor: '#13294b',
   },
-    'WNCAAB-MIZ': {
+  'WNCAAB-MIZ': {
     color: '#f1b82d',
     backgroundColor: '#000000',
   },
@@ -4456,17 +4883,17 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#5e0009',
   },
-    'WNCAAB-MRMK': {
-    color: '#fdb813',
-    backgroundColor: '#003768',
+  'WNCAAB-MRMK': {
+    color: '#e8c535',
+    backgroundColor: '#2f4f93',
   },
-    'WNCAAB-MSST': {
-    color: '#c2c1c2',
+  'WNCAAB-MSST': {
+    color: '#c1c6c8',
     backgroundColor: '#5d1725',
   },
-    'WNCAAB-MSU': {
+  'WNCAAB-MSU': {
     color: '#ffffff',
-    backgroundColor: '#18453b',
+    backgroundColor: '#173f35',
   },
   'WNCAAB-MUR': {
     color: '#002148',
@@ -4476,43 +4903,43 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#cc0000',
   },
-    'WNCAAB-ND': {
+  'WNCAAB-ND': {
     color: '#c99700',
-    backgroundColor: '#0c2340',
+    backgroundColor: '#062340',
   },
-    'WNCAAB-NEB': {
-    color: '#f5f1e6',
-    backgroundColor: '#e31837',
+  'WNCAAB-NEB': {
+    color: '#ffffff',
+    backgroundColor: '#e31937',
   },
-        'WNCAAB-NKU': {
-    color: '#ffc72c',
+  'WNCAAB-NKU': {
+    color: '#ffc82e',
     backgroundColor: '#000000',
   },
-    'WNCAAB-NU': {
+  'WNCAAB-NU': {
     color: '#ffffff',
-    backgroundColor: '#4e2a84',
+    backgroundColor: '#492f92',
   },
-    'WNCAAB-OKST': {
-    color: '#ff7300',
+  'WNCAAB-OKST': {
+    color: '#fe5c00',
     backgroundColor: '#000000',
   },
-    'WNCAAB-ORE': {
-    color: '#fee12b',
-    backgroundColor: '#154734',
+  'WNCAAB-ORE': {
+    color: '#fff41b',
+    backgroundColor: '#00934b',
   },
-    'WNCAAB-OSU': {
-    color: '#666666',
-    backgroundColor: '#bb0000',
+  'WNCAAB-OSU': {
+    color: '#a8adb4',
+    backgroundColor: '#ba0c2f',
   },
-    'WNCAAB-OU': {
-    color: '#fdf9d8',
-    backgroundColor: '#841617',
-  },
-    'WNCAAB-PENN': {
+  'WNCAAB-OU': {
     color: '#ffffff',
-    backgroundColor: '#041e42',
+    backgroundColor: '#990000',
   },
-    'WNCAAB-PITT': {
+  'WNCAAB-PENN': {
+    color: '#a6163d',
+    backgroundColor: '#082A74',
+  },
+  'WNCAAB-PITT': {
     color: '#ffb81c',
     backgroundColor: '#003594',
   },
@@ -4528,7 +4955,7 @@ export const ColorsTeamEnum: Record<
     color: '#ffffff',
     backgroundColor: '#061440',
   },
-    'WNCAAB-PUR': {
+  'WNCAAB-PUR': {
     color: '#ceb888',
     backgroundColor: '#000000',
   },
@@ -4536,19 +4963,19 @@ export const ColorsTeamEnum: Record<
     color: '#b90b2e',
     backgroundColor: '#9e0712',
   },
-    'WNCAAB-RUTG': {
-    color: '#5f6062',
-    backgroundColor: '#cc0033',
+  'WNCAAB-RUTG': {
+    color: '#ffffff',
+    backgroundColor: '#ce0e2d',
   },
   'WNCAAB-SAC': {
     color: '#cdb97d',
     backgroundColor: '#00573C',
   },
-    'WNCAAB-SC': {
+  'WNCAAB-SC': {
     color: '#73000a',
     backgroundColor: '#000000',
   },
-    'WNCAAB-SDSU': {
+  'WNCAAB-SDSU': {
     color: '#a6192e',
     backgroundColor: '#000000',
   },
@@ -4560,19 +4987,19 @@ export const ColorsTeamEnum: Record<
     color: '#c2c3c0',
     backgroundColor: '#85283D',
   },
-    'WNCAAB-SJSU': {
-    color: '#e5a823',
-    backgroundColor: '#0055a5',
+  'WNCAAB-SJSU': {
+    color: '#ffb81a',
+    backgroundColor: '#0038a8',
   },
   'WNCAAB-SJU': {
     color: '#d10000',
     backgroundColor: '#101010',
   },
-    'WNCAAB-SMU': {
-    color: '#cc0000',
-    backgroundColor: '#003366',
+  'WNCAAB-SMU': {
+    color: '#0033a1',
+    backgroundColor: '#a80000',
   },
-    'WNCAAB-STAN': {
+  'WNCAAB-STAN': {
     color: '#ffffff',
     backgroundColor: '#8c1515',
   },
@@ -4580,41 +5007,41 @@ export const ColorsTeamEnum: Record<
     color: '#56854e',
     backgroundColor: '#0a5640',
   },
-    'WNCAAB-SYR': {
-    color: '#d44500',
-    backgroundColor: '#3e3d4d',
+  'WNCAAB-SYR': {
+    color: '#ff431b',
+    backgroundColor: '#000e54',
   },
-    'WNCAAB-TA&M': {
+  'WNCAAB-TA&M': {
     color: '#ffffff',
     backgroundColor: '#500000',
   },
-    'WNCAAB-TCU': {
-    color: '#a3a9ac',
+  'WNCAAB-TCU': {
+    color: '#ffffff',
     backgroundColor: '#4d1979',
   },
-    'WNCAAB-TENN': {
-    color: '#ff8200',
-    backgroundColor: '#58595b',
-  },
-    'WNCAAB-TEX': {
+  'WNCAAB-TENN': {
     color: '#ffffff',
-    backgroundColor: '#bf5700',
+    backgroundColor: '#ff8200',
   },
-    'WNCAAB-TTU': {
-    color: '#cc0000',
+  'WNCAAB-TEX': {
+    color: '#ffffff',
+    backgroundColor: '#af5c37',
+  },
+  'WNCAAB-TTU': {
+    color: '#da291c',
     backgroundColor: '#000000',
   },
-    'WNCAAB-UAB': {
-    color: '#cc9933',
-    backgroundColor: '#006341',
+  'WNCAAB-UAB': {
+    color: '#fdb913',
+    backgroundColor: '#1a5632',
   },
-    'WNCAAB-UCF': {
-    color: '#ba9b37',
+  'WNCAAB-UCF': {
+    color: '#b4a169',
     backgroundColor: '#000000',
   },
-    'WNCAAB-UCLA': {
+  'WNCAAB-UCLA': {
     color: '#f2a900',
-    backgroundColor: '#2d68c4',
+    backgroundColor: '#2774ae',
   },
   'WNCAAB-UCR': {
     color: '#14234F',
@@ -4624,400 +5051,88 @@ export const ColorsTeamEnum: Record<
     color: '#ffcd00',
     backgroundColor: '#000000',
   },
-    'WNCAAB-UGA': {
+  'WNCAAB-UGA': {
     color: '#ba0c2f',
-    backgroundColor: '#000000',
+    backgroundColor: '#2c2a29',
   },
   'WNCAAB-UIC': {
     color: '#d50032',
     backgroundColor: '#001e62',
   },
-    'WNCAAB-UK': {
+  'WNCAAB-UK': {
     color: '#ffffff',
     backgroundColor: '#0033a0',
   },
-    'WNCAAB-UNC': {
+  'WNCAAB-UNC': {
     color: '#7bafd4',
     backgroundColor: '#13294b',
   },
-    'WNCAAB-USA': {
+  'WNCAAB-UNI': {
+    color: '#ffffff',
+    backgroundColor: '#473282',
+  },
+  'WNCAAB-USA': {
     color: '#bf0d3e',
     backgroundColor: '#00205b',
   },
-    'WNCAAB-USC': {
+  'WNCAAB-USC': {
     color: '#ffc72c',
-    backgroundColor: '#990000',
+    backgroundColor: '#9d2235',
   },
-    'WNCAAB-USF': {
+  'WNCAAB-USF': {
     color: '#cfc493',
     backgroundColor: '#006747',
   },
-        'WNCAAB-USI': {
-    color: '#cf102d',
-    backgroundColor: '#002d5d',
-  },
-    'WNCAAB-UTAH': {
-    color: '#cc0000',
+  'WNCAAB-USI': {
+    color: '#ffffff',
     backgroundColor: '#000000',
   },
-    'WNCAAB-UVA': {
+  'WNCAAB-UTAH': {
+    color: '#ffffff',
+    backgroundColor: '#be0000',
+  },
+  'WNCAAB-UVA': {
     color: '#f84c1e',
     backgroundColor: '#232d4b',
   },
-    'WNCAAB-VAN': {
-    color: '#866d4b',
+  'WNCAAB-VAL': {
+    color: '#794500',
+    backgroundColor: '#381e0e',
+  },
+  'WNCAAB-VAN': {
+    color: '#cfae70',
     backgroundColor: '#000000',
   },
-    'WNCAAB-VILL': {
+  'WNCAAB-VILL': {
     color: '#13b5ea',
     backgroundColor: '#00205b',
   },
-    'WNCAAB-VT': {
+  'WNCAAB-VT': {
     color: '#cf4520',
-    backgroundColor: '#630031',
+    backgroundColor: '#6a2c3e',
   },
-    'WNCAAB-WAKE': {
-    color: '#9e7e38',
-    backgroundColor: '#000000',
+  'WNCAAB-WAKE': {
+    color: '#ceb888',
+    backgroundColor: '#2c2a29',
   },
-    'WNCAAB-WASH': {
-    color: '#b7a57a',
-    backgroundColor: '#4b2e83',
+  'WNCAAB-WASH': {
+    color: '#e8d3a2',
+    backgroundColor: '#33006f',
   },
-    'WNCAAB-WIS': {
+  'WNCAAB-WIS': {
     color: '#ffffff',
-    backgroundColor: '#c5050c',
+    backgroundColor: '#a00000',
   },
-    'WNCAAB-WVU': {
+  'WNCAAB-WVU': {
     color: '#eaaa00',
     backgroundColor: '#002855',
   },
-    'WNCAAB-XAV': {
-    color: '#9ea2a2',
-    backgroundColor: '#0c2340',
+  'WNCAAB-XAV': {
+    color: '#a5a7a8',
+    backgroundColor: '#21304e',
   },
   'WNCAAB-YALE': {
     color: '#286dc0',
     backgroundColor: '#004a81',
-  },
-  'NCAAB-AKR': {
-    color: '#a28d5b',
-    backgroundColor: '#041e42',
-  },
-  'NCAAB-APP': {
-    color: '#ffc72c',
-    backgroundColor: '#222222',
-  },
-  'NCAAB-ARST': {
-    color: '#cc0000',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-BEL': {
-    color: '#182142',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-BGSU': {
-    color: '#ff6600',
-    backgroundColor: '#4f2c1d',
-  },
-  'NCAAB-CLT': {
-    color: '#a49665',
-    backgroundColor: '#005035',
-  },
-  'NCAAB-CLE': {
-    color: '#006633',
-    backgroundColor: '#231f20',
-  },
-  'NCAAB-COFC': {
-    color: '#9c8456',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-CSUN': {
-    color: '#b50000',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-DRKE': {
-    color: '#bec0c2',
-    backgroundColor: '#005596',
-  },
-  'NCAAB-ECU': {
-    color: '#fdc82f',
-    backgroundColor: '#592a8a',
-  },
-  'NCAAB-ETSU': {
-    color: '#ffc72c',
-    backgroundColor: '#041e42',
-  },
-  'NCAAB-FAU': {
-    color: '#cc0000',
-    backgroundColor: '#003366',
-  },
-  'NCAAB-FRES': {
-    color: '#db0032',
-    backgroundColor: '#002b5c',
-  },
-  'NCAAB-FUR': {
-    color: '#ffffff',
-    backgroundColor: '#582c83',
-  },
-  'NCAAB-GASO': {
-    color: '#a3aaae',
-    backgroundColor: '#011e41',
-  },
-  'NCAAB-GAST': {
-    color: '#cc0000',
-    backgroundColor: '#0039a6',
-  },
-  'NCAAB-HOF': {
-    color: '#27297c',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-IONA': {
-    color: '#f2a900',
-    backgroundColor: '#6f2c3f',
-  },
-  'NCAAB-JMU': {
-    color: '#cbb677',
-    backgroundColor: '#450084',
-  },
-  'NCAAB-LBSU': {
-    color: '#ffc72a',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-LIB': {
-    color: '#c41230',
-    backgroundColor: '#0c2340',
-  },
-  'NCAAB-LT': {
-    color: '#e31b23',
-    backgroundColor: '#002f6c',
-  },
-  'NCAAB-MEM': {
-    color: '#8d9093',
-    backgroundColor: '#003087',
-  },
-  'NCAAB-MER': {
-    color: '#f76800',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-MRSH': {
-    color: '#00b140',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-MOST': {
-    color: '#ffffff',
-    backgroundColor: '#5e0009',
-  },
-  'NCAAB-MTST': {
-    color: '#bc955c',
-    backgroundColor: '#00205c',
-  },
-  'NCAAB-MTSU': {
-    color: '#a7a9ac',
-    backgroundColor: '#0066cc',
-  },
-  'NCAAB-MONT': {
-    color: '#666666',
-    backgroundColor: '#751d4a',
-  },
-  'NCAAB-NCAT': {
-    color: '#004684',
-    backgroundColor: '#0505aa',
-  },
-  'NCAAB-NMSU': {
-    color: '#ffffff',
-    backgroundColor: '#891226',
-  },
-  'NCAAB-UNT': {
-    color: '#00853e',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-OAK': {
-    color: '#04091c',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-ODU': {
-    color: '#7c878e',
-    backgroundColor: '#003057',
-  },
-  'NCAAB-OHIO': {
-    color: '#e0aa0f',
-    backgroundColor: '#00693e',
-  },
-  'NCAAB-ORST': {
-    color: '#dc4405',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-PFW': {
-    color: '#00378a',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-PRIN': {
-    color: '#ff9408',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-RAD': {
-    color: '#bd1818',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-RICE': {
-    color: '#c1c6c8',
-    backgroundColor: '#00205b',
-  },
-  'NCAAB-RICH': {
-    color: '#b90b2e',
-    backgroundColor: '#9e0712',
-  },
-  'NCAAB-SAM': {
-    color: '#005485',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-SFA': {
-    color: '#230d3c',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-SHU': {
-    color: '#c29472',
-    backgroundColor: '#a40012',
-  },
-  'NCAAB-USM': {
-    color: '#ffc72c',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-SUU': {
-    color: '#c72026',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-TEM': {
-    color: '#ffc72c',
-    backgroundColor: '#9e182b',
-  },
-  'NCAAB-TOW': {
-    color: '#ffbb00',
-    backgroundColor: '#3c3c3c',
-  },
-  'NCAAB-TROY': {
-    color: '#8d9093',
-    backgroundColor: '#8a0538',
-  },
-  'NCAAB-TNST': {
-    color: '#f0f0f0',
-    backgroundColor: '#171796',
-  },
-  'NCAAB-TULN': {
-    color: '#418fde',
-    backgroundColor: '#006747',
-  },
-  'NCAAB-TLSA': {
-    color: '#c8102e',
-    backgroundColor: '#002d62',
-  },
-  'NCAAB-UCD': {
-    color: '#c3c4c6',
-    backgroundColor: '#002855',
-  },
-  'NCAAB-UCI': {
-    color: '#00108c',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-UCSB': {
-    color: '#febc11',
-    backgroundColor: '#003660',
-  },
-  'NCAAB-UNCW': {
-    color: '#1d2f68',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-UNCG': {
-    color: '#21467b',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-UNCO': {
-    color: '#ffc533',
-    backgroundColor: '#13558d',
-  },
-  'NCAAB-UND': {
-    color: '#c2c3c0',
-    backgroundColor: '#00a26b',
-  },
-  'NCAAB-UNH': {
-    color: '#c3c4c6',
-    backgroundColor: '#004990',
-  },
-  'NCAAB-UNI': {
-    color: '#ffffff',
-    backgroundColor: '#473282',
-  },
-  'NCAAB-UNLV': {
-    color: '#b1b3b3',
-    backgroundColor: '#cf0a2c',
-  },
-  'NCAAB-UNM': {
-    color: '#a7a8aa',
-    backgroundColor: '#ba0c2f',
-  },
-  'NCAAB-NOLA': {
-    color: '#2b3986',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-UTA': {
-    color: '#004b7c',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-UTEP': {
-    color: '#ff6600',
-    backgroundColor: '#002855',
-  },
-  'NCAAB-RGV': {
-    color: '#ffa300',
-    backgroundColor: '#0c2340',
-  },
-  'NCAAB-UTSA': {
-    color: '#f15a22',
-    backgroundColor: '#0c2340',
-  },
-  'NCAAB-UVM': {
-    color: '#ffc72c',
-    backgroundColor: '#154734',
-  },
-  'NCAAB-VCU': {
-    color: '#ffb300',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-VAL': {
-    color: '#ffcc00',
-    backgroundColor: '#381e0e',
-  },
-  'NCAAB-WEB': {
-    color: '#ebebeb',
-    backgroundColor: '#18005a',
-  },
-  'NCAAB-WCU': {
-    color: '#bf9e70',
-    backgroundColor: '#492f91',
-  },
-  'NCAAB-W&M': {
-    color: '#f0b323',
-    backgroundColor: '#115740',
-  },
-  'NCAAB-WIN': {
-    color: '#9e0b0e',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-WOF': {
-    color: '#c7b37f',
-    backgroundColor: '#886e4c',
-  },
-  'NCAAB-WRST': {
-    color: '#a36209',
-    backgroundColor: '#000000',
-  },
-  'NCAAB-WYO': {
-    color: '#ffc72c',
-    backgroundColor: '#492f24',
-  },
-  'NCAAB-YSU': {
-    color: '#e51936',
-    backgroundColor: '#690717',
   },
 };
