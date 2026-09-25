@@ -115,8 +115,8 @@ export class GameService {
   }
 
   private _enrichGameWithTeamData(game: any, teamsMap: Map<string, TeamType>) {
-    // Fallback sur le fichier statique `HistoricalTeams` pour les équipes
-    // disparues/déménagées/renommées absentes de la base (vieux matchs).
+    // Fallback to the static `HistoricalTeams` file for teams that
+    // disappeared/moved/renamed and are missing from the database (old games).
     const homeTeam =
       teamsMap.get(game.homeTeamId) ?? HistoricalTeams[game.homeTeamId];
     const awayTeam =
@@ -2415,7 +2415,7 @@ export class GameService {
     ]);
 
     // 5. Identify unlinked teams (pro leagues only) with zero existing games.
-    //    Teams marked as inactive (`HistoricalTeams` ou `isActive:false`) are
+    //    Teams marked as inactive (`HistoricalTeams` or `isActive:false`) are
     //    never deleted: they are needed to enrich historical/oldies games.
     const unlinkedTeams = teams.filter(
       (team) =>

@@ -44,9 +44,9 @@ export class Team {
   @Prop()
   abbrev: string;
 
-  // true (défaut) pour une équipe active. Les équipes historiques/imprtées par
-  // le sync du Core API ou définies dans HistoricalTeams sont marquées `false`
-  // et ne doivent jamais apparaître dans les constantes front.
+  // true (default) for an active team. Historical teams/teams imported by
+  // the Core API sync or defined in HistoricalTeams are marked `false`
+  // and must never appear in the frontend constants.
   @Prop({ default: true })
   isActive: boolean;
 

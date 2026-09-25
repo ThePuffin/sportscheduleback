@@ -492,9 +492,8 @@ export class TeamService {
         .sort({ uniqueId: 1 })
         .lean()
         .exec();
-      // Ne jamais exposer les équipes inactives/historiques dans le fichier de
-      // sélection du frontend : seules les équipes actives apparaissent dans
-      // Teams.tsx (filtres / favoris).
+      // Never expose inactive/historical teams in the frontend selection
+      // file: only active teams appear in Teams.tsx (filters / favorites).
       const visibleTeams = allTeams.filter(
         (team: any) => team.isActive !== false && !HistoricalTeams[team.uniqueId],
       );
