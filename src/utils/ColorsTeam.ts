@@ -2111,6 +2111,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#ba0c2f',
     backgroundColor: '#2c2a29',
   },
+  'NCAAF-UIW': {
+    color: '#080808',
+    backgroundColor: '#000000',
+  },
   'NCAAF-UK': {
     color: '#ffffff',
     backgroundColor: '#0033a0',
