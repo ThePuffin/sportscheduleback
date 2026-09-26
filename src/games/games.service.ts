@@ -4,12 +4,12 @@ import { DeleteResult } from 'mongodb';
 import * as mongoose from 'mongoose';
 import { Model } from 'mongoose';
 import { TeamService } from '../teams/teams.service';
-import { addHours, readableDate } from '../utils/date';
 import {
   getTeamColors,
   isDefaultTeamColors,
   isDegenerateTeamColors,
 } from '../utils/Colors';
+import { addHours, readableDate } from '../utils/date';
 import { CollegeLeague, League } from '../utils/enum';
 import {
   getESPNGameScore,
@@ -1813,11 +1813,19 @@ export class GameService {
       `[fetchGamesScores] ${gamesToDelete.length} games without scores found. Processing...`,
     );
 
+    let deletedCount = 0;
     for (const game of gamesToDelete) {
       console.info(
         `[fetchGamesScores] Removing game ${game.uniqueId} without score and started more than 72h ago...`,
       );
       await this.remove(game.uniqueId);
+      deletedCount++;
+    }
+
+    if (deletedCount > 0) {
+      console.info(
+        `[fetchGamesScores] Removed ${deletedCount} game(s) without score started more than 72h ago.`,
+      );
     }
   }
 
@@ -1847,11 +1855,19 @@ export class GameService {
       `[fetchGamesScores] ${staleGames.length} active game(s) unresolved for more than ${maxAgeDays} days. Processing...`,
     );
 
+    let deletedCount = 0;
     for (const game of staleGames) {
       console.info(
         `[fetchGamesScores] Removing unresolved game ${game.uniqueId} (${game.league}) started more than ${maxAgeDays} days ago without a final status...`,
       );
       await this.remove(game.uniqueId);
+      deletedCount++;
+    }
+
+    if (deletedCount > 0) {
+      console.info(
+        `[fetchGamesScores] Removed ${deletedCount} unresolved game(s) started more than ${maxAgeDays} days ago.`,
+      );
     }
 
     return staleGames;
@@ -3202,6 +3218,7 @@ export class GameService {
           console.info(
             `[Oldies] progress: ${pct}% (${completedSteps}/${totalSteps}) — last: ${league} ${year}`,
           );
+          await this.purgeOldestYearsIfNeeded();
         }
       }
     }

@@ -55,50 +55,39 @@ describe('CronService', () => {
   });
 
   describe('getOldGames', () => {
-    it('should refresh the current season even when status is complete', async () => {
+    it('picks a year strictly between minYear and currentYear - 1 (never currentYear)', async () => {
       const currentYear = new Date().getFullYear();
-      // Select the first league and the current year (the last year in the range).
+      // Select the first league and max random float (0.999999) -> must map to currentYear - 1
       jest
         .spyOn(Math, 'random')
         .mockReturnValueOnce(0)
         .mockReturnValueOnce(0.999999);
 
-      // getSeasonStatus returns isCurrentSeason=true for the current year
-      mockGameService.getSeasonStatus.mockImplementation(
-        (league: string, year: number) => {
-          if (year === currentYear) {
-            return {
-              league,
-              season: year,
-              obtained: 3,
-              stored: 3,
-              complete: true,
-              isCurrentSeason: true,
-            };
-          }
-          return {
-            league,
-            season: year,
-            obtained: 3,
-            stored: 3,
-            complete: true,
-            isCurrentSeason: false,
-          };
-        },
-      );
+      mockGameService.getSeasonStatus.mockResolvedValue({
+        league: League.NFL,
+        season: currentYear - 1,
+        obtained: 3,
+        stored: 2,
+        complete: false,
+        isCurrentSeason: false,
+      });
 
       await service.getOldGames();
 
-      // The current season must be refreshed regardless of the "complete" flag
+      // Must be called with currentYear - 1, not currentYear
+      expect(mockGameService.getSeasonStatus).toHaveBeenCalledWith(
+        expect.any(String),
+        currentYear - 1,
+      );
       expect(mockGameService.getOldiesGames).toHaveBeenCalledWith(
-        String(currentYear),
+        String(currentYear - 1),
         expect.any(String),
       );
       (Math.random as any).mockRestore();
     });
 
     it('should skip a past complete season without refreshing it', async () => {
-      // Select the first league and the first (past) year in the range.
+      // Select the first league and the first (past) year in the range (minYear).
       jest.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0);
 
       // All seasons complete (including past ones) -> nothing to refresh
@@ -128,42 +117,27 @@ describe('CronService', () => {
 
     it('should refresh a past incomplete season', async () => {
       const currentYear = new Date().getFullYear();
-      // Select the first league and the year immediately before the current one.
-      // randomYear = minYear + floor(r * 11) over minYear..currentYear:
-      // floor(0.9 * 11) = 9 -> minYear + 9 = currentYear - 1
+      const minYear = currentYear - mockGameService.maxYearBeforeDelete;
+      // Select the first league and minYear: random = 0
       jest
         .spyOn(Math, 'random')
         .mockReturnValueOnce(0)
-        .mockReturnValueOnce(0.9);
+        .mockReturnValueOnce(0);
 
-      // One past season incomplete -> it is refreshed
-      mockGameService.getSeasonStatus.mockImplementation(
-        (league: string, year: number) => {
-          if (year === currentYear - 1) {
-            return {
-              league,
-              season: year,
-              obtained: 3,
-              stored: 2,
-              complete: false,
-              isCurrentSeason: false,
-            };
-          }
-          return {
-            league,
-            season: year,
-            obtained: 3,
-            stored: 3,
-            complete: true,
-            isCurrentSeason: false,
-          };
-        },
-      );
+      // Past season incomplete -> it is refreshed
+      mockGameService.getSeasonStatus.mockResolvedValue({
+        league: League.NFL,
+        season: minYear,
+        obtained: 3,
+        stored: 2,
+        complete: false,
+        isCurrentSeason: false,
+      });
 
       await service.getOldGames();
 
       expect(mockGameService.getOldiesGames).toHaveBeenCalledWith(
-        String(currentYear - 1),
+        String(minYear),
         expect.any(String),
       );
       (Math.random as jest.Mock).mockRestore();

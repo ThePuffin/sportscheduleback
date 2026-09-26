@@ -777,6 +777,9 @@ describe('GameService', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('active game(s) unresolved'),
       );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Removed 2 unresolved game(s) started more than 90 days ago.'),
+      );
 
       removeSpy.mockRestore();
       consoleSpy.mockRestore();

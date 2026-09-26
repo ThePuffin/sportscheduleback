@@ -23,7 +23,7 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 | **`refreshLeaguesOneByOne()`**   | **Every 10 min (window 4 AM-11 AM NY)** | **League rotation: ONE league per tick through the `League` enum, frequency-gated by `needRefresh()` (playoffs: 1 day, season: 3 days, off-season: 7 days), stops until the next day once the list is complete** |
 | `updateTeams()`                  | Monthly (0:30 AM, 1st) | Refresh all teams                                   |
 | `updateAllGames()`               | Monthly (1:00 AM, 1st) | Full league refresh                                 |
-| `getOldGames()`                  | Daily (10:00 AM)       | Historical season recovery (one random year per tick; anti-reentrancy)          |
+| `getOldGames()`                  | Daily (10:00 AM)       | Historical season recovery (one random league + random past year `[currentYear - maxYearBeforeDelete .. currentYear - 1]` per tick; anti-reentrancy) |
 | `fetchAndApplyScores()`          | Every 10 min, offset :02 (`2-59/10`) | Live score updates (NY business hours 11 AM - 4 AM); **skips while the rotation/oldies run** |
 | `checkLeagueGamesAvailability()` | Every 12 min, offset :07 (`7-59/12`) | Availability checks (LA early hours 0-11 AM); **skips while the rotation/oldies run** |
 | **`purgeOldestMonth()`**         | **Twice daily (3AM & 3PM UTC)** | **Purge the oldest month of games (time-based)** |

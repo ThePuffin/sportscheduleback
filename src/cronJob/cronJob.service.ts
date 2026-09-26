@@ -288,21 +288,21 @@ export class CronService implements OnModuleInit {
       const currentYear = new Date().getFullYear();
       const maxYearsBeforeDelete = this.gameService.maxYearBeforeDelete; // 10
       const minYear = currentYear - maxYearsBeforeDelete;
+      const maxOldieYear = currentYear - 1; // Prior year (exclude in-progress season)
 
       // 1. Pick a random league from the League enum
       const leagueValues = Object.values(League);
       const randomLeague =
         leagueValues[Math.floor(Math.random() * leagueValues.length)];
 
-      // 2. Pick a single random year to refresh per run, instead of looping over all
-      // 11 years at once. This dramatically limits the per-tick work volume, which was
-      // one of the causes of the Render restarts during the data update. It will take up to
-      // ~11 days to cover the whole window, one year per day.
+      // 2. Pick a single random year between minYear and maxOldieYear (last year)
+      // to refresh per run. The current year is excluded because it is already refreshed
+      // by the regular rotation and score crons.
       const randomYear =
-        minYear + Math.floor(Math.random() * (currentYear - minYear + 1));
+        minYear + Math.floor(Math.random() * (maxOldieYear - minYear + 1));
 
       console.info(
-        `[Cron] Oldies refresh: checking league ${randomLeague} for year ${randomYear} (1 of up to ${maxYearsBeforeDelete + 1} years, one per tick).`,
+        `[Cron] Oldies refresh: checking league ${randomLeague} for year ${randomYear} (range: ${minYear}..${maxOldieYear}, one year per tick).`,
       );
 
       try {

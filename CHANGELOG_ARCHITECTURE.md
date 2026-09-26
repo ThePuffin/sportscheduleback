@@ -2,6 +2,33 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: summary counter logs after purging unresolved / missing-score games
+
+### Changes
+
+- `backend/src/games/games.service.ts`:
+  - In `removeStaleUnresolvedGames()`: added a summary log `[fetchGamesScores] Removed ${deletedCount} unresolved game(s) started more than ${maxAgeDays} days ago.` after completing the deletion loop.
+  - In `removeOldGamesWithoutScore()`: added a summary log `[fetchGamesScores] Removed ${deletedCount} game(s) without score started more than 72h ago.` after completing the deletion loop.
+- `backend/src/games/tests/games.service.spec.ts`: updated tests to assert the summary log after deletions.
+
+---
+
+
+## Changed: `getOldGames` cron selects a random year strictly between `currentYear - 1` and `currentYear - maxYearBeforeDelete`
+
+### Purpose
+
+In `CronService.getOldGames()` (runs daily at 10:00 AM), the random year selection previously included `currentYear` (`minYear + Math.floor(Math.random() * (currentYear - minYear + 1))`). Because the current/in-progress season was flagged as `isCurrentSeason: true`, it bypassed the `status.complete` dry-run check and was always unconditionally refreshed, even though in-progress seasons are already kept up-to-date by the regular rotation (`refreshLeaguesOneByOne`) and live score crons.
+
+### Changes
+
+- `backend/src/cronJob/cronJob.service.ts`: the random year range is now bounded by `maxOldieYear = currentYear - 1` instead of `currentYear`. The cron strictly picks a random league from `League` and a random past year in `[currentYear - maxYearBeforeDelete .. currentYear - 1]`.
+- All selected years are past seasons, allowing the `status.complete` optimization to skip DB writes whenever a past season is already fully retrieved.
+- `backend/src/cronJob/tests/cronJob.service.spec.ts`: updated the unit test to verify that `randomYear` is strictly within `minYear .. currentYear - 1` and never hits `currentYear`.
+
+---
+
+
 ## Added: weekly purge of stale teams without active games
 
 ### Purpose
