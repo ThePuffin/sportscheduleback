@@ -798,7 +798,7 @@ describe('GameService', () => {
     });
   });
 
-  describe('purgeOldestYearsIfNeeded', () => {
+  describe('purgeOldestMonthIfNeeded', () => {
     it('should return "none" if disk usage is below threshold', async () => {
       const getAvailableYearsSpy = jest
         .spyOn(service as any, 'getAvailableYears')
@@ -825,7 +825,7 @@ describe('GameService', () => {
           percentage: 0.5, // 50% - below 90% threshold
         });
 
-      const result = await service.purgeOldestYearsIfNeeded();
+      const result = await service.purgeOldestMonthIfNeeded();
 
       expect(result.action).toBe('none');
       expect(result.diskUsage.percentage).toBe(0.5);
@@ -835,80 +835,89 @@ describe('GameService', () => {
       getDiskUsageSpy.mockRestore();
     });
 
-    it('should purge oldest years when disk usage exceeds threshold', async () => {
-      const initialYears = [
-        {
-          year: 2020,
-          count: 50,
-          oldestDate: '2020-01-01',
-          newestDate: '2020-12-31',
-        },
-        {
-          year: 2023,
-          count: 80,
-          oldestDate: '2023-01-01',
-          newestDate: '2023-12-31',
-        },
-        {
-          year: 2024,
-          count: 100,
-          oldestDate: '2024-01-01',
-          newestDate: '2024-12-31',
-        },
-      ];
-
-      const afterPurgeYears = [
-        {
-          year: 2023,
-          count: 80,
-          oldestDate: '2023-01-01',
-          newestDate: '2023-12-31',
-        },
-        {
-          year: 2024,
-          count: 100,
-          oldestDate: '2024-01-01',
-          newestDate: '2024-12-31',
-        },
-      ];
+    it('should purge ONLY the oldest month when disk usage exceeds threshold', async () => {
+      const purgeOldestMonthSpy = jest
+        .spyOn(service, 'purgeOldestMonth')
+        .mockResolvedValue({
+          action: 'purged',
+          purgedYear: 2016,
+          purgedMonth: 9,
+          deletedCount: 296,
+          remainingYears: [2017, 2023, 2024],
+        });
 
       const getAvailableYearsSpy = jest
         .spyOn(service as any, 'getAvailableYears')
-        .mockResolvedValueOnce(initialYears) // First call for purge logic
-        .mockResolvedValueOnce(afterPurgeYears); // Second call for remainingYears
-
-      const deleteGamesForYearSpy = jest
-        .spyOn(service as any, 'deleteGamesForYear')
-        .mockResolvedValue(50); // Deletes 50 games
+        .mockResolvedValue([
+          {
+            year: 2017,
+            count: 80,
+            oldestDate: '2017-01-01',
+            newestDate: '2017-12-31',
+          },
+        ]);
 
       const getDiskUsageSpy = jest
         .spyOn(service as any, 'getDiskUsage')
-        .mockResolvedValueOnce({
+        .mockResolvedValue({
           usedMB: 95,
           totalMB: 100,
           percentage: 0.95, // 95% - exceeds 90%
-        })
-        .mockResolvedValueOnce({
-          usedMB: 70,
-          totalMB: 100,
-          percentage: 0.7, // After purge: 70% - below threshold
-        })
-        .mockResolvedValueOnce({
-          usedMB: 70,
-          totalMB: 100,
-          percentage: 0.7,
         });
 
-      const result = await service.purgeOldestYearsIfNeeded();
+      const result = await service.purgeOldestMonthIfNeeded();
 
       expect(result.action).toBe('purged');
-      expect(result.purgedYears).toEqual([2020]);
-      expect(deleteGamesForYearSpy).toHaveBeenCalledWith(2020);
-      expect(result.remainingYears).toEqual([2023, 2024]);
+      // Single-shot purge: exactly ONE month is purged, never a loop over years
+      expect(purgeOldestMonthSpy).toHaveBeenCalledTimes(1);
+      expect(result.purgedYear).toBe(2016);
+      expect(result.purgedMonth).toBe(9);
+      expect(result.deletedCount).toBe(296);
+      expect(result.remainingYears).toEqual([2017, 2023, 2024]);
+      expect(result.diskUsage.percentage).toBe(0.95);
 
+      purgeOldestMonthSpy.mockRestore();
       getAvailableYearsSpy.mockRestore();
-      deleteGamesForYearSpy.mockRestore();
       getDiskUsageSpy.mockRestore();
+    });
+
+    it('never loops: purges a single month even when usage stays above threshold', async () => {
+      // Regression guard: the old implementation kept deleting years because
+      // getDiskUsage() returns a 60s-cached value, so the "drop below 90%"
+      // condition never became true and the whole database was wiped.
+      const purgeOldestMonthSpy = jest
+        .spyOn(service, 'purgeOldestMonth')
+        .mockResolvedValue({
+          action: 'purged',
+          purgedYear: 2016,
+          purgedMonth: 9,
+          deletedCount: 296,
+          remainingYears: [2017],
+        });
+
+      jest.spyOn(service as any, 'getAvailableYears').mockResolvedValue([
+        {
+          year: 2017,
+          count: 80,
+          oldestDate: '2017-01-01',
+          newestDate: '2017-12-31',
+        },
+      ]);
+
+      // Disk usage NEVER drops below the threshold (stale cache scenario)
+      jest.spyOn(service as any, 'getDiskUsage').mockResolvedValue({
+        usedMB: 95,
+        totalMB: 100,
+        percentage: 0.95,
+      });
+
+      const result = await service.purgeOldestMonthIfNeeded();
+
+      expect(result.action).toBe('purged');
+      // The purge must be triggered exactly once per call — no iteration.
+      expect(purgeOldestMonthSpy).toHaveBeenCalledTimes(1);
+
+      jest.restoreAllMocks();
     });
 
     it('should not re-check disk if within CHECK_INTERVAL_MS', async () => {
@@ -932,11 +941,11 @@ describe('GameService', () => {
         });
 
       // First call
-      await service.purgeOldestYearsIfNeeded();
+      await service.purgeOldestMonthIfNeeded();
       expect(getDiskUsageSpy).toHaveBeenCalledTimes(1);
 
       // Second call immediately after (should skip due to interval)
-      const result = await service.purgeOldestYearsIfNeeded();
+      const result = await service.purgeOldestMonthIfNeeded();
       expect(getDiskUsageSpy).toHaveBeenCalledTimes(1); // Still 1
       expect(result.action).toBe('none');
 

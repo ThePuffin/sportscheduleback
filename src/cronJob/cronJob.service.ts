@@ -2,9 +2,9 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { GameService } from '../games/games.service';
 import { TeamService } from '../teams/teams.service';
-import { League } from '../utils/enum';
-import { isCurrentSeason, isPlayoffsPeriod, needRefresh } from '../utils/utils';
 import { readableDate } from '../utils/date';
+import { League } from '../utils/enum';
+import { needRefresh } from '../utils/utils';
 
 @Injectable()
 export class CronService implements OnModuleInit {
@@ -219,7 +219,9 @@ export class CronService implements OnModuleInit {
     }
 
     if (!needsRefresh) {
-      console.info(`[Cron] League rotation: ${league} refreshed recently — skipped.`);
+      console.info(
+        `[Cron] League rotation: ${league} refreshed recently — skipped.`,
+      );
       return;
     }
 
@@ -373,24 +375,6 @@ export class CronService implements OnModuleInit {
     }
   }
 
-  @Cron('0 3,15 * * *') // TWICE DAILY AT 3AM & 3PM (UTC) — purge the oldest month of games
-  async purgeOldestMonth() {
-    try {
-      console.info('[Cron] Running monthly purge of oldest games...');
-      const result = await this.gameService.purgeOldestMonth();
-
-      if (result.action === 'purged') {
-        console.info(
-          `[Cron] Purged ${result.deletedCount} games from ${result.purgedYear}-${result.purgedMonth?.toString().padStart(2, '0')}. Remaining years: ${result.remainingYears?.join(', ')}`,
-        );
-      } else {
-        console.info('[Cron] No games to purge.');
-      }
-    } catch (err) {
-      console.error('[Cron] Error running monthly purge:', err);
-    }
-  }
-
   @Cron('0 4 * * 0') // WEEKLY ON SUNDAY AT 4AM (UTC) — purge stale teams without active games
   async purgeStaleTeams() {
     try {
@@ -420,11 +404,12 @@ export class CronService implements OnModuleInit {
   async monitorDiskCapacity() {
     try {
       console.info('[Cron] Running disk capacity check...');
-      const result = await this.gameService.purgeOldestYearsIfNeeded();
+      const result = await this.gameService.purgeOldestMonthIfNeeded();
 
       if (result.action === 'purged') {
+        const purgedMonth = `${result.purgedYear}-${String(result.purgedMonth).padStart(2, '0')}`;
         console.warn(
-          `[Cron] Purged years: ${result.purgedYears?.join(', ')}. Remaining years: ${result.remainingYears?.join(', ')}`,
+          `[Cron] Purged ${result.deletedCount} game(s) from ${purgedMonth}. Remaining years: ${result.remainingYears?.join(', ')}`,
         );
       } else {
         console.info(

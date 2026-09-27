@@ -2,6 +2,48 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: capacity purge wiped the whole database — now deletes only the oldest month
+
+### Problem
+
+`POST /games/capacity/check` (and the 6-hourly `monitorDiskCapacity()` cron) called
+`GameService.purgeOldestYearsIfNeeded()`, which deleted **entire years** in a `for` loop (oldest first) and,
+after each deletion, re-checked disk usage to decide when to stop (`break` once < 90%).
+
+But `getDiskUsage()` serves a value cached for 60 seconds (`DISK_USAGE_CACHE_TTL_MS`), and that cache had just
+been filled by the very check that triggered the purge. Every post-deletion re-check therefore returned the
+same stale "≥ 90%" figure, the `break` never fired, and the loop kept deleting year after year until **the
+whole database was emptied**.
+
+### Solution
+
+When usage ≥ 90%, the purge now performs a **single call to `purgeOldestMonth()`** (deletes only the oldest
+month, e.g. `2016-09`) and returns immediately. **No loop at all** — a stale cache can never trigger repeated
+deletions. Space is freed progressively: each subsequent check (cron every 6h / manual endpoint) may purge one
+more month.
+
+- Renamed `purgeOldestYearsIfNeeded()` → **`purgeOldestMonthIfNeeded()`**.
+- Return shape changed: `{ action, diskUsage, purgedYear?, purgedMonth?, deletedCount?, remainingYears? }`
+  (replaces `purgedYears?: number[]`).
+- `diskUsage` in the response is the measurement that *triggered* the purge (taken before the deletion); it is
+  re-measured on the next check once the 60-second cache expires.
+- Removed the now-unused private helper `deleteGamesForYear()`.
+
+### Files changed
+
+- `backend/src/games/games.service.ts` — new `purgeOldestMonthIfNeeded()`, removed `deleteGamesForYear()`, oldies
+  capacity-check call updated.
+- `backend/src/games/games.controller.ts` — `POST /games/capacity/check` delegates to the new method (also fixed
+  decorator indentation).
+- `backend/src/cronJob/cronJob.service.ts` — `monitorDiskCapacity()` delegates to the new method and logs the
+  purged month instead of purged years.
+- `backend/src/games/tests/games.service.spec.ts` — tests updated + regression test asserting the purge is
+  triggered **exactly once** even when usage stays above the threshold.
+- Docs: `backend/docs/games/games.service.ts.md`, `backend/docs/games/games.controller.ts.md`,
+  `backend/docs/cronJob/cronJob.service.ts.md`.
+
+---
+
 ## Added: summary counter logs after purging unresolved / missing-score games
 
 ### Changes

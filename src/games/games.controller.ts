@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiKeyGuard } from '../auth/api-key.guard';
+import { League } from '../utils/enum';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { GameService } from './games.service';
@@ -139,6 +140,13 @@ export class GamesController {
     return this.GameService.getOldiesGames(year, league);
   }
 
+  @Post('refresh/allOldies')
+  async refreshAllOldies() {
+    for (const leagueName of Object.values(League)) {
+      await this.GameService.getOldiesGames(undefined, leagueName);
+    }
+  }
+
   @Post('/refresh/:league')
   async refreshByLeague(@Param('league') league: string) {
     return this.GameService.getLeagueGames({
@@ -196,10 +204,10 @@ export class GamesController {
     return this.GameService.purgeStaleTeamsWithoutGames();
   }
 
-    @Post('capacity/check')
+  @Post('capacity/check')
   @UseGuards(ApiKeyGuard)
   async checkCapacity() {
-    return await this.GameService.purgeOldestYearsIfNeeded();
+    return await this.GameService.purgeOldestMonthIfNeeded();
   }
 
   @Get('capacity/status')

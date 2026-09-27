@@ -174,22 +174,25 @@ Collects `findUsedTeamIds()` then delegates to
 
 Performs availability checks and triggers a refresh if a league appears to have too few upcoming games.
 
-### `purgeOldestYearsIfNeeded()`
+### `purgeOldestMonthIfNeeded()`
 
-**Capacity-based purge strategy**: Monitors disk usage and automatically purges entire years of games (oldest first) when
-storage exceeds 90%. This preserves as much historical data as possible while preventing disk space exhaustion.
+**Capacity-based purge strategy**: Monitors disk usage and, when storage is at or above 90%, deletes **only the oldest
+month of games** — a single, one-shot deletion per call.
 **Behavior:**
 
-- Runs every 6 hours (via cron job)
+- Runs every 6 hours (via cron job), manual via `POST /games/capacity/check`
 - Calculates disk usage via MongoDB `dbStats` with `$collStats` fallback
-- Returns `{ action: 'none' | 'purged', diskUsage, purgedYears?, remainingYears? }`
+- Returns `{ action: 'none' | 'purged', diskUsage, purgedYear?, purgedMonth?, deletedCount?, remainingYears? }`
 - Caches last check to avoid excessive I/O (1-hour interval minimum between checks)
 
 **Data Preservation:**
 
-- Games are deleted **year by year** (e.g., all 2020 games, then all 2019, etc.)
 - Only triggers when disk usage ≥ 90%
-- Stops purging once usage drops below 90%
+- Deletes **exactly one month per call** (the oldest one, e.g. `2016-09`) — never loops over years or months
+- Repeated calls (cron every 6h / manual endpoint) gradually free space, one month at a time
+- ⚠️ **Regression fixed**: the previous implementation deleted whole years in a `for` loop and re-checked the disk
+  after each deletion — but `getDiskUsage()` serves a 60-second cached value, so the loop condition never became
+  false and the entire database could be wiped. The loop has been removed.
 
 **Protected Data:**
 
@@ -221,6 +224,6 @@ Calculates MongoDB disk usage via `dbStats` command with `$collStats` fallback.
 ## Capacity Management
 
 - **Disk monitoring**: Automatic every 6 hours (cron job)
-- **Manual trigger**: `POST /games/capacity/check` (requires API key) — check + purge if needed
+- **Manual trigger**: `POST /games/capacity/check` (requires API key) — check + purge the oldest month if needed
 - **Read-only status**: `GET /games/capacity/status` (requires API key) — same diagnostics as the check, but **without performing any deletion**; returns `diskUsage`, per-year breakdown (`years[]`), `teamCount`, `gameCount`, `threshold`, and `actionNeeded`.
 - **Performance**: `getDiskUsage()` results are cached in-memory for 60 seconds to reduce load on the MongoDB cluster.

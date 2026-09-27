@@ -2690,30 +2690,11 @@ export class GameService {
   }
 
   /**
-   * Deletes all games from a given year.
-   * Returns the number of deleted games.
-   */
-  private async deleteGamesForYear(year: number): Promise<number> {
-    const yearStr = year.toString();
-    const startDate = `${yearStr}-01-01`;
-    const endDate = `${yearStr}-12-31`;
-
-    const result = await this.gameModel.deleteMany({
-      gameDate: { $gte: startDate, $lte: endDate },
-    });
-
-    console.info(
-      `[Capacity Manager] Deleted ${result.deletedCount} games from year ${year}`,
-    );
-    return result.deletedCount || 0;
-  }
-
-  /**
    * READ-ONLY capacity report.
    * Returns the current disk usage + a per-year breakdown (oldest → newest)
    * plus the count of stored teams, WITHOUT performing any deletion.
    * Intended for manual inspection / a GET endpoint so operators can decide
-   * whether to trigger `purgeOldestYearsIfNeeded()`.
+   * whether to trigger `purgeOldestMonthIfNeeded()`.
    */
   async getCapacityStatus(): Promise<{
     /** Used storage in MB */
@@ -2785,13 +2766,29 @@ export class GameService {
   }
 
   /**
-   * Checks disk space and deletes the oldest years if needed.
-   * Returns a report with the action taken and the current disk usage.
+   * Checks disk space and, when usage is at or above the threshold (90%),
+   * purges ONLY the oldest month of games — a single, one-shot deletion.
+   *
+   * IMPORTANT: this method never loops over years or months. The previous
+   * implementation deleted whole years inside a `for` loop and re-checked the
+   * disk after each deletion to decide when to stop. But `getDiskUsage()`
+   * serves a value cached for 60 seconds (DISK_USAGE_CACHE_TTL_MS), so the
+   * post-deletion check kept returning the same stale "≥ 90%" figure, the
+   * loop never broke, and the entire database could be wiped. Deleting
+   * exactly one month per call keeps the purge predictable: repeated calls
+   * (cron every 6h / manual endpoint) gradually free space, one month at a
+   * time, without ever risking a full wipe.
+   *
+   * Returns a report with the action taken and the disk usage that triggered
+   * the decision (measured BEFORE the purge; it is re-evaluated on the next
+   * check, once the 60-second cache has expired).
    */
-  async purgeOldestYearsIfNeeded(): Promise<{
+  async purgeOldestMonthIfNeeded(): Promise<{
     action: 'none' | 'purged';
     diskUsage: { usedMB: number; totalMB: number; percentage: number };
-    purgedYears?: number[];
+    purgedYear?: number;
+    purgedMonth?: number;
+    deletedCount?: number;
     remainingYears?: number[];
   }> {
     const now = Date.now();
@@ -2807,63 +2804,48 @@ export class GameService {
     this.lastDiskCheck = now;
 
     const diskUsage = await this.getDiskUsage();
-    const purgedYears: number[] = [];
 
     console.info(
       `[Capacity Manager] Disk usage: ${(diskUsage.percentage * 100).toFixed(1)}% (${diskUsage.usedMB}MB / ${diskUsage.totalMB}MB)`,
     );
 
-    // If the storage is full, purge years one by one
+    // Storage too full: purge the oldest month ONLY (single shot, no loop).
     if (diskUsage.percentage >= this.DISK_USAGE_THRESHOLD) {
-      const years = await this.getAvailableYears();
-
-      if (years.length === 0) {
-        console.warn('[Capacity Manager] No games to delete!');
-        return {
-          action: 'none',
-          diskUsage,
-          remainingYears: [],
-        };
-      }
-
       console.warn(
-        `[Capacity Manager] Disk usage exceeds ${(this.DISK_USAGE_THRESHOLD * 100).toFixed(0)}%! Starting purge...`,
+        `[Capacity Manager] Disk usage exceeds ${(this.DISK_USAGE_THRESHOLD * 100).toFixed(0)}%! Purging the oldest month only...`,
       );
 
-      // Delete years from oldest to newest until usage drops below the threshold
-      for (const { year, count } of years) {
+      const purgeResult = await this.purgeOldestMonth();
+
+      if (purgeResult.action === 'purged') {
         console.info(
-          `[Capacity Manager] Purging year ${year} (${count} games)...`,
+          `[Capacity Manager] Purged ${purgeResult.deletedCount} games from ${purgeResult.purgedYear}-${String(purgeResult.purgedMonth).padStart(2, '0')}. Usage will be re-measured on the next check.`,
         );
-
-        await this.deleteGamesForYear(year);
-        purgedYears.push(year);
-
-        // Re-check after each deletion
-        const updatedDiskUsage = await this.getDiskUsage();
-        console.info(
-          `[Capacity Manager] New disk usage: ${(updatedDiskUsage.percentage * 100).toFixed(1)}%`,
+      } else {
+        console.warn(
+          '[Capacity Manager] Threshold exceeded but no month could be purged.',
         );
-
-        if (updatedDiskUsage.percentage < this.DISK_USAGE_THRESHOLD) {
-          console.info('[Capacity Manager] Disk usage back to normal.');
-          break;
-        }
       }
 
-      const remainingYears = (await this.getAvailableYears()).map(
-        (y) => y.year,
-      );
+      // purgeOldestMonth() already computed the remaining years on success;
+      // fall back to a fresh query only when nothing could be purged.
+      const remainingYears =
+        purgeResult.remainingYears ??
+        ((await this.getAvailableYears()) ?? []).map((y) => y.year);
 
       return {
-        action: 'purged',
-        diskUsage: await this.getDiskUsage(),
-        purgedYears,
+        action: purgeResult.action,
+        diskUsage,
+        purgedYear: purgeResult.purgedYear,
+        purgedMonth: purgeResult.purgedMonth,
+        deletedCount: purgeResult.deletedCount,
         remainingYears,
       };
     }
 
-    const remainingYears = (await this.getAvailableYears()).map((y) => y.year);
+    const remainingYears = ((await this.getAvailableYears()) ?? []).map(
+      (y) => y.year,
+    );
     return {
       action: 'none',
       diskUsage,
@@ -3218,7 +3200,7 @@ export class GameService {
           console.info(
             `[Oldies] progress: ${pct}% (${completedSteps}/${totalSteps}) — last: ${league} ${year}`,
           );
-          await this.purgeOldestYearsIfNeeded();
+          await this.purgeOldestMonthIfNeeded();
         }
       }
     }
