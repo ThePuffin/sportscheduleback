@@ -132,18 +132,49 @@ team, the league refresh is only triggered if the league is actually in season (
 season or playoffs); off-season requests return the legitimately empty result without
 hitting third-party APIs — the cron jobs keep data fresh all year round instead.
 
-### `findByLeague()` / `findByDate()` / `findByDateHour()`
+### `findByLeague()` / `findByDate()` / `findByDateHour()` / `findByDateLeague()`
 
 Read-only schedule views used by the frontend tabs. On an empty result (no games for
-the requested day/filters) they return `[]` / `{}` immediately without triggering any
-league refresh — data freshness is the cron jobs' responsibility (daily per-league
-refreshes 2 AM–7 AM, monthly `getAllGames`, `checkLeagueGamesAvailability` every 12
-minutes, scores every 10 minutes). Previously, the empty paths of `findByDate` /
+the requested day/filters) they return `[]` / `{}` / `{ groups: [] }` immediately without
+triggering any league refresh — data freshness is the cron jobs' responsibility (daily
+per-league refreshes 2 AM–7 AM, monthly `getAllGames`, `checkLeagueGamesAvailability`
+every 12 minutes, scores every 10 minutes). Previously, the empty paths of `findByDate` /
 `findByDateHour` awaited `getAllGames(false, gameDate, ...)` (and `findAll()` on a
 totally empty DB called `getAllGames()` with no date and no league filter), and the
 "games found today" paths chained background `getLeagueGames` refreshes via
 `refreshChain`; both were removed because they blocked the server (sequential
 third-party schedule fetches under the 460 MB heap budget → OOM restarts).
+
+`_findEnrichedGamesForDay(gameDate, leagues?, maxResults?, skip?)` (private) is the shared
+query behind the day views:
+
+1. Filter `{ isActive: true }` + `$expr: { $eq: ['$homeTeamId', '$teamSelectedId'] }` — a game
+   is stored once per team, so this keeps exactly one row per game.
+2. Optional `league: { $in: [...] }` (split on `,` / space / `+`, upper-cased) and `skip` / `limit`.
+3. `gameDate` filter: for **today**, the day plus yesterday's games started less than 3 h ago;
+   for any other date, exactly that `gameDate`.
+4. Sort by `startTimeUTC`, then enrich each game (`_enrichGameWithTeamData`) after dropping
+   `FINISHED` games older than 12 h (the same 12-hour guard as before).
+
+`findByDateHour` groups the result by 30-minute UTC time slot (`HH:00` / `HH:30`).
+`findByDateLeague` (added for the **past-day** view) returns the same games grouped by
+**league** instead:
+
+```
+{ groups: [
+    { key: 'FAVORITES', games: [...] },  // only when `favoriteTeams` matches
+    { key: 'MLB', games: [...] },        // leagues in alphabetical order
+    { key: 'NBA', games: [...] } ] }
+```
+
+- `favoriteTeams` (query param, `,` / space / `+` separated team `uniqueId`s) builds a leading
+  `FAVORITES` section; those games are **also** kept in their league section (a duplicate view).
+- League sections are ordered alphabetically (`localeCompare`; unknown/empty leagues fall back to
+  the `OTHER` key, sorted like any other league name).
+- Games are ordered from oldest to most recent (`startTimeUTC` ascending) inside every section.
+
+All the grouping, ordering and favorites extraction happen server-side, so the client renders
+the payload as-is (it only applies its own league/team/bookmark chips filters).
 
 ### `fetchGamesScores()`
 
@@ -174,22 +205,23 @@ Collects `findUsedTeamIds()` then delegates to
 
 Performs availability checks and triggers a refresh if a league appears to have too few upcoming games.
 
-### `purgeOldestMonthIfNeeded()`
+### `purgeOldestMonthIfNeeded(force = false)`
 
 **Capacity-based purge strategy**: Monitors disk usage and, when storage is at or above 90%, deletes **only the oldest
 month of games** — a single, one-shot deletion per call.
 **Behavior:**
 
-- Runs every 6 hours (via cron job), manual via `POST /games/capacity/check`
+- Runs every hour (via `monitorDiskCapacity` cron `0 */1 * * *`), manual via `POST /games/capacity/check`
 - Calculates disk usage via MongoDB `dbStats` with `$collStats` fallback
 - Returns `{ action: 'none' | 'purged', diskUsage, purgedYear?, purgedMonth?, deletedCount?, remainingYears? }`
-- Caches last check to avoid excessive I/O (1-hour interval minimum between checks)
+- Caches last check to avoid excessive I/O (1-hour interval minimum between checks, bypassed with `force: true`)
+- `force: true` also invalidates the 60s `getDiskUsage()` cache so each retry re-measures real usage
 
 **Data Preservation:**
 
 - Only triggers when disk usage ≥ 90%
 - Deletes **exactly one month per call** (the oldest one, e.g. `2016-09`) — never loops over years or months
-- Repeated calls (cron every 6h / manual endpoint) gradually free space, one month at a time
+- Repeated calls (hourly cron / manual endpoint) gradually free space, one month at a time
 - ⚠️ **Regression fixed**: the previous implementation deleted whole years in a `for` loop and re-checked the disk
   after each deletion — but `getDiskUsage()` serves a 60-second cached value, so the loop condition never became
   false and the entire database could be wiped. The loop has been removed.
@@ -223,7 +255,7 @@ Calculates MongoDB disk usage via `dbStats` command with `$collStats` fallback.
 
 ## Capacity Management
 
-- **Disk monitoring**: Automatic every 6 hours (cron job)
+- **Disk monitoring**: Automatic every hour (cron job)
 - **Manual trigger**: `POST /games/capacity/check` (requires API key) — check + purge the oldest month if needed
 - **Read-only status**: `GET /games/capacity/status` (requires API key) — same diagnostics as the check, but **without performing any deletion**; returns `diskUsage`, per-year breakdown (`years[]`), `teamCount`, `gameCount`, `threshold`, and `actionNeeded`.
 - **Performance**: `getDiskUsage()` results are cached in-memory for 60 seconds to reduce load on the MongoDB cluster.

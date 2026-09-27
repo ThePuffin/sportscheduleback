@@ -96,6 +96,25 @@ export class GamesController {
     return this.GameService.findByDateHour(gameDate, leagues, maxResults, skip);
   }
 
+  @Get('/league-day/:gameDate')
+  findByDateLeague(
+    @Param('gameDate') gameDate: string,
+    @Query('leagues') leagues?: string,
+    @Query('maxResults', new ParseIntPipe({ optional: true }))
+    maxResults?: number,
+    @Query('skip', new ParseIntPipe({ optional: true }))
+    skip?: number,
+    @Query('favoriteTeams') favoriteTeams?: string,
+  ) {
+    return this.GameService.findByDateLeague(
+      gameDate,
+      leagues,
+      maxResults,
+      skip,
+      favoriteTeams,
+    );
+  }
+
   @Get('/league/:league')
   findByLeague(
     @Param('league') league: string,
@@ -142,8 +161,22 @@ export class GamesController {
 
   @Post('refresh/allOldies')
   async refreshAllOldies() {
-    for (const leagueName of Object.values(League)) {
+    const shuffledLeagues = Object.values(League).sort(
+      () => Math.random() - 0.5,
+    );
+
+    for (const leagueName of shuffledLeagues) {
       await this.GameService.getOldiesGames(undefined, leagueName);
+      for (let i = 0; i < 5; i++) {
+        await this.GameService.purgeOldestMonthIfNeeded(true);
+        // Wait 30 seconds between each purge to let disk usage settle,
+        // except after the last attempt.
+        if (i < 4) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 30 * 1000),
+          );
+        }
+      }
     }
   }
 

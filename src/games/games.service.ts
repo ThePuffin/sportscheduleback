@@ -2071,12 +2071,24 @@ export class GameService {
     return resolvedStatus;
   }
 
-  async findByDateHour(
+  /**
+   * Shared read-only query used by the date views (`findByDateHour`,
+   * `findByDateLeague`): builds the same active + home-game filter, runs it and
+   * returns the enriched games sorted by `startTimeUTC`.
+   *
+   * A game is stored once per team, so the `homeTeamId === teamSelectedId`
+   * expression keeps a single row per game (no duplicates).
+   *
+   * Returns an empty array when the day has no game (or when the filters match
+   * nothing). The read-only routes never refresh on empty — see the comment in
+   * `findByDateHour`.
+   */
+  private async _findEnrichedGamesForDay(
     gameDate: string,
     leagues?: string,
     maxResults?: number,
     skip?: number,
-  ) {
+  ): Promise<any[]> {
     const today = readableDate(new Date());
     const yesterdayDate = new Date();
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
@@ -2120,16 +2132,7 @@ export class GameService {
 
     const games = await query.lean().exec();
     if (games.length === 0) {
-      // Read-only route: no refresh-on-empty. An empty day is a legitimate
-      // result (off-season, no games for the selected leagues/filters); the
-      // cron jobs (daily per-league refreshes + monthly getAllGames +
-      // checkLeagueGamesAvailability) fill and keep the DB fresh. Refreshing
-      // from this read path was blocking the server during third-party
-      // schedule fetches (event-loop + memory pressure → restarts).
-      console.info(
-        `[findByDateHour] No games found for ${gameDate}. Returning {}.`,
-      );
-      return {};
+      return [];
     }
 
     const leaguesInGames = Array.from(
@@ -2146,19 +2149,47 @@ export class GameService {
     const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
     // avoid dupplicate games
-    const filteredGames = games.filter(({ gameStatus, startTimeUTC }) => {
-      const now = new Date();
-      const isStartedForMoreThan12Hours =
-        new Date(startTimeUTC) < new Date(now.getTime() - 12 * 60 * 60 * 1000);
-      return (
-        (gameStatus !== 'FINISHED' && !isStartedForMoreThan12Hours) ||
-        gameStatus === 'FINISHED'
+    return games
+      .filter(({ gameStatus, startTimeUTC }) => {
+        const now = new Date();
+        const isStartedForMoreThan12Hours =
+          new Date(startTimeUTC) <
+          new Date(now.getTime() - 12 * 60 * 60 * 1000);
+        return (
+          (gameStatus !== 'FINISHED' && !isStartedForMoreThan12Hours) ||
+          gameStatus === 'FINISHED'
+        );
+      })
+      .map((game: any) => this._enrichGameWithTeamData(game, teamsMap));
+  }
+
+  async findByDateHour(
+    gameDate: string,
+    leagues?: string,
+    maxResults?: number,
+    skip?: number,
+  ) {
+    // Read-only route: no refresh-on-empty. An empty day is a legitimate
+    // result (off-season, no games for the selected leagues/filters); the
+    // cron jobs (daily per-league refreshes + monthly getAllGames +
+    // checkLeagueGamesAvailability) fill and keep the DB fresh. Refreshing
+    // from this read path was blocking the server during third-party
+    // schedule fetches (event-loop + memory pressure → restarts).
+    const filteredGames = await this._findEnrichedGamesForDay(
+      gameDate,
+      leagues,
+      maxResults,
+      skip,
+    );
+    if (filteredGames.length === 0) {
+      console.info(
+        `[findByDateHour] No games found for ${gameDate}. Returning {}.`,
       );
-    });
+      return {};
+    }
 
     const gamesByTimeSlot: { [key: string]: any[] } = {};
-    filteredGames.forEach((game: any) => {
-      const enrichedGame = this._enrichGameWithTeamData(game, teamsMap);
+    filteredGames.forEach((enrichedGame: any) => {
       const date = new Date(enrichedGame.startTimeUTC);
       const hours = date.getUTCHours().toString().padStart(2, '0');
       const minutes = date.getUTCMinutes();
@@ -2172,6 +2203,102 @@ export class GameService {
     });
 
     return gamesByTimeSlot;
+  }
+
+  /**
+   * Same games as `findByDateHour` (same filters, same enrichment, same
+   * 12-hour status guard) but grouped by **league** instead of by time slot.
+   *
+   * Used by the frontend day view for past dates, where a league is a more
+   * meaningful section than a kick-off hour. Everything (grouping, ordering,
+   * favorites extraction) is computed here so the client only renders the
+   * payload:
+   *
+   * ```
+   * {
+   *   groups: [
+   *     { key: 'FAVORITES', games: [...] }, // only when favoriteTeams matches
+   *     { key: 'MLB', games: [...] },       // leagues in alphabetical order
+   *     { key: 'NBA', games: [...] },
+   *   ]
+   * }
+   * ```
+   *
+   * The `FAVORITES` group is a *duplicate* view: those games also stay in
+   * their league group. Within every group the games are ordered from oldest
+   * to most recent (`startTimeUTC` ascending).
+   *
+   * `favoriteTeams` is a comma / space / `+` separated list of team
+   * `uniqueId`s (e.g. `NHL-BOS,MLB-CHC`).
+   */
+  async findByDateLeague(
+    gameDate: string,
+    leagues?: string,
+    maxResults?: number,
+    skip?: number,
+    favoriteTeams?: string,
+  ): Promise<{ groups: { key: string; games: any[] }[] }> {
+    const games = await this._findEnrichedGamesForDay(
+      gameDate,
+      leagues,
+      maxResults,
+      skip,
+    );
+
+    if (games.length === 0) {
+      console.info(
+        `[findByDateLeague] No games found for ${gameDate}. Returning { groups: [] }.`,
+      );
+      return { groups: [] };
+    }
+
+    const groups: { key: string; games: any[] }[] = [];
+
+    const favoriteIds = (favoriteTeams ?? '')
+      .split(/[ ,+]+/)
+      .map((teamId) => teamId.trim())
+      .filter((teamId) => teamId.length > 0);
+
+    if (favoriteIds.length > 0) {
+      const favoriteGames = games.filter(
+        (game) =>
+          favoriteIds.includes(game.homeTeamId) ||
+          favoriteIds.includes(game.awayTeamId),
+      );
+      if (favoriteGames.length > 0) {
+        groups.push({ key: 'FAVORITES', games: favoriteGames });
+      }
+    }
+
+    const gamesByLeague = new Map<string, any[]>();
+
+    games.forEach((game) => {
+      const league = game.league || 'OTHER';
+      const leagueGames = gamesByLeague.get(league);
+      if (leagueGames) {
+        leagueGames.push(game);
+      } else {
+        gamesByLeague.set(league, [game]);
+      }
+    });
+
+    const byStartTimeAsc = (gameA: any, gameB: any) =>
+      new Date(gameA.startTimeUTC).getTime() -
+      new Date(gameB.startTimeUTC).getTime();
+
+    if (groups.length > 0) {
+      groups[0].games.sort(byStartTimeAsc);
+    }
+
+    Array.from(gamesByLeague.keys())
+      .sort((leagueA, leagueB) => leagueA.localeCompare(leagueB))
+      .forEach((league) => {
+        const leagueGames = gamesByLeague.get(league)!;
+        leagueGames.sort(byStartTimeAsc);
+        groups.push({ key: league, games: leagueGames });
+      });
+
+    return { groups };
   }
 
   private _resolveStatus(score: any): string {
@@ -2782,8 +2909,11 @@ export class GameService {
    * Returns a report with the action taken and the disk usage that triggered
    * the decision (measured BEFORE the purge; it is re-evaluated on the next
    * check, once the 60-second cache has expired).
+   *
+   * @param force when true, bypasses the 1-hour `CHECK_INTERVAL_MS` guard.
+   * Used by `refreshAllOldies` which already waits 30s between attempts.
    */
-  async purgeOldestMonthIfNeeded(): Promise<{
+  async purgeOldestMonthIfNeeded(force = false): Promise<{
     action: 'none' | 'purged';
     diskUsage: { usedMB: number; totalMB: number; percentage: number };
     purgedYear?: number;
@@ -2793,8 +2923,9 @@ export class GameService {
   }> {
     const now = Date.now();
 
-    // Avoid overly frequent checks (maximum once per hour)
-    if (now - this.lastDiskCheck < this.CHECK_INTERVAL_MS) {
+    // Avoid overly frequent checks (maximum once per hour),
+    // unless forced by a batch caller that already waits 30s between attempts.
+    if (!force && now - this.lastDiskCheck < this.CHECK_INTERVAL_MS) {
       return {
         action: 'none',
         diskUsage: { usedMB: 0, totalMB: 1, percentage: 0 },
@@ -2802,6 +2933,13 @@ export class GameService {
     }
 
     this.lastDiskCheck = now;
+
+    // Forced calls are spaced 30s apart but the disk usage cache lives 60s:
+    // invalidate it so each retry re-measures the real usage instead of
+    // reusing the stale pre-purge value.
+    if (force) {
+      this.diskUsageCache = null;
+    }
 
     const diskUsage = await this.getDiskUsage();
 

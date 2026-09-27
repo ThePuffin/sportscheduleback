@@ -2,6 +2,73 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Changed: `POST /games/refresh/allOldies` — 30-second wait between purge retries
+
+### Goal
+
+After each league's `getOldiesGames()`, the endpoint retries `purgeOldestMonthIfNeeded()` up to 5 times.
+Each attempt now waits **30 seconds** before the next one (except after the last), so MongoDB disk
+usage has time to settle between deletions.
+
+### Changes
+
+- `backend/src/games/games.controller.ts` — `refreshAllOldies()`: fixed the dead retry loop
+  (`for (i < 0; ...)` → `for (let i = 0; i < 5; i++)`), passes `force: true`, and awaits
+  `setTimeout(30 * 1000)` between attempts (skipped after the 5th).
+- `backend/src/games/games.service.ts` — `purgeOldestMonthIfNeeded(force = false)`: `force: true`
+  bypasses the 1-hour `CHECK_INTERVAL_MS` guard (otherwise retries 2–5 would return `none` without
+  purging) and invalidates the 60s `getDiskUsage()` cache so each retry re-measures real usage.
+- Docs: `backend/docs/games/games.controller.ts.md` (endpoint now fully documented: random league
+  order, per-league purge retries, 30s wait, `force` semantics), `backend/docs/games/games.service.ts.md`
+  (`force` param), `backend/docs/cronJob/cronJob.service.ts.md` (fixed stale "every 6 hours" →
+  hourly `0 */1 * * *`, matching the code).
+
+---
+
+## Added: `GET /games/league-day/:gameDate` — day games grouped by league (+ favorites section)
+
+### Goal
+
+The frontend day view uses this route for **past dates**, where leagues are more meaningful
+than kick-off hours, and it must receive the grouping, the section order and the favorites
+section already computed.
+
+### Changes
+
+- `backend/src/games/games.service.ts`
+  - `_findEnrichedGamesForDay(gameDate, leagues?, maxResults?, skip?)` (private) — the read-only
+    query/enrichment shared by the day views, extracted from `findByDateHour` with identical
+    behaviour (active + `homeTeamId === teamSelectedId`, `leagues` filter, today's 3-hour
+    yesterday window, `skip`/`limit`, `startTimeUTC` sort, 12-hour `FINISHED` guard,
+    `_enrichGameWithTeamData`). Empty day → `[]`.
+  - `findByDateLeague(gameDate, leagues?, maxResults?, skip?, favoriteTeams?)` — groups the
+    enriched games by league and returns
+    `{ groups: [{ key: 'FAVORITES'?, games }, { key: <league>, games }, …] }`:
+    - the leading `FAVORITES` group is built from the `favoriteTeams` param
+      (`,` / space / `+` separated team `uniqueId`s) and only added when at least one favorite
+      team plays that day; the same games **stay** in their league group;
+    - league groups are ordered alphabetically (`localeCompare`; unknown/empty league → `OTHER`,
+      sorted like any other league name);
+    - games are ordered from oldest to most recent (`startTimeUTC` ascending) inside every group.
+      Empty day → `{ groups: [] }` (still no
+      refresh-on-empty).
+  - `findByDateHour` now delegates to `_findEnrichedGamesForDay` (returns `{}` on an empty day).
+- `backend/src/games/games.controller.ts` — new `GET /games/league-day/:gameDate` with `leagues`,
+  `maxResults`, `skip` and `favoriteTeams` query params (no conflict with `GET /games/league/:league`).
+- `backend/src/games/tests/games.service.spec.ts` — added `skip`/`limit` to the model mock and a
+  `findByDateLeague` suite (alphabetical league order, games oldest-to-newest within each group,
+  favorites on the away team, favorites omitted, leagues filter + pagination, empty day without
+  `getAllGames`).
+- `backend/src/games/tests/games.controller.spec.ts` — `findByDateLeague` mock + forwarding tests.
+
+### Docs
+
+- `backend/docs/games/games.service.ts.md` — documented `_findEnrichedGamesForDay` and
+  `findByDateLeague` (payload, ordering, favorites duplication).
+- `backend/docs/games/games.controller.ts.md` — added the new route.
+
+---
+
 ## Fixed: capacity purge wiped the whole database — now deletes only the oldest month
 
 ### Problem

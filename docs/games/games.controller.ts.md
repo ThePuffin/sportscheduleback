@@ -23,12 +23,20 @@ This controller exposes the HTTP API for game data operations.
 - `GET /games/dates/closest` — returns the closest past and upcoming game dates (`previousDate`/`nextDate`), optionally scoped by `leagues` and/or `teamSelectedIds`, relative to an optional reference `date` (defaults to today)
 - `GET /games/date/:gameDate` — returns games for a specific date
 - `GET /games/hour/:gameDate` — returns games grouped by hour slots
+- `GET /games/league-day/:gameDate` — returns games grouped by **league** (query params: `leagues`, `maxResults`, `skip`, `favoriteTeams`); adds a leading `FAVORITES` group when `favoriteTeams` matches games of that day. Used by the frontend day view for past dates.
 - `GET /games/league/:league` — returns games for a league
 - `GET /games/:uniqueId` — returns a single game
 
 ### Refresh and sync
 
 - `POST /games/refresh/all` — refreshes all leagues
+- `POST /games/refresh/oldies` — recovers historical games (`year`/`league` query params optional)
+- `POST /games/refresh/allOldies` — recovers history league by league (leagues in **random order** via
+  `Object.values(League).sort(() => Math.random() - 0.5)`); after **each league's** `getOldiesGames`,
+  retries `purgeOldestMonthIfNeeded(true)` up to **5 times** with a **30-second wait between attempts**
+  (except after the last one) to let disk usage settle. The `force: true` flag bypasses the 1-hour check
+  guard and invalidates the 60s disk-usage cache so each retry re-measures real usage. Long-running
+  request (minutes per league), returns `void`.
 - `POST /games/refresh/:league` — refreshes one league
 - `POST /games/sync/recent` — syncs recent games from external sources
 - `POST /games/scores` — recovers missing scores

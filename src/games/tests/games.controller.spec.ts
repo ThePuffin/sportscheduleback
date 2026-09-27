@@ -30,6 +30,9 @@ const mockGameService = {
     .mockResolvedValue({ previousDate: '2024-12-01', nextDate: '2025-01-15' }),
   findByDate: jest.fn().mockResolvedValue(mockGames),
   findByDateHour: jest.fn().mockResolvedValue({ '19:00': mockGames }),
+  findByDateLeague: jest
+    .fn()
+    .mockResolvedValue({ groups: [{ key: 'NHL', games: mockGames }] }),
   findByLeague: jest.fn().mockResolvedValue(mockGames),
   findOne: jest.fn().mockResolvedValue(mockGame),
   create: jest.fn().mockResolvedValue(mockGame),
@@ -208,6 +211,34 @@ describe('GamesController', () => {
         undefined,
         maxResults,
         skip,
+      );
+    });
+  });
+
+  describe('findByDateLeague', () => {
+    it('should return games grouped by league for a date', async () => {
+      const date = '2024-10-10';
+      await controller.findByDateLeague(date);
+      expect(service.findByDateLeague).toHaveBeenCalledWith(
+        date,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      );
+    });
+
+    it('should forward leagues, pagination and favoriteTeams', async () => {
+      const date = '2024-10-10';
+      const leagues = 'NHL,NBA';
+      const favoriteTeams = 'NHL-BOS,MLB-CHC';
+      await controller.findByDateLeague(date, leagues, 15, 15, favoriteTeams);
+      expect(service.findByDateLeague).toHaveBeenCalledWith(
+        date,
+        leagues,
+        15,
+        15,
+        favoriteTeams,
       );
     });
   });

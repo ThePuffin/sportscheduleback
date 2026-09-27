@@ -28,7 +28,7 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 | `checkLeagueGamesAvailability()` | Every 12 min, offset :07 (`7-59/12`) | Availability checks (LA early hours 0-11 AM); **skips while the rotation/oldies run** |
 | **`purgeOldestMonth()`**         | **Twice daily (3AM & 3PM UTC)** | **Purge the oldest month of games (time-based)** |
 | **`purgeStaleTeams()`**           | **Weekly Sunday 4AM UTC**       | **Refresh teams, then delete teams stale for more than 2 months with no active game** |
-| **`monitorDiskCapacity()`**      | **Every 6 hours**      | **Disk usage check & purge of the oldest month**     |
+| **`monitorDiskCapacity()`**      | **Every hour (`0 */1 * * *`)** | **Disk usage check & purge of the oldest month**     |
 
 ## New: `monitorDiskCapacity()`
 
@@ -36,7 +36,7 @@ Runs the disk capacity check and, when storage exceeds 90%, purges **only the ol
 
 **Execution:**
 
-- Runs every 6 hours automatically
+- Runs every hour automatically (`0 */1 * * *`)
 - Logs action taken: `'none'` (capacity OK) or `'purged'` (oldest month removed)
 - Logs remaining years after purge for transparency
 

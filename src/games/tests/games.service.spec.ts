@@ -14,6 +14,8 @@ describe('GameService', () => {
   const mockGameModel = {
     find: jest.fn().mockReturnThis(),
     sort: jest.fn().mockReturnThis(),
+    skip: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
     lean: jest.fn().mockReturnThis(),
     exec: jest.fn(),
     countDocuments: jest.fn(),
@@ -1267,6 +1269,146 @@ describe('GameService', () => {
       const result = await service.findByDateHour('2026-07-01');
 
       expect(result).toEqual({});
+      expect(getAllGamesSpy).not.toHaveBeenCalled();
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('findByDateLeague (past days grouped by league)', () => {
+    const nhlGame = {
+      uniqueId: 'NHL-1',
+      league: League.NHL,
+      homeTeamId: 'NHL-BOS',
+      awayTeamId: 'NHL-TOR',
+      startTimeUTC: '2026-01-10T00:00:00.000Z',
+      gameStatus: 'FINISHED',
+    };
+    const nhlGame2 = {
+      uniqueId: 'NHL-2',
+      league: League.NHL,
+      homeTeamId: 'NHL-NYR',
+      awayTeamId: 'NHL-MTL',
+      startTimeUTC: '2026-01-10T02:00:00.000Z',
+      gameStatus: 'FINISHED',
+    };
+    const nbaGame = {
+      uniqueId: 'NBA-1',
+      league: League.NBA,
+      homeTeamId: 'NBA-LAL',
+      awayTeamId: 'NBA-BOS',
+      startTimeUTC: '2026-01-10T01:00:00.000Z',
+      gameStatus: 'FINISHED',
+    };
+    const mlbGame = {
+      uniqueId: 'MLB-1',
+      league: League.MLB,
+      homeTeamId: 'MLB-CHC',
+      awayTeamId: 'MLB-STL',
+      startTimeUTC: '2026-01-10T03:00:00.000Z',
+      gameStatus: 'FINISHED',
+    };
+
+    beforeEach(() => {
+      mockTeamService.findAll.mockResolvedValue([]);
+    });
+
+    it('groups the day by league (alphabetical order) and puts favorites first', async () => {
+      mockGameModel.exec.mockResolvedValue([nhlGame2, nbaGame, nhlGame]);
+
+      const result = await service.findByDateLeague(
+        '2026-01-10',
+        undefined,
+        undefined,
+        undefined,
+        'NHL-BOS',
+      );
+
+      expect(result.groups.map((group) => group.key)).toEqual([
+        'FAVORITES',
+        League.NBA,
+        League.NHL,
+      ]);
+      // The favorite game is duplicated in its league group.
+      expect(result.groups[0].games).toHaveLength(1);
+      expect(result.groups[0].games[0].uniqueId).toBe('NHL-1');
+      // Games are ordered from oldest to most recent within each group,
+      // even though the DB returned them in reverse order.
+      expect(result.groups[2].games.map((game) => game.uniqueId)).toEqual([
+        'NHL-1',
+        'NHL-2',
+      ]);
+    });
+
+    it('orders the league groups alphabetically', async () => {
+      mockGameModel.exec.mockResolvedValue([mlbGame, nbaGame, nhlGame]);
+
+      const result = await service.findByDateLeague('2026-01-10');
+
+      expect(result.groups.map((group) => group.key)).toEqual([
+        League.MLB,
+        League.NBA,
+        League.NHL,
+      ]);
+    });
+
+    it('omits the favorites group when no favorite team plays that day', async () => {
+      mockGameModel.exec.mockResolvedValue([nhlGame, nbaGame]);
+
+      const result = await service.findByDateLeague(
+        '2026-01-10',
+        undefined,
+        undefined,
+        undefined,
+        'MLB-CHC',
+      );
+
+      expect(result.groups.map((group) => group.key)).toEqual([
+        League.NBA,
+        League.NHL,
+      ]);
+    });
+
+    it('matches favorites on the away team as well', async () => {
+      mockGameModel.exec.mockResolvedValue([nhlGame, nbaGame]);
+
+      const result = await service.findByDateLeague(
+        '2026-01-10',
+        undefined,
+        undefined,
+        undefined,
+        'NBA-BOS',
+      );
+
+      expect(result.groups[0].key).toBe('FAVORITES');
+      expect(result.groups[0].games.map((game) => game.uniqueId)).toEqual([
+        'NBA-1',
+      ]);
+    });
+
+    it('applies the same leagues filter and pagination as findByDateHour', async () => {
+      mockGameModel.exec.mockResolvedValue([nhlGame]);
+
+      await service.findByDateLeague('2026-01-10', 'nhl, nba', 25, 5);
+
+      const filter = mockGameModel.find.mock.calls[0][0];
+      expect(filter.isActive).toBe(true);
+      expect(filter.league).toEqual({ $in: [League.NHL, League.NBA] });
+      expect(filter.gameDate).toBe('2026-01-10');
+      expect(mockGameModel.sort).toHaveBeenCalledWith({ startTimeUTC: 1 });
+      expect(mockGameModel.skip).toHaveBeenCalledWith(5);
+      expect(mockGameModel.limit).toHaveBeenCalledWith(25);
+    });
+
+    it('returns { groups: [] } for an empty day without calling getAllGames', async () => {
+      const consoleSpy = jest.spyOn(console, 'info').mockImplementation();
+      const getAllGamesSpy = jest
+        .spyOn(service, 'getAllGames')
+        .mockResolvedValue([] as any);
+      mockGameModel.exec.mockResolvedValue([]);
+
+      const result = await service.findByDateLeague('2026-01-10');
+
+      expect(result).toEqual({ groups: [] });
       expect(getAllGamesSpy).not.toHaveBeenCalled();
       consoleSpy.mockRestore();
     });
