@@ -167,14 +167,13 @@ export class GamesController {
 
     for (const leagueName of shuffledLeagues) {
       await this.GameService.getOldiesGames(undefined, leagueName);
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 4; i++) {
+        await this.GameService.fetchGamesScores();
         await this.GameService.purgeOldestMonthIfNeeded(true);
         // Wait 30 seconds between each purge to let disk usage settle,
         // except after the last attempt.
-        if (i < 4) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, 30 * 1000),
-          );
+        if (i < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 30 * 1000));
         }
       }
     }

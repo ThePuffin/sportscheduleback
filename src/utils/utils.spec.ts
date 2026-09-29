@@ -8,6 +8,7 @@ import {
   needRefresh,
   randomNumber,
 } from './utils'; // Adapt path
+import * as utilsModule from './utils';
 
 describe('Utility Functions', () => {
   describe('randomNumber', () => {
@@ -121,12 +122,8 @@ describe('Utility Functions', () => {
 
     describe('doesDateRangeOverlapLeaguePeriod', () => {
       it('should return true when the range overlaps the regular season', async () => {
-        jest
-          .spyOn(require('./utils'), 'isCurrentSeason')
-          .mockResolvedValue(true);
-        jest
-          .spyOn(require('./utils'), 'isPlayoffsPeriod')
-          .mockResolvedValue(false);
+        jest.spyOn(utilsModule, 'isCurrentSeason').mockResolvedValue(true);
+        jest.spyOn(utilsModule, 'isPlayoffsPeriod').mockResolvedValue(false);
 
         await expect(
           doesDateRangeOverlapLeaguePeriod(
@@ -138,12 +135,8 @@ describe('Utility Functions', () => {
       });
 
       it('should return true when the range overlaps the playoffs', async () => {
-        jest
-          .spyOn(require('./utils'), 'isCurrentSeason')
-          .mockResolvedValue(false);
-        jest
-          .spyOn(require('./utils'), 'isPlayoffsPeriod')
-          .mockResolvedValue(true);
+        jest.spyOn(utilsModule, 'isCurrentSeason').mockResolvedValue(false);
+        jest.spyOn(utilsModule, 'isPlayoffsPeriod').mockResolvedValue(true);
 
         await expect(
           doesDateRangeOverlapLeaguePeriod(
@@ -155,12 +148,8 @@ describe('Utility Functions', () => {
       });
 
       it('should return false when the range overlaps neither season nor playoffs', async () => {
-        jest
-          .spyOn(require('./utils'), 'isCurrentSeason')
-          .mockResolvedValue(false);
-        jest
-          .spyOn(require('./utils'), 'isPlayoffsPeriod')
-          .mockResolvedValue(false);
+        jest.spyOn(utilsModule, 'isCurrentSeason').mockResolvedValue(false);
+        jest.spyOn(utilsModule, 'isPlayoffsPeriod').mockResolvedValue(false);
 
         await expect(
           doesDateRangeOverlapLeaguePeriod(
@@ -196,7 +185,7 @@ describe('Utility Functions', () => {
 
       it('should handle the edge case of month boundaries for Winter Olympics', () => {
         jest.setSystemTime(new Date('2026-03-31'));
-        let config = getLeagueConfig('OLYMPICS-MEN');
+        const config = getLeagueConfig('OLYMPICS-MEN');
         expect(config.sport).toBe('hockey');
 
         jest.setSystemTime(new Date('2026-04-01'));
@@ -206,8 +195,8 @@ describe('Utility Functions', () => {
 
       it('should handle summer olympics at the start and end of the period', () => {
         jest.setSystemTime(new Date('2028-05-01'));
-        const config = getLeagueConfig('OLYMPICS-WOMEN');
-        expect(config.sport).toBe('basket');
+        const summerConfig = getLeagueConfig('OLYMPICS-WOMEN');
+        expect(summerConfig.sport).toBe('basket');
 
         jest.setSystemTime(new Date('2028-09-30'));
         const config2 = getLeagueConfig('OLYMPICS-WOMEN');

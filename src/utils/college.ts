@@ -1,4 +1,4 @@
-const CollegeTeam = [
+export const CollegeTeam = [
   {
     id: '391',
     abbrev: 'MORE',

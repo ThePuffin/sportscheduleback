@@ -181,7 +181,7 @@ const getDivision = async (
     } else {
       return { conferenceName: '', divisionName: '', record };
     }
-  } catch (error) {
+  } catch {
     return { conferenceName: '', divisionName: '' };
   }
 };
@@ -716,7 +716,6 @@ export const getESPNScores = async (
       const res = await fetchWithRetry(url);
       const json = await res.json();
       const events = json?.events || [];
-      let finishedCount = 0;
       for (const ev of events) {
         const competitions = ev.competitions?.[0];
         if (!competitions) continue;
@@ -869,7 +868,6 @@ export const getESPNScores = async (
         const homeTeamShort = home?.team?.abbreviation || undefined;
         const awayTeamShort = away?.team?.abbreviation || undefined;
 
-        finishedCount++;
         const normalized = {
           uniqueId: id,
           league: normalizedLeagueName,

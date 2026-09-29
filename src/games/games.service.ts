@@ -55,7 +55,7 @@ export class GameService {
   gracePeriodHours = 48;
 
   // Capacity-based purge configuration
-  private readonly DISK_USAGE_THRESHOLD = 0.9; // 90%
+  private readonly DISK_USAGE_THRESHOLD = 0.96; // 96%
   private readonly CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
   private readonly DISK_USAGE_CACHE_TTL_MS = 60 * 1000; // 60 seconds cache for disk usage stats
   private readonly CLUSTER_TOTAL_MB = 512; // Total cluster storage in MB (adjust to your Atlas plan)
@@ -1463,8 +1463,6 @@ export class GameService {
   }
 
   async fetchGamesForLiveScoreUpdate(hours = 2): Promise<Game[]> {
-    const now = new Date();
-
     // Upper bound: started at least `hours` ago (default: 2 hours).
     const hoursAgo = new Date();
     hoursAgo.setHours(hoursAgo.getHours() - hours);
@@ -1674,7 +1672,7 @@ export class GameService {
                 })
                 .exec();
               matchingGames.push(...idMatches);
-            } catch (e) {
+            } catch {
               // ignore regex errors
             }
           }
@@ -1753,7 +1751,7 @@ export class GameService {
               appliedUpdates.push(game);
             }
           }
-        } catch (err) {
+        } catch {
           // ignore update errors
         }
       }
@@ -1954,7 +1952,7 @@ export class GameService {
 
   private async syncGameWithScore(
     matchedScore: any,
-    game: mongoose.Document<unknown, {}, Game> &
+    game: mongoose.Document<unknown, object, Game> &
       Game &
       Required<{ _id: unknown }> & { __v: number },
   ) {
@@ -2751,7 +2749,7 @@ export class GameService {
               usedBytes,
             }),
           );
-        } catch (aggError) {
+        } catch {
           // Last resort: just use the games collection stats
           console.info(
             '[Capacity Manager] Aggregation failed, using games collection only',
@@ -2893,14 +2891,14 @@ export class GameService {
   }
 
   /**
-   * Checks disk space and, when usage is at or above the threshold (90%),
+   * Checks disk space and, when usage is at or above the threshold (96%),
    * purges ONLY the oldest month of games — a single, one-shot deletion.
    *
    * IMPORTANT: this method never loops over years or months. The previous
    * implementation deleted whole years inside a `for` loop and re-checked the
    * disk after each deletion to decide when to stop. But `getDiskUsage()`
    * serves a value cached for 60 seconds (DISK_USAGE_CACHE_TTL_MS), so the
-   * post-deletion check kept returning the same stale "≥ 90%" figure, the
+   * post-deletion check kept returning the same stale "≥ 96%" figure, the
    * loop never broke, and the entire database could be wiped. Deleting
    * exactly one month per call keeps the purge predictable: repeated calls
    * (cron every 6h / manual endpoint) gradually free space, one month at a
@@ -2926,6 +2924,9 @@ export class GameService {
     // Avoid overly frequent checks (maximum once per hour),
     // unless forced by a batch caller that already waits 30s between attempts.
     if (!force && now - this.lastDiskCheck < this.CHECK_INTERVAL_MS) {
+      console.info(
+        '[Capacity Manager] Skipped: last check was less than 1 hour ago.',
+      );
       return {
         action: 'none',
         diskUsage: { usedMB: 0, totalMB: 1, percentage: 0 },
@@ -2983,6 +2984,9 @@ export class GameService {
 
     const remainingYears = ((await this.getAvailableYears()) ?? []).map(
       (y) => y.year,
+    );
+    console.info(
+      `[Capacity Manager] No purge needed: disk usage is ${(diskUsage.percentage * 100).toFixed(1)}% (threshold ${(this.DISK_USAGE_THRESHOLD * 100).toFixed(0)}%).`,
     );
     return {
       action: 'none',

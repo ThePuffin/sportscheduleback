@@ -423,8 +423,6 @@ describe('GameService', () => {
     });
 
     it('should return "already up to date" message when no games were added', async () => {
-      const currentYear = new Date().getFullYear();
-
       // All calls return added = 0
       getLeagueGamesSpy.mockResolvedValue({
         added: 0,
@@ -780,7 +778,9 @@ describe('GameService', () => {
         expect.stringContaining('active game(s) unresolved'),
       );
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Removed 2 unresolved game(s) started more than 90 days ago.'),
+        expect.stringContaining(
+          'Removed 2 unresolved game(s) started more than 90 days ago.',
+        ),
       );
 
       removeSpy.mockRestore();
@@ -958,7 +958,7 @@ describe('GameService', () => {
 
   describe('getAvailableYears', () => {
     it('should return years sorted from oldest to newest with game counts', async () => {
-      const aggregateSpy = jest.spyOn(mockGameModel, 'find' as any);
+      jest.spyOn(mockGameModel, 'find' as any);
       const mockAggregate = [
         {
           year: 2022,
@@ -1417,13 +1417,15 @@ describe('GameService', () => {
   describe('findUsedTeamIds / purgeStaleTeamsWithoutGames', () => {
     it('findUsedTeamIds unions teamSelectedId + homeTeamId + awayTeamId of active games', async () => {
       mockGameModel.distinct.mockImplementation((field: string) => ({
-        exec: jest.fn().mockResolvedValue(
-          field === 'teamSelectedId'
-            ? ['NHL-BOS', 'NHL-TOR']
-            : field === 'homeTeamId'
-              ? ['NHL-BOS', '']
-              : ['NHL-EDM', null],
-        ),
+        exec: jest
+          .fn()
+          .mockResolvedValue(
+            field === 'teamSelectedId'
+              ? ['NHL-BOS', 'NHL-TOR']
+              : field === 'homeTeamId'
+                ? ['NHL-BOS', '']
+                : ['NHL-EDM', null],
+          ),
       }));
 
       const used = await service.findUsedTeamIds();

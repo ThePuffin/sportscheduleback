@@ -13,7 +13,6 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 - Periodically fetches scores for live games
 - Checks league availability and triggers refreshes when needed
 - **Monitors disk usage and auto-purges old data when capacity exceeds 90%**
-- **Twice-daily purge of the oldest month of games (3AM & 3PM UTC)**
 
 ## Key Scheduled Jobs
 
@@ -26,7 +25,6 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 | `getOldGames()`                  | Daily (10:00 AM)       | Historical season recovery (one random league + random past year `[currentYear - maxYearBeforeDelete .. currentYear - 1]` per tick; anti-reentrancy) |
 | `fetchAndApplyScores()`          | Every 10 min, offset :02 (`2-59/10`) | Live score updates (NY business hours 11 AM - 4 AM); **skips while the rotation/oldies run** |
 | `checkLeagueGamesAvailability()` | Every 12 min, offset :07 (`7-59/12`) | Availability checks (LA early hours 0-11 AM); **skips while the rotation/oldies run** |
-| **`purgeOldestMonth()`**         | **Twice daily (3AM & 3PM UTC)** | **Purge the oldest month of games (time-based)** |
 | **`purgeStaleTeams()`**           | **Weekly Sunday 4AM UTC**       | **Refresh teams, then delete teams stale for more than 2 months with no active game** |
 | **`monitorDiskCapacity()`**      | **Every hour (`0 */1 * * *`)** | **Disk usage check & purge of the oldest month**     |
 

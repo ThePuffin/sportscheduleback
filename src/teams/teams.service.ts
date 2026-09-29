@@ -311,9 +311,7 @@ export class TeamService {
     const used =
       usedTeamIds instanceof Set ? usedTeamIds : new Set(usedTeamIds ?? []);
     const candidates = await this.findStaleTeamCandidates();
-    const toDelete = candidates.filter(
-      (team: any) => !used.has(team.uniqueId),
-    );
+    const toDelete = candidates.filter((team: any) => !used.has(team.uniqueId));
 
     const deletedIds = toDelete.map((team: any) => team.uniqueId);
     console.info(
@@ -376,7 +374,7 @@ export class TeamService {
     return this.teamModel.deleteMany({}).exec();
   }
 
-    async countByLeague(league: string): Promise<number> {
+  async countByLeague(league: string): Promise<number> {
     return this.teamModel.countDocuments({ league }).exec();
   }
 
@@ -495,7 +493,8 @@ export class TeamService {
       // Never expose inactive/historical teams in the frontend selection
       // file: only active teams appear in Teams.tsx (filters / favorites).
       const visibleTeams = allTeams.filter(
-        (team: any) => team.isActive !== false && !HistoricalTeams[team.uniqueId],
+        (team: any) =>
+          team.isActive !== false && !HistoricalTeams[team.uniqueId],
       );
       const lines = visibleTeams.map(
         (team) => `  '${team.uniqueId}': '${team.label.replace(/'/g, "\\'")}',`,

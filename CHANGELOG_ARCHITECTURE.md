@@ -2,6 +2,34 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Chore: dead `purgeOldestMonth` test removed, stale cron doc fixed, purge log gaps closed
+
+### Changes
+
+- **Dead test removed** — `backend/src/cronJob/tests/cronJob.service.spec.ts`: deleted the
+  `describe('purgeOldestMonth (twice-daily time-based purge)')` block (4 tests calling
+  `CronService.purgeOldestMonth()`, a method that does not exist) plus its mock. At HEAD this
+  block made the whole suite fail to compile (`TS2339` ×4), so `cronJob.service.spec.ts` could
+  not run at all; the suite now runs (15 tests).
+  - `backend/docs/cronJob/cronJob.service.ts.md` — removed the stale Key Feature line and the
+    schedule-table row for the non-existent twice-daily `purgeOldestMonth()` cron (the code has
+    8 crons, none of them a twice-daily purge; the oldest-month purge is the hourly
+    `monitorDiskCapacity()`).
+- **Log gaps closed** — `backend/src/games/games.service.ts` `purgeOldestMonthIfNeeded()` now
+  logs `[Capacity Manager]` on the two previously silent outcomes (skipped by the 1-hour guard,
+  and below the 90% threshold), so all four paths (`purged` / `skipped` / `below threshold` /
+  `error`) are visible in the logs.
+
+### Result
+
+- `npx tsc --noEmit` → 0 errors.
+- `npx jest --runInBand` → 7/7 suites, 175/175 tests pass. Note: with the default parallel
+  workers, `utils.spec.ts › needRefresh (empty games)` can hit its 5s timeout — that test
+  performs a real `fetch` to `site.api.espn.com` and 7 concurrent ts-jest workers can starve it;
+  it passes in isolation and serially (environment-dependent flake, not a code defect).
+
+---
+
 ## Changed: `POST /games/refresh/allOldies` — 30-second wait between purge retries
 
 ### Goal

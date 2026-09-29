@@ -213,7 +213,7 @@ export class CronService implements OnModuleInit {
       } else {
         needsRefresh = await needRefresh(league, { data: gamesForLeague });
       }
-    } catch (err) {
+    } catch {
       // On error, assume refresh is needed
       needsRefresh = true;
     }

@@ -403,7 +403,9 @@ describe('TeamService', () => {
         { uniqueId: 'NHL-TOR', league: 'NHL', updateDate: oldDate(90) },
       ]);
       (model.deleteMany as jest.Mock).mockReturnValue({
-        exec: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
+        exec: jest
+          .fn()
+          .mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
       });
 
       const result = await service.purgeStaleTeamsWithoutGames(
@@ -419,7 +421,9 @@ describe('TeamService', () => {
     });
 
     it('returns none when every stale team is still referenced by a game', async () => {
-      mockFind([{ uniqueId: 'NHL-BOS', league: 'NHL', updateDate: oldDate(90) }]);
+      mockFind([
+        { uniqueId: 'NHL-BOS', league: 'NHL', updateDate: oldDate(90) },
+      ]);
 
       const result = await service.purgeStaleTeamsWithoutGames(
         new Set(['NHL-BOS']),
