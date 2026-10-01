@@ -2,6 +2,59 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fix: phantom playoff games now deactivated immediately when their series is already decided
+
+### Problem
+
+When a playoff series ends early (e.g. Cubs swept 0-2 by Padres in the 2026 NLWC), ESPN **never
+creates the event** for the remaining games. There is no status to detect: no `STATUS_CANCELLED`,
+no `STATUS_POSTPONED`, nothing — the game is simply absent from the feed. Those games stayed
+`isActive: true` and visible in the API for the full **48-hour grace period**
+(`missingSince: 2026-10-01T16:53:58Z` → deactivation only on 2026-10-03), showing users a match
+that could never be played.
+
+The grace period was designed for the opposite case: *undecided* "if necessary" playoff games
+(Game 5/6/7) that transiently disappear from the source and reappear, where a flicker must be
+avoided. A decided series is not transient — the game will never come back.
+
+### Solution
+
+- **`GameService.decidedSeriesPattern` + `GameService._isSeriesDecided(seriesStatus?)`**
+  (`backend/src/games/games.service.ts`, new): matches ESPN `series.summary` strings certifying the
+  series is over — `(?:win|wins|won)\s+(?:the\s+)?series`, `series (is) over`, `series won`
+  (covers `"SD wins series 2-0"`, `"LAD wins the series 4-3"`, `"Series over"`).
+- In `getLeagueGames()`, a future game absent from the fresh fetch is now deactivated **immediately**
+  when `_isSeriesDecided(g.seriesStatus)`, bypassing the grace period entirely and never writing
+  `missingSince`. It is grouped in a separate `toDeactivateDecided` list with its own log line so
+  the two deactivation reasons stay distinguishable.
+- The `existingFuture` projection now also selects `seriesStatus` (previously only
+  `uniqueId` / `missingSince`).
+- The check is placed **after** the "game is back in the source" test, so a reappearing game is
+  always confirmed first and never deactivated despite a stale decided `seriesStatus`.
+- An empty/absent `seriesStatus` returns `false`: absence of proof keeps the normal grace period,
+  so no game is deactivated on a guess.
+
+`seriesStatus` is reliably available on these future games because `syncGameWithScore()` already
+propagates it to later games of the same matchup (games.service.ts) — which is exactly how the
+phantom Game 3 carried `"SD wins series 2-0"`.
+
+### Tests
+
+- `backend/src/games/tests/games.service.spec.ts` — 4 new tests in
+  `getLeagueGames playoff grace period`: immediate deactivation on a decided series (asserting no
+  `missingSince` write), the same while mid-grace-period, grace period still applied for an
+  undecided status (`"Series tied 1-1"`), and grace period still applied when `seriesStatus` is
+  absent.
+- 58 passed / 2 failed. The 2 failures are **pre-existing** and unrelated
+  (`purgeOldestMonthIfNeeded` disk-usage threshold, expecting `"purged"` but receiving `"none"`);
+  they fail identically on the unmodified baseline (verified via `git stash`).
+
+### Files changed
+
+- `backend/src/games/games.service.ts` — pattern + helper, projection, short-circuit, deactivation.
+- `backend/src/games/tests/games.service.spec.ts` — 4 new tests.
+- `backend/docs/games/games.service.ts.md` — documented the decided-series short-circuit.
+
 ## Chore: dead `purgeOldestMonth` test removed, stale cron doc fixed, purge log gaps closed
 
 ### Changes

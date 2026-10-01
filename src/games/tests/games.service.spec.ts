@@ -692,6 +692,106 @@ describe('GameService', () => {
       createSpy.mockRestore();
     });
 
+    it('deactivates immediately, skipping the grace period, when the series is already decided', async () => {
+      mockGameModel.exec.mockResolvedValue([
+        { ...futureGame, seriesStatus: 'SD wins series 2-0' },
+      ]);
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+      });
+
+      expect(mockGameModel.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ uniqueId: { $in: [futureGame.uniqueId] } }),
+        { $set: { isActive: false }, $unset: { missingSince: 1 } },
+      );
+      // The grace marker must never be written for a decided series.
+      expect(mockGameModel.updateMany).not.toHaveBeenCalledWith(
+        expect.anything(),
+        { $set: { missingSince: expect.any(String) } },
+      );
+      createSpy.mockRestore();
+    });
+
+    it('deactivates immediately even when the decided game is mid grace period', async () => {
+      const missingSince = new Date(
+        Date.now() - 24 * 60 * 60 * 1000,
+      ).toISOString();
+      mockGameModel.exec.mockResolvedValue([
+        { ...futureGame, missingSince, seriesStatus: 'SD wins series 2-0' },
+      ]);
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+      });
+
+      expect(mockGameModel.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ uniqueId: { $in: [futureGame.uniqueId] } }),
+        { $set: { isActive: false }, $unset: { missingSince: 1 } },
+      );
+      createSpy.mockRestore();
+    });
+
+    it('still applies the grace period when the series status is not decided', async () => {
+      mockGameModel.exec.mockResolvedValue([
+        { ...futureGame, seriesStatus: 'Series tied 1-1' },
+      ]);
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+      });
+
+      expect(mockGameModel.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ uniqueId: { $in: [futureGame.uniqueId] } }),
+        { $set: { missingSince: expect.any(String) } },
+      );
+      expect(mockGameModel.updateMany).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ $set: { isActive: false } }),
+      );
+      createSpy.mockRestore();
+    });
+
+    it('keeps a game whose series status is missing from the immediate deactivation', async () => {
+      mockGameModel.exec.mockResolvedValue([
+        { ...futureGame, seriesStatus: undefined },
+      ]);
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+      });
+
+      expect(mockGameModel.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ uniqueId: { $in: [futureGame.uniqueId] } }),
+        { $set: { missingSince: expect.any(String) } },
+      );
+      expect(mockGameModel.updateMany).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ $set: { isActive: false } }),
+      );
+      createSpy.mockRestore();
+    });
+
     it('clears the grace marker when the game reappears', async () => {
       const missingSince = new Date(
         Date.now() - 24 * 60 * 60 * 1000,

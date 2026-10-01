@@ -54,6 +54,28 @@ export class GameService {
   // it has been continuously missing for this many hours (default 48h, ~2 daily refresh cycles).
   gracePeriodHours = 48;
 
+  /**
+   * Matches an ESPN `series.summary` string that certifies a series is over, e.g.
+   * `"SD wins series 2-0"`, `"Padres win series 4"`, or `"Series over"`.
+   *
+   * When a future game carries such a status, it belongs to an already-decided series and
+   * can therefore never be played: ESPN simply never creates the event. Such a game is
+   * deactivated immediately instead of waiting out the `gracePeriodHours` window, which
+   * exists only for *undecided* "if necessary" games that may transiently disappear.
+   */
+  private readonly decidedSeriesPattern =
+    /(?:win|wins|won)\s+(?:the\s+)?series\b|series\s+(?:is\s+)?over\b|series\s+won\b/i;
+
+  /**
+   * Whether `seriesStatus` proves the series this game belongs to is already decided.
+   * An empty/absent status returns false: absence of proof means the series may still
+   * be ongoing, so the normal grace period must apply.
+   */
+  private _isSeriesDecided(seriesStatus?: string): boolean {
+    if (!seriesStatus || typeof seriesStatus !== 'string') return false;
+    return this.decidedSeriesPattern.test(seriesStatus.trim());
+  }
+
   // Capacity-based purge configuration
   private readonly DISK_USAGE_THRESHOLD = 0.96; // 96%
   private readonly CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
@@ -493,10 +515,14 @@ export class GameService {
                 isActive: true,
                 startTimeUTC: { $gt: now.toISOString() },
               },
-              { uniqueId: 1, missingSince: 1, _id: 0 },
+              { uniqueId: 1, missingSince: 1, seriesStatus: 1, _id: 0 },
             )
             .lean()
-            .exec()) as Array<{ uniqueId?: string; missingSince?: string }>;
+            .exec()) as Array<{
+            uniqueId?: string;
+            missingSince?: string;
+            seriesStatus?: string;
+          }>;
 
           const graceMs = this.gracePeriodHours * 60 * 60 * 1000;
           const nowIso = now.toISOString();
@@ -505,6 +531,7 @@ export class GameService {
           const toMarkMissing: string[] = [];
           const toDeactivate: string[] = [];
           const toConfirm: string[] = [];
+          const toDeactivateDecided: string[] = [];
 
           for (const g of existingFuture) {
             const id = g.uniqueId;
@@ -517,6 +544,15 @@ export class GameService {
             }
 
             // Game absent from the freshly fetched source.
+            //
+            // Short-circuit: if its series is already decided, the game can never be
+            // played (ESPN never creates the event for a decided series), so there is no
+            // reason to keep it around during the grace period. Deactivate right away.
+            if (this._isSeriesDecided(g.seriesStatus)) {
+              toDeactivateDecided.push(id);
+              continue;
+            }
+
             if (!g.missingSince) {
               // First time it is seen missing: start the grace period, keep it active.
               toMarkMissing.push(id);
@@ -541,6 +577,21 @@ export class GameService {
             );
             console.info(
               `[Games] ${toMarkMissing.length} future game(s) missing from source for ${normalizedLeague}; grace period started (kept active pending confirmation).`,
+            );
+          }
+
+          if (toDeactivateDecided.length > 0) {
+            await this.gameModel.updateMany(
+              {
+                league: normalizedLeague,
+                uniqueId: { $in: toDeactivateDecided },
+                isActive: true,
+                startTimeUTC: { $gt: nowIso },
+              },
+              { $set: { isActive: false }, $unset: { missingSince: 1 } },
+            );
+            console.info(
+              `[Games] Deactivated ${toDeactivateDecided.length} future game(s) for ${normalizedLeague}: their series is already decided, so they will never be played (grace period skipped).`,
             );
           }
 

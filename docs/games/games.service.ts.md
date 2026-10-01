@@ -47,6 +47,25 @@ period. A game still absent after that period is deactivated and the marker is r
 When the game reappears, it is saved as active again and `missingSince` is cleared.
 An empty fetch still causes no deactivation.
 
+**Decided-series short-circuit (grace period bypass):**
+
+The grace period exists for *undecided* "if necessary" playoff games (a Game 5/6/7 that may
+transiently disappear from the source). A future game whose **series is already decided** is a
+different case: the game can never be played, because ESPN never creates the event at all for a
+decided series (e.g. an NLWC Game 3 after a 2-0 sweep simply does not exist in the feed). Such a
+game is therefore deactivated **immediately**, without waiting out the 48-hour window and without
+ever writing `missingSince`.
+
+The decision is inferred from the game's `seriesStatus` via `decidedSeriesPattern`
+(`(?:win|wins|won)\s+(?:the\s+)?series`, `series (is) over`, `series won`), matching ESPN
+`series.summary` values such as `"SD wins series 2-0"`. `seriesStatus` is reliably populated on
+future games because `syncGameWithScore()` propagates it to later games of the same matchup. An
+empty or absent `seriesStatus` is **not** proof of a decided series, so those games keep the normal
+grace period (no false deactivation).
+
+This check runs after the "game is back in the source" test, so a game that reappears is always
+confirmed first and never deactivated, even if its stale `seriesStatus` looks decided.
+
 **Crash-safe replace guard (future games:)**
 
 When refreshing a league's current data, upcoming games are **only deactivated AFTER** a successful, non-empty fetch. The previous order (deactivate-all-future-games, then re-write) could leave a league completely empty (all upcoming games marked `isActive:false`) if the server crashed/restarted between the two steps - exactly what happened for MLB and MLS during the data update. Now:
