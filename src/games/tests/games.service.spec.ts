@@ -924,7 +924,7 @@ describe('GameService', () => {
         .mockResolvedValue({
           usedMB: 50,
           totalMB: 100,
-          percentage: 0.5, // 50% - below 90% threshold
+          percentage: 0.5, // well below the 96% threshold
         });
 
       const result = await service.purgeOldestMonthIfNeeded();
@@ -962,9 +962,9 @@ describe('GameService', () => {
       const getDiskUsageSpy = jest
         .spyOn(service as any, 'getDiskUsage')
         .mockResolvedValue({
-          usedMB: 95,
+          usedMB: 97,
           totalMB: 100,
-          percentage: 0.95, // 95% - exceeds 90%
+          percentage: 0.97, // 97% - at or above the 96% threshold
         });
 
       const result = await service.purgeOldestMonthIfNeeded();
@@ -976,7 +976,7 @@ describe('GameService', () => {
       expect(result.purgedMonth).toBe(9);
       expect(result.deletedCount).toBe(296);
       expect(result.remainingYears).toEqual([2017, 2023, 2024]);
-      expect(result.diskUsage.percentage).toBe(0.95);
+      expect(result.diskUsage.percentage).toBe(0.97);
 
       purgeOldestMonthSpy.mockRestore();
       getAvailableYearsSpy.mockRestore();
@@ -985,7 +985,7 @@ describe('GameService', () => {
 
     it('never loops: purges a single month even when usage stays above threshold', async () => {
       // Regression guard: the old implementation kept deleting years because
-      // getDiskUsage() returns a 60s-cached value, so the "drop below 90%"
+      // getDiskUsage() returns a 60s-cached value, so the "drop below threshold"
       // condition never became true and the whole database was wiped.
       const purgeOldestMonthSpy = jest
         .spyOn(service, 'purgeOldestMonth')
@@ -1008,9 +1008,9 @@ describe('GameService', () => {
 
       // Disk usage NEVER drops below the threshold (stale cache scenario)
       jest.spyOn(service as any, 'getDiskUsage').mockResolvedValue({
-        usedMB: 95,
+        usedMB: 97,
         totalMB: 100,
-        percentage: 0.95,
+        percentage: 0.97,
       });
 
       const result = await service.purgeOldestMonthIfNeeded();

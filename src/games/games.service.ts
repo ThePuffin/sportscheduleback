@@ -2890,7 +2890,7 @@ export class GameService {
     teamCount: number;
     /** Total number of stored game documents */
     gameCount: number;
-    /** Occupancy threshold above which a purge is triggered (default 0.9) */
+    /** Occupancy threshold above which a purge is triggered (see `DISK_USAGE_THRESHOLD`, 0.96) */
     threshold: number;
     /** True when `percentage >= threshold` */
     actionNeeded: boolean;
