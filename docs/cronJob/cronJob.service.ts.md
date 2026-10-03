@@ -12,7 +12,7 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 - Refreshes league game data on scheduled times
 - Periodically fetches scores for live games
 - Checks league availability and triggers refreshes when needed
-- **Monitors disk usage and auto-purges old data when capacity reaches 96%**
+- **Monitors disk usage and auto-purges old data when capacity reaches 95%**
 
 ## Key Scheduled Jobs
 
@@ -30,7 +30,7 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 
 ## New: `monitorDiskCapacity()`
 
-Runs the disk capacity check and, when storage reaches 96%, purges **only the oldest month** of games (single shot — never a loop over years).
+Runs the disk capacity check and, when storage reaches 95%, purges **only the oldest month** of games (single shot — never a loop over years).
 
 **Execution:**
 

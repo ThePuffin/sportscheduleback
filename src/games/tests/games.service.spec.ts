@@ -1025,7 +1025,7 @@ describe('GameService', () => {
         .mockResolvedValue({
           usedMB: 50,
           totalMB: 100,
-          percentage: 0.5, // well below the 96% threshold
+          percentage: 0.5, // well below the 95% threshold
         });
 
       const result = await service.purgeOldestMonthIfNeeded();
@@ -1065,7 +1065,7 @@ describe('GameService', () => {
         .mockResolvedValue({
           usedMB: 97,
           totalMB: 100,
-          percentage: 0.97, // 97% - at or above the 96% threshold
+          percentage: 0.97, // 97% - at or above the 95% threshold
         });
 
       const result = await service.purgeOldestMonthIfNeeded();
@@ -1154,6 +1154,39 @@ describe('GameService', () => {
 
       getDiskUsageSpy.mockRestore();
       getAvailableYearsSpy.mockRestore();
+    });
+  });
+
+  describe('DISK_USAGE_THRESHOLD', () => {
+    it('is set to 95%', () => {
+      // Single source of truth for every other fixture, doc and comment: if this
+      // constant moves, this test moves with it instead of silently diverging.
+      expect((service as any).DISK_USAGE_THRESHOLD).toBe(0.95);
+    });
+
+    it('is reported by getCapacityStatus and drives actionNeeded', async () => {
+      mockGameModel.countDocuments.mockResolvedValue(10);
+
+      const getDiskUsageSpy = jest
+        .spyOn(service as any, 'getDiskUsage')
+        .mockResolvedValue({ usedMB: 94, totalMB: 100, percentage: 0.94 });
+      jest.spyOn(service as any, 'getAvailableYears').mockResolvedValue([]);
+
+      const below = await service.getCapacityStatus();
+      expect(below.threshold).toBe(0.95);
+      expect(below.actionNeeded).toBe(false);
+
+      getDiskUsageSpy.mockResolvedValue({
+        usedMB: 95,
+        totalMB: 100,
+        percentage: 0.95,
+      });
+      // The comparison is `>=`, so sitting exactly on the threshold triggers it.
+      const on = await service.getCapacityStatus();
+      expect(on.threshold).toBe(0.95);
+      expect(on.actionNeeded).toBe(true);
+
+      getDiskUsageSpy.mockRestore();
     });
   });
 

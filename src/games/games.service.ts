@@ -55,8 +55,29 @@ export class GameService {
   // it has been continuously missing for this many hours (default 48h, ~2 daily refresh cycles).
   gracePeriodHours = 48;
 
+  /**
+   * Matches an ESPN `series.summary` string that certifies a series is over,
+   * e.g. `"SD wins series 2-0"` or `"Series over"`. A future game carrying
+   * such a status belongs to an already-decided series and can never be
+   * played (ESPN never creates the event), so it is deactivated immediately
+   * instead of waiting out the grace period — which exists only for
+   * *undecided* "if necessary" games that may transiently disappear.
+   */
+  private readonly decidedSeriesPattern =
+    /(?:win|wins|won)\s+(?:the\s+)?series\b|series\s+(?:is\s+)?over\b|series\s+won\b/i;
+
+  /**
+   * Whether `seriesStatus` proves the series is already decided. An
+   * empty/absent status returns false: absence of proof means the series may
+   * still be ongoing, so the normal grace period must apply.
+   */
+  private _isSeriesDecided(seriesStatus?: string): boolean {
+    if (!seriesStatus || typeof seriesStatus !== 'string') return false;
+    return this.decidedSeriesPattern.test(seriesStatus.trim());
+  }
+
   // Capacity-based purge configuration
-  private readonly DISK_USAGE_THRESHOLD = 0.9; // 90%
+  private readonly DISK_USAGE_THRESHOLD = 0.95; // 95%
   private readonly CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
   private readonly DISK_USAGE_CACHE_TTL_MS = 60 * 1000; // 60 seconds cache for disk usage stats
   private readonly CLUSTER_TOTAL_MB = 512; // Total cluster storage in MB (adjust to your Atlas plan)
@@ -521,10 +542,14 @@ export class GameService {
                 isActive: true,
                 startTimeUTC: { $gt: now.toISOString() },
               },
-              { uniqueId: 1, missingSince: 1, _id: 0 },
+              { uniqueId: 1, missingSince: 1, seriesStatus: 1, _id: 0 },
             )
             .lean()
-            .exec()) as Array<{ uniqueId?: string; missingSince?: string }>;
+            .exec()) as Array<{
+            uniqueId?: string;
+            missingSince?: string;
+            seriesStatus?: string;
+          }>;
 
           const graceMs = this.gracePeriodHours * 60 * 60 * 1000;
           const nowIso = now.toISOString();
@@ -533,6 +558,7 @@ export class GameService {
           const toMarkMissing: string[] = [];
           const toDeactivate: string[] = [];
           const toConfirm: string[] = [];
+          const toDeactivateDecided: string[] = [];
 
           for (const g of existingFuture) {
             const id = g.uniqueId;
@@ -545,6 +571,16 @@ export class GameService {
             }
 
             // Game absent from the freshly fetched source.
+            //
+            // Short-circuit: if its series is already decided, the game can
+            // never be played (ESPN never creates the event for a decided
+            // series), so there is no reason to keep it around during the
+            // grace period. Deactivate right away.
+            if (this._isSeriesDecided(g.seriesStatus)) {
+              toDeactivateDecided.push(id);
+              continue;
+            }
+
             if (!g.missingSince) {
               // First time it is seen missing: start the grace period, keep it active.
               toMarkMissing.push(id);
@@ -569,6 +605,21 @@ export class GameService {
             );
             console.info(
               `[Games] ${toMarkMissing.length} future game(s) missing from source for ${normalizedLeague}; grace period started (kept active pending confirmation).`,
+            );
+          }
+
+          if (toDeactivateDecided.length > 0) {
+            await this.gameModel.updateMany(
+              {
+                league: normalizedLeague,
+                uniqueId: { $in: toDeactivateDecided },
+                isActive: true,
+                startTimeUTC: { $gt: nowIso },
+              },
+              { $set: { isActive: false }, $unset: { missingSince: 1 } },
+            );
+            console.info(
+              `[Games] Deactivated ${toDeactivateDecided.length} future game(s) for ${normalizedLeague}: their series is already decided, so they will never be played (grace period skipped).`,
             );
           }
 
@@ -2032,12 +2083,17 @@ export class GameService {
     let losses = Number(team.losses);
     let third = Number(team.otLosses ?? team.ties);
     const hasNumbers =
-      Number.isFinite(wins) && Number.isFinite(losses) && Number.isFinite(third);
+      Number.isFinite(wins) &&
+      Number.isFinite(losses) &&
+      Number.isFinite(third);
     if (!hasNumbers) {
       const parsed = String(team.record || '')
         .split('-')
         .map((part) => Number.parseInt(part, 10));
-      if (parsed.length < 2 || parsed.slice(0, 3).some((n) => !Number.isFinite(n))) {
+      if (
+        parsed.length < 2 ||
+        parsed.slice(0, 3).some((n) => !Number.isFinite(n))
+      ) {
         return '';
       }
       wins = parsed[0];
@@ -2073,7 +2129,10 @@ export class GameService {
   private async _resolveTeamRecord(league: string, teamUniqueId: string) {
     const key = `${league}:${teamUniqueId}`;
     const cached = this.teamRecordCache.get(key);
-    if (cached && Date.now() - cached.at < GameService.TEAM_RECORD_CACHE_TTL_MS) {
+    if (
+      cached &&
+      Date.now() - cached.at < GameService.TEAM_RECORD_CACHE_TTL_MS
+    ) {
       return cached.record;
     }
 
@@ -2165,11 +2224,21 @@ export class GameService {
           this.teamService.findOne(game.awayTeamId),
         ]);
         homeTeamRecord =
-          this._nextRecord(homeTeam, homeScore, awayScore, game.league, game.gamePeriod) ||
-          homeTeamRecord;
+          this._nextRecord(
+            homeTeam,
+            homeScore,
+            awayScore,
+            game.league,
+            game.gamePeriod,
+          ) || homeTeamRecord;
         awayTeamRecord =
-          this._nextRecord(awayTeam, awayScore, homeScore, game.league, game.gamePeriod) ||
-          awayTeamRecord;
+          this._nextRecord(
+            awayTeam,
+            awayScore,
+            homeScore,
+            game.league,
+            game.gamePeriod,
+          ) || awayTeamRecord;
       }
 
       if ((!homeTeamRecord || !awayTeamRecord) && game.homeTeamId) {
@@ -3028,7 +3097,7 @@ export class GameService {
     teamCount: number;
     /** Total number of stored game documents */
     gameCount: number;
-    /** Occupancy threshold above which a purge is triggered (see `DISK_USAGE_THRESHOLD`, 0.96) */
+    /** Occupancy threshold above which a purge is triggered (see `DISK_USAGE_THRESHOLD`, 0.95) */
     threshold: number;
     /** True when `percentage >= threshold` */
     actionNeeded: boolean;
@@ -3080,14 +3149,14 @@ export class GameService {
   }
 
   /**
-   * Checks disk space and, when usage is at or above the threshold (96%),
+   * Checks disk space and, when usage is at or above the threshold (95%),
    * purges ONLY the oldest month of games — a single, one-shot deletion.
    *
    * IMPORTANT: this method never loops over years or months. The previous
    * implementation deleted whole years inside a `for` loop and re-checked the
    * disk after each deletion to decide when to stop. But `getDiskUsage()`
    * serves a value cached for 60 seconds (DISK_USAGE_CACHE_TTL_MS), so the
-   * post-deletion check kept returning the same stale "≥ 96%" figure, the
+   * post-deletion check kept returning the same stale "≥ 95%" figure, the
    * loop never broke, and the entire database could be wiped. Deleting
    * exactly one month per call keeps the purge predictable: repeated calls
    * (cron every 6h / manual endpoint) gradually free space, one month at a

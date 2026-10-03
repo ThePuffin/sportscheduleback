@@ -52,7 +52,7 @@ This controller exposes the HTTP API for game data operations.
 
 ### Capacity management
 
-- `POST /games/capacity/check` (API key) — check disk usage and purge **only the oldest month** (single shot, no loop) if ≥ 96% usage
+- `POST /games/capacity/check` (API key) — check disk usage and purge **only the oldest month** (single shot, no loop) if ≥ 95% usage
 - `GET /games/capacity/status` (API key) — read-only capacity report: disk usage, per-year game counts, team/game totals, and `actionNeeded` flag (no deletion performed)
 
 ## Data Flow

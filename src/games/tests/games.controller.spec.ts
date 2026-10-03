@@ -59,7 +59,7 @@ const mockGameService = {
     ],
     teamCount: 50,
     gameCount: 5000,
-    threshold: 0.9,
+    threshold: 0.95,
     actionNeeded: false,
   }),
 };
@@ -389,7 +389,7 @@ describe('GamesController', () => {
         ],
         teamCount: 50,
         gameCount: 5000,
-        threshold: 0.9,
+        threshold: 0.95,
         actionNeeded: false,
       });
     });

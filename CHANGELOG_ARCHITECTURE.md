@@ -62,15 +62,15 @@ the **final, end-of-season** tally, identical on every game of that season), whi
   - MLS current season: 212/212 records cleared.
   - `getESPNScores('NHL', '2025-04-01')` now returns `"30-36-9"` instead of `''` (the `ytd` bug), same for `getESPNGameScore()`.
 
-## Fix: capacity purge threshold raised to 96% — tests and docs aligned
+## Fix: capacity purge threshold set to 95% — tests and docs aligned
 
 ### Problem
 
-`GameService.DISK_USAGE_THRESHOLD` was increased from `0.9` (90%) to `0.96` (96%), but the test
+`GameService.DISK_USAGE_THRESHOLD` was raised from `0.9` (90%) to `0.95` (95%), but the test
 fixtures and the documentation still assumed 90%. Two tests in
-`backend/src/games/tests/games.service.spec.ts` mocked `getDiskUsage()` at `0.95` — now *below*
-the threshold — so `purgeOldestMonthIfNeeded()` correctly returned `"none"` while the tests
-expected `"purged"`:
+`backend/src/games/tests/games.service.spec.ts` mocked `getDiskUsage()` at `0.95` — exactly *at*
+the threshold, so `purgeOldestMonthIfNeeded()` returned `"none"` while the tests expected
+`"purged"`:
 
 - `purgeOldestMonthIfNeeded > should purge ONLY the oldest month when disk usage exceeds threshold`
 - `purgeOldestMonthIfNeeded > never loops: purges a single month even when usage stays above threshold`
@@ -78,15 +78,15 @@ expected `"purged"`:
 ### Solution
 
 - **Tests** (`games.service.spec.ts`): the "above threshold" fixtures now mock `0.97`
-  (`usedMB: 97` / `totalMB: 100`), which stays above the threshold; stale comments referencing
-  "90%" were rewritten to reference the threshold generically or the new 96% value.
+  (`usedMB: 97` / `totalMB: 100`), which stays strictly above the threshold; stale comments
+  referencing "90%" were rewritten to reference the threshold generically or the new 95% value.
 - **Tests** (`games.controller.spec.ts`): the mocked `getCapacityStatus()` payload now reports
-  `threshold: 0.96` instead of the stale `0.9`.
+  `threshold: 0.95` instead of the stale `0.9`.
 - **Source** (`games.service.ts`): the JSDoc on `getCapacityStatus().threshold` no longer claims
-  "default 0.9" — it points at `DISK_USAGE_THRESHOLD` (0.96).
-- **Docs** updated from 90% to 96%: `backend/docs/games/games.service.ts.md`,
+  "default 0.9" — it points at `DISK_USAGE_THRESHOLD` (0.95).
+- **Docs** updated from 90% to 95%: `backend/docs/games/games.service.ts.md`,
   `backend/docs/games/games.controller.ts.md`, `backend/docs/cronJob/cronJob.service.ts.md`.
-- The `0.85` "CRITICAL" early-warning in `getDiskUsage()` is unchanged (still below the 96%
+- The `0.85` "CRITICAL" early-warning in `getDiskUsage()` is unchanged (still below the 95%
   trigger, so it keeps warning *before* a purge).
 
 ### Result

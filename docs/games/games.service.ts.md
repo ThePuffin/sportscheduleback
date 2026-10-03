@@ -234,7 +234,7 @@ Performs availability checks and triggers a refresh if a league appears to have 
 
 ### `purgeOldestMonthIfNeeded(force = false)`
 
-**Capacity-based purge strategy**: Monitors disk usage and, when storage is at or above 96%, deletes **only the oldest
+**Capacity-based purge strategy**: Monitors disk usage and, when storage is at or above 95%, deletes **only the oldest
 month of games** — a single, one-shot deletion per call.
 **Behavior:**
 
@@ -246,7 +246,7 @@ month of games** — a single, one-shot deletion per call.
 
 **Data Preservation:**
 
-- Only triggers when disk usage ≥ 96% (`DISK_USAGE_THRESHOLD = 0.96`)
+- Only triggers when disk usage ≥ 95% (`DISK_USAGE_THRESHOLD = 0.95`)
 - Deletes **exactly one month per call** (the oldest one, e.g. `2016-09`) — never loops over years or months
 - Repeated calls (hourly cron / manual endpoint) gradually free space, one month at a time
 - ⚠️ **Regression fixed**: the previous implementation deleted whole years in a `for` loop and re-checked the disk
@@ -268,7 +268,7 @@ Calculates MongoDB disk usage via `dbStats` command with `$collStats` fallback.
 - **In-memory caching**: 60-second TTL cache (`DISK_USAGE_CACHE_TTL_MS`) prevents `dbStats` spam on frequent calls
 - **Accurate size calculation**: Prioritizes `totalSize` for shared clusters (M0/M2/M5), falls back to `storageSize + indexSize` for dedicated clusters (M10+)
 - **Percentage capping**: Clamped to max 1.0 (100%) to prevent misleading metrics
-- **Critical threshold alerting**: Logs `console.warn` when usage exceeds 85% (before the 96% purge trigger)
+- **Critical threshold alerting**: Logs `console.warn` when usage exceeds 85% (before the 95% purge trigger)
 - **Graceful degradation**: Returns last cached value on transient errors, ensuring continuity
 
 **Returns:** `{ usedMB: number, totalMB: number, percentage: number }`

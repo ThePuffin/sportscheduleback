@@ -551,14 +551,95 @@ export class HockeyData {
     return gamesData;
   };
 
+  /**
+   * Replays a PWHL season schedule to compute each team's final W-L-OTL.
+   *
+   * Same rule as the ESPN leagues in `espnAllData.ts` / `syncGameWithScore()`:
+   * - past season (every game already started): the **final** season tally is
+   *   copied onto every game of the team, so opening a game of a finished
+   *   season shows that year's record, not today's;
+   * - season in progress: records stay empty so readers fall back to the live
+   *   `team.record` (most recent tally).
+   *
+   * HockeyTech exposes no per-game cumulative record, hence the local replay:
+   * finished regular-season games are walked in chronological order and each
+   * team's W/L/OTL is incremented (OT/SO loss when `overtime`/`shootout` is
+   * set or `game_status` mentions OT/SO, regulation loss otherwise). Playoff
+   * games are skipped, mirroring the standings view.
+   */
+  private applyPWHLHistoricalRecords(allGames: PWHLGameAPI[]): {
+    finals: Map<string, string>;
+    seasonOver: boolean;
+  } {
+    const finals = new Map<string, string>();
+    const sorted = [...allGames].sort(
+      (a, b) =>
+        new Date(a.GameDateISO8601).getTime() -
+        new Date(b.GameDateISO8601).getTime(),
+    );
+    const now = Date.now();
+    const seasonOver = sorted.every((g) => {
+      const start = g?.GameDateISO8601
+        ? new Date(g.GameDateISO8601).getTime()
+        : NaN;
+      return Number.isFinite(start) && start < now;
+    });
+
+    const tallies = new Map<string, { w: number; l: number; otl: number }>();
+    const tally = (code: string) => {
+      let t = tallies.get(code);
+      if (!t) {
+        t = { w: 0, l: 0, otl: 0 };
+        tallies.set(code, t);
+      }
+      return t;
+    };
+
+    for (const g of sorted) {
+      const isFinished = Boolean(
+        g.final === '1' ||
+          g.status === '4' ||
+          g.game_status?.toUpperCase().startsWith('FINAL'),
+      );
+      const isPlayoff =
+        g.game_type !== undefined &&
+        g.game_type !== null &&
+        String(g.game_type) !== '' &&
+        String(g.game_type) !== '1';
+      if (!isFinished || isPlayoff) continue;
+
+      const homeGoals = Number(g.home_goal_count);
+      const awayGoals = Number(g.visiting_goal_count);
+      if (!Number.isFinite(homeGoals) || !Number.isFinite(awayGoals)) continue;
+      if (homeGoals === awayGoals) continue;
+
+      const home = g.home_team_code;
+      const away = g.visiting_team_code;
+      const winner = homeGoals > awayGoals ? home : away;
+      const loser = homeGoals > awayGoals ? away : home;
+      const wentExtra =
+        g.overtime === '1' ||
+        g.shootout === '1' ||
+        /OT|SO/i.test(g.game_status || '');
+      tally(winner).w += 1;
+      if (wentExtra) tally(loser).otl += 1;
+      else tally(loser).l += 1;
+    }
+
+    for (const [code, t] of tallies)
+      finals.set(code, `${t.w}-${t.l}-${t.otl}`);
+    return { finals, seasonOver };
+  }
+
   getPWHLScores = async (date: string) => {
     try {
-      const standings = await this.getPWHLStandings();
       const fetchedGames = await fetch(
         `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
       );
       const response = await fetchedGames.json();
       const allGames: PWHLGameAPI[] = response.SiteKit.Schedule;
+      const { finals, seasonOver } =
+        this.applyPWHLHistoricalRecords(allGames);
 
       return allGames
         .filter((game) => game.date_played === date)
@@ -571,6 +652,19 @@ export class HockeyData {
           ) {
             gameStatus = `${(game as any).game_clock} - ${(game as any).period}`;
           }
+          const gameKey = (code: string) => `${String(game.id)}::${code}`;
+          // Same rule as the ESPN leagues (`applySeasonFinalRecords`): a
+          // finished season shows that year's final tally on every game;
+          // a season in progress leaves records empty so readers fall
+          // back to the live `team.record` (most recent tally, kept via
+          // `syncGameWithScore()` -> `_nextRecord()`).
+          const homeRecord = seasonOver
+            ? (finals.get(game.home_team_code) || '')
+            : '';
+          const awayRecord = seasonOver
+            ? (finals.get(game.visiting_team_code) || '')
+            : '';
+          void gameKey;
           return {
             homeTeamScore: Number(game.home_goal_count),
             awayTeamScore: Number(game.visiting_goal_count),
@@ -579,8 +673,8 @@ export class HockeyData {
             homeTeamId: `${League.PWHL}-${game.home_team_code}`,
             awayTeamId: `${League.PWHL}-${game.visiting_team_code}`,
             isFinal: game.final === '1',
-            homeTeamRecord: standings[game.home_team_code] || '',
-            awayTeamRecord: standings[game.visiting_team_code] || '',
+            homeTeamRecord: homeRecord,
+            awayTeamRecord: awayRecord,
             status: game.game_status,
             gameStatus: gameStatus,
             gameClock: (game as any).game_clock,
