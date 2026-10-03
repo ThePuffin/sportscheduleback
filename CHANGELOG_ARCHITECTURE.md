@@ -2,6 +2,58 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: twice-daily team records refresh cron, restricted to in-season leagues
+
+### Problem
+
+`team.record` (wins / losses / ties / otLosses, the tally the frontend shows on games of
+the **current** season) had no dedicated refresh. It was only updated as a side effect of
+`fetchGamesScores()` — when a game flips to `FINISHED` — and of the daily league rotation,
+which is throttled by `needRefresh()` (every 3 days in season, 7 days off-season) and only
+runs inside a 4 AM-11 AM New York window. So the record could stay stale for days.
+
+### Changes
+
+- **`backend/src/games/games.service.ts`** — new `refreshCurrentSeasonRecords()`:
+  - keeps only leagues where `isCurrentSeason()` **or** `isPlayoffsPeriod()` covers today,
+    so off-season leagues are skipped before any third-party call (zero cost);
+  - fetches each kept league's schedule via `_fetchUniqueGames(league, undefined, teamRecords)`
+    and **discards the games** — only the harvested per-team tallies are used, so no `Game`
+    document is created, updated or deactivated;
+  - writes them through `TeamService.updateRecords()` and returns `{ leagues, updatedTeams }`;
+  - a league that throws is logged (`[Records] Could not refresh records for …`) and does not
+    abort the remaining leagues.
+- **`backend/src/cronJob/cronJob.service.ts`** — two daily crons sharing
+  `runTeamRecordsRefresh(slot)`:
+  - `refreshTeamRecordsMorning()` — `0 6 * * *` = **3:00 AM `America/Los_Angeles`**
+    (6 AM New York in winter, 9 AM New York in DST). The U.S. coasts are 3 hours apart, so
+    anchoring on LA is the literal "3 AM U.S."; anchoring on New York would land on 0 AM.
+  - `refreshTeamRecordsAfternoon()` — `0 15 * * *` = **9 AM Pacific / 12 PM New York**
+    (3 PM New York in DST), a midday safety net for a skipped or failed morning run.
+  - Both skip while `isHeavyRefreshRunning` (league rotation / oldies) and never overlap
+    themselves (`isRefreshingTeamRecords`, released in `finally`).
+- **`backend/src/games/games.controller.ts`** — `POST /games/refresh/records` (API key) for a
+  manual run.
+- **Tests** — 5 in `games.service.spec.ts` (only in-season leagues, playoffs included, nothing
+  in season → no call at all, one failing league does not stop the others, never persists a
+  game) + 5 in `cronJob.service.spec.ts` (both slots, heavy-refresh guard, self-overlap guard,
+  flag released on error).
+- **Docs** — `backend/docs/cronJob/cronJob.service.ts.md` (schedule table + section),
+  `backend/docs/games/games.service.ts.md`, `backend/docs/games/games.controller.ts.md`.
+
+### Files changed
+
+- `backend/src/games/games.service.ts`
+- `backend/src/games/games.controller.ts`
+- `backend/src/cronJob/cronJob.service.ts`
+- `backend/src/games/tests/games.service.spec.ts`
+- `backend/src/cronJob/tests/cronJob.service.spec.ts`
+- `backend/docs/cronJob/cronJob.service.ts.md`
+- `backend/docs/games/games.service.ts.md`
+- `backend/docs/games/games.controller.ts.md`
+
+---
+
 ## Changed: oldies runs now force the capacity check after every league × year step
 
 ### Problem

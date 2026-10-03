@@ -14,6 +14,8 @@ export class CronService implements OnModuleInit {
   private rotatingLeagueCursor: number = 0;
   private rotatingLeaguesDone: boolean = false;
   private rotationDayKey: string = '';
+  // Team records refresh (see refreshTeamRecordsMorning/Afternoon)
+  private isRefreshingTeamRecords: boolean = false;
 
   constructor(
     private readonly teamService: TeamService,
@@ -372,6 +374,71 @@ export class CronService implements OnModuleInit {
       await this.gameService.checkLeagueGamesAvailability();
     } catch (err) {
       console.error('[Cron] Error running checkLeagueGamesAvailability:', err);
+    }
+  }
+
+  /**
+   * Team records refresh — twice a day, early morning U.S. time:
+   *
+   * - **3:00 AM Pacific / Los Angeles** (`America/Los_Angeles`), i.e. **6:00 AM
+   *   New York** in winter and **9:00 AM New York** in summer (DST). This is the
+   *   "3 AM U.S." slot: the two U.S. coasts differ by 3 hours, so anchoring on
+   *   Los Angeles matches the intent literally, while anchoring on New York
+   *   would drift to 0 AM / 3 AM locally.
+   * - **9:00 AM Pacific / 12:00 PM New York** (winter) — a midday safety net so a
+   *   failed or throttled 3 AM run is caught the same U.S. day, after the usual
+   *   evening games of the previous night have been played.
+   *
+   * Only leagues whose season (regular season **or** playoffs) covers today are
+   * fetched — `refreshCurrentSeasonRecords()` skips the rest before any
+   * third-party call, so off-season leagues cost nothing. No game is written:
+   * only `team.record` (wins/losses/ties) is refreshed from the schedules.
+   *
+   * Guarded like the other crons: it never overlaps a heavy refresh (league
+   * rotation / oldies / score recovery) and never overlaps itself.
+   */
+  @Cron('0 6 * * *') // DAILY AT 3AM LOS ANGELES / 6AM NEW YORK (9AM NY in DST)
+  async refreshTeamRecordsMorning() {
+    await this.runTeamRecordsRefresh('3AM-PT');
+  }
+
+  @Cron('0 15 * * *') // DAILY AT 9AM LOS ANGELES / 12PM NEW YORK (3PM NY in DST)
+  async refreshTeamRecordsAfternoon() {
+    await this.runTeamRecordsRefresh('9AM-PT');
+  }
+
+  private async runTeamRecordsRefresh(slot: string) {
+    if (this.isHeavyRefreshRunning) {
+      console.info(
+        `[Cron] Skipping team records refresh (${slot}) — heavy league refresh in progress.`,
+      );
+      return;
+    }
+    if (this.isRefreshingTeamRecords) {
+      console.info(
+        `[Cron] Skipping team records refresh (${slot}) — previous run still in progress.`,
+      );
+      return;
+    }
+
+    this.isRefreshingTeamRecords = true;
+    try {
+      const laNow = new Date(
+        new Date().toLocaleString('en-US', {
+          timeZone: 'America/Los_Angeles',
+        }),
+      );
+      console.info(
+        `[Cron] Running team records refresh (${slot}, LA ${laNow.toLocaleTimeString('en-US')})...`,
+      );
+      const result = await this.gameService.refreshCurrentSeasonRecords();
+      console.info(
+        `[Cron] Team records refresh done: ${result.updatedTeams} team(s), leagues: ${result.leagues.join(', ') || 'none'}.`,
+      );
+    } catch (err) {
+      console.error('[Cron] Error running team records refresh:', err);
+    } finally {
+      this.isRefreshingTeamRecords = false;
     }
   }
 

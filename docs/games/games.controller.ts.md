@@ -40,6 +40,7 @@ This controller exposes the HTTP API for game data operations.
 - `POST /games/refresh/:league` — refreshes one league
 - `POST /games/sync/recent` — syncs recent games from external sources
 - `POST /games/scores` — recovers missing scores
+- `POST /games/refresh/records` — refreshes `team.record` for leagues whose season (regular season or playoffs) covers today; **writes no game**. Run twice a day by the `refreshTeamRecordsMorning()` / `refreshTeamRecordsAfternoon()` crons
 - `POST /games/live` — fetches live scores for selected game IDs
 
 ### Admin mutation routes
@@ -52,7 +53,7 @@ This controller exposes the HTTP API for game data operations.
 
 ### Capacity management
 
-- `POST /games/capacity/check` (API key) — check disk usage and purge **only the oldest month** (single shot, no loop) if ≥ 95% usage
+- `POST /games/capacity/check` (API key) — check disk usage and purge **only the oldest month** (single shot, no loop) if ≥ 97% usage
 - `GET /games/capacity/status` (API key) — read-only capacity report: disk usage, per-year game counts, team/game totals, and `actionNeeded` flag (no deletion performed)
 
 ## Data Flow

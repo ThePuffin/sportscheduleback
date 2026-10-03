@@ -103,6 +103,12 @@ Historical recovery over leagues × years. When no `yearStr` is given, it loops 
 
 `options.forceCapacityCheck` (default `true`) controls the capacity check performed after **each** league × year step: the value is forwarded to `purgeOldestMonthIfNeeded(force)`, so by default the 1-hour `CHECK_INTERVAL_MS` guard is bypassed and the 60s disk-usage cache invalidated — otherwise only the first step of a long recovery would be checked and the database could reach 100%. When a month is purged during the run, the step logs `[Oldies] Capacity purge after <LEAGUE> <year>: removed <n> games from <year>-<month>.`. A failing capacity check is caught and logged (`[Oldies] Capacity check failed after <LEAGUE> <year>:`) so the recovery loop keeps going. Pass `forceCapacityCheck: false` to restore the throttled behavior.
 
+### `refreshCurrentSeasonRecords()`
+
+Refreshes `team.record` (`wins` / `losses` / `ties` / `otLosses`) for every league whose season — **regular season OR playoffs** — covers today, **without persisting any game**. Each kept league's schedule is fetched with `_fetchUniqueGames()` and the returned games are discarded; only its `teamRecords` side effect (the most recent tally per team, harvested from the schedule — the only source for leagues whose scoreboard carries no `records`, e.g. college hockey) is used, then written through `TeamService.updateRecords()`. Off-season leagues are skipped **before** any third-party call, so the pass is cheap. A failing league is logged (`[Records] Could not refresh records for <LEAGUE>:`) and does not abort the others. Returns `{ leagues, updatedTeams }`.
+
+Called by the twice-daily `refreshTeamRecordsMorning()` / `refreshTeamRecordsAfternoon()` crons and manually via `POST /games/refresh/records` (API key). The in-progress-season rule differs from `getLeagueGames()`, which skips the write only for **oldies** (`season` given): here the whole point is to refresh the live tally, and no game document is touched.
+
 ### `getAllGames(forceUpdate, date, leagueList)`
 
 Refreshes all available leagues, optionally scoped to a date or league list. When a
@@ -236,7 +242,7 @@ Performs availability checks and triggers a refresh if a league appears to have 
 
 ### `purgeOldestMonthIfNeeded(force = false)`
 
-**Capacity-based purge strategy**: Monitors disk usage and, when storage is at or above 95%, deletes **only the oldest
+**Capacity-based purge strategy**: Monitors disk usage and, when storage is at or above 97%, deletes **only the oldest
 month of games** — a single, one-shot deletion per call.
 **Behavior:**
 
@@ -248,7 +254,7 @@ month of games** — a single, one-shot deletion per call.
 
 **Data Preservation:**
 
-- Only triggers when disk usage ≥ 95% (`DISK_USAGE_THRESHOLD = 0.95`)
+- Only triggers when disk usage ≥ 97% (`DISK_USAGE_THRESHOLD = 0.97`)
 - Deletes **exactly one month per call** (the oldest one, e.g. `2016-09`) — never loops over years or months
 - Repeated calls (hourly cron / manual endpoint) gradually free space, one month at a time
 - ⚠️ **Regression fixed**: the previous implementation deleted whole years in a `for` loop and re-checked the disk
@@ -270,7 +276,7 @@ Calculates MongoDB disk usage via `dbStats` command with `$collStats` fallback.
 - **In-memory caching**: 60-second TTL cache (`DISK_USAGE_CACHE_TTL_MS`) prevents `dbStats` spam on frequent calls
 - **Accurate size calculation**: Prioritizes `totalSize` for shared clusters (M0/M2/M5), falls back to `storageSize + indexSize` for dedicated clusters (M10+)
 - **Percentage capping**: Clamped to max 1.0 (100%) to prevent misleading metrics
-- **Critical threshold alerting**: Logs `console.warn` when usage exceeds 85% (before the 95% purge trigger)
+- **Critical threshold alerting**: Logs `console.warn` when usage exceeds 85% (before the 97% purge trigger)
 - **Graceful degradation**: Returns last cached value on transient errors, ensuring continuity
 
 **Returns:** `{ usedMB: number, totalMB: number, percentage: number }`

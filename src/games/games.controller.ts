@@ -241,6 +241,12 @@ export class GamesController {
     return this.GameService.purgeStaleTeamsWithoutGames();
   }
 
+  @Post('refresh/records')
+  @UseGuards(ApiKeyGuard)
+  async refreshRecords() {
+    return await this.GameService.refreshCurrentSeasonRecords();
+  }
+
   @Post('capacity/check')
   @UseGuards(ApiKeyGuard)
   async checkCapacity() {

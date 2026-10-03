@@ -18,6 +18,9 @@ describe('CronService', () => {
     getOldiesGames: jest.fn(),
     fetchGamesScores: jest.fn().mockResolvedValue([]),
     getLeagueGames: jest.fn().mockResolvedValue([]),
+    refreshCurrentSeasonRecords: jest
+      .fn()
+      .mockResolvedValue({ leagues: [League.NHL], updatedTeams: 2 }),
     getAllGames: jest.fn().mockResolvedValue([]),
     purgeStaleTeamsWithoutGames: jest.fn(),
     getLastRecoveryTimestamp: jest.fn().mockResolvedValue(null),
@@ -137,6 +140,79 @@ describe('CronService', () => {
         expect.any(String),
       );
       (Math.random as jest.Mock).mockRestore();
+    });
+  });
+
+  describe('team records refresh crons', () => {
+    beforeEach(() => {
+      (service as any).isRefreshingTeamRecords = false;
+      (service as any).isRotatingLeagueInProgress = false;
+      (service as any).isFetchingOldiesInProgress = false;
+      mockGameService.isScoreRecoveryRunning = false;
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('runs the morning slot and delegates to refreshCurrentSeasonRecords', async () => {
+      jest.useFakeTimers();
+      // 13:00Z = 06:00 America/New_York (EDT)
+      jest.setSystemTime(new Date('2026-09-13T13:00:00Z'));
+
+      await service.refreshTeamRecordsMorning();
+
+      expect(mockGameService.refreshCurrentSeasonRecords).toHaveBeenCalledTimes(
+        1,
+      );
+      expect((service as any).isRefreshingTeamRecords).toBe(false);
+    });
+
+    it('runs the afternoon slot too', async () => {
+      jest.useFakeTimers();
+      // 20:00Z = 16:00 America/New_York (EDT)
+      jest.setSystemTime(new Date('2026-09-13T20:00:00Z'));
+
+      await service.refreshTeamRecordsAfternoon();
+
+      expect(mockGameService.refreshCurrentSeasonRecords).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    it('does nothing when a heavy league refresh is running', async () => {
+      (service as any).isRotatingLeagueInProgress = true;
+
+      await service.refreshTeamRecordsMorning();
+
+      expect(
+        mockGameService.refreshCurrentSeasonRecords,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('does not overlap itself', async () => {
+      (service as any).isRefreshingTeamRecords = true;
+
+      await service.refreshTeamRecordsAfternoon();
+
+      expect(
+        mockGameService.refreshCurrentSeasonRecords,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('releases the reentrancy flag when the refresh throws', async () => {
+      mockGameService.refreshCurrentSeasonRecords.mockRejectedValueOnce(
+        new Error('dbStats unavailable'),
+      );
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      await service.refreshTeamRecordsMorning();
+
+      expect(mockGameService.refreshCurrentSeasonRecords).toHaveBeenCalledTimes(
+        1,
+      );
+      expect((service as any).isRefreshingTeamRecords).toBe(false);
+      consoleSpy.mockRestore();
     });
   });
 

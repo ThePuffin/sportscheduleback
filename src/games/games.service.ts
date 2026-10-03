@@ -77,7 +77,7 @@ export class GameService {
   }
 
   // Capacity-based purge configuration
-  private readonly DISK_USAGE_THRESHOLD = 0.95; // 95%
+  private readonly DISK_USAGE_THRESHOLD = 0.97; // 97%
   private readonly CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
   private readonly DISK_USAGE_CACHE_TTL_MS = 60 * 1000; // 60 seconds cache for disk usage stats
   private readonly CLUSTER_TOTAL_MB = 512; // Total cluster storage in MB (adjust to your Atlas plan)
@@ -230,10 +230,69 @@ export class GameService {
   }
 
   /**
+   * Refreshes `team.record` (wins / losses / ties / otLosses) for every league
+   * whose season — regular season OR playoffs — covers today, WITHOUT saving
+   * any game.
+   *
+   * The schedule of each in-season league is fetched exactly like a normal
+   * refresh, but `_fetchUniqueGames()` is only used for its `teamRecords`
+   * side effect (the most recent tally per team, harvested from the schedule —
+   * the only source for leagues whose scoreboard carries no `records`, e.g.
+   * college hockey). The fetched games are discarded, so no `Game` document is
+   * created, updated or deactivated here.
+   *
+   * Off-season leagues are skipped before any third-party call, so this is
+   * cheap (a handful of leagues) and safe to run a few times a day.
+   */
+  async refreshCurrentSeasonRecords(): Promise<{
+    leagues: string[];
+    updatedTeams: number;
+  }> {
+    const today = new Date();
+    const leagues: string[] = [];
+    const teamRecords = new Map<string, string>();
+
+    for (const league of Object.values(League)) {
+      try {
+        const inSeason =
+          (await isCurrentSeason(league, today)) ||
+          (await isPlayoffsPeriod(league, today));
+        if (!inSeason) continue;
+
+        leagues.push(league);
+        // Dry run: the games are fetched but never persisted (no save / no
+        // deactivation), only the per-team tallies are collected.
+        await this._fetchUniqueGames(league, undefined, teamRecords);
+      } catch (error) {
+        console.error(
+          `[Records] Could not refresh records for ${league}:`,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+
+    if (teamRecords.size > 0) {
+      await this.teamService.updateRecords(
+        Array.from(teamRecords, ([uniqueId, record]) => ({
+          uniqueId,
+          record,
+        })),
+      );
+    }
+
+    console.info(
+      `[Records] Refreshed ${teamRecords.size} team record(s) across ${leagues.length} in-season league(s): ${leagues.join(', ') || 'none'}.`,
+    );
+
+    return { leagues, updatedTeams: teamRecords.size };
+  }
+
+  /**
    * Fetch a league's games for a given season (or current when no season) and
    * return them flattened + deduplicated by `uniqueId`, WITHOUT persisting them.
-   * Used by `getLeagueGames` (which saves) and by the "dry run" season counting
-   * for the oldies cron job.
+   * Used by `getLeagueGames` (which saves), by the "dry run" season counting for
+   * the oldies cron job, and by `refreshCurrentSeasonRecords()` (which only
+   * harvests the `teamRecords` side effect).
    *
    * When `teamRecords` is given, it is filled with the most recent tally of
    * every team of the league, harvested from the schedule that is already being
@@ -3097,7 +3156,7 @@ export class GameService {
     teamCount: number;
     /** Total number of stored game documents */
     gameCount: number;
-    /** Occupancy threshold above which a purge is triggered (see `DISK_USAGE_THRESHOLD`, 0.95) */
+    /** Occupancy threshold above which a purge is triggered (see `DISK_USAGE_THRESHOLD`, 0.97) */
     threshold: number;
     /** True when `percentage >= threshold` */
     actionNeeded: boolean;
@@ -3149,14 +3208,14 @@ export class GameService {
   }
 
   /**
-   * Checks disk space and, when usage is at or above the threshold (95%),
+   * Checks disk space and, when usage is at or above the threshold (97%),
    * purges ONLY the oldest month of games — a single, one-shot deletion.
    *
    * IMPORTANT: this method never loops over years or months. The previous
    * implementation deleted whole years inside a `for` loop and re-checked the
    * disk after each deletion to decide when to stop. But `getDiskUsage()`
    * serves a value cached for 60 seconds (DISK_USAGE_CACHE_TTL_MS), so the
-   * post-deletion check kept returning the same stale "≥ 95%" figure, the
+   * post-deletion check kept returning the same stale "≥ 97%" figure, the
    * loop never broke, and the entire database could be wiped. Deleting
    * exactly one month per call keeps the purge predictable: repeated calls
    * (cron every 6h / manual endpoint) gradually free space, one month at a

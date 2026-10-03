@@ -32,6 +32,8 @@ describe('GameService', () => {
     findAll: jest.fn(),
     deleteManyByIds: jest.fn(),
     purgeStaleTeamsWithoutGames: jest.fn(),
+    updateRecord: jest.fn().mockResolvedValue(undefined),
+    updateRecords: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockRefreshTimestampService = {
@@ -299,6 +301,138 @@ describe('GameService', () => {
       // Should not hit the fetch nor the DB count
       expect(fetchUniqueSpy).not.toHaveBeenCalled();
       expect(mockGameModel.countDocuments).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('refreshCurrentSeasonRecords', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('should only fetch in-season leagues and persist their tallies', async () => {
+      const inSeason = jest.spyOn(utils, 'isCurrentSeason');
+      inSeason.mockImplementation(
+        async (league: string) => league === League.NHL,
+      );
+      jest.spyOn(utils, 'isPlayoffsPeriod').mockResolvedValue(false);
+
+      const fetchSpy = jest
+        .spyOn(service as any, '_fetchUniqueGames')
+        .mockImplementation(
+          async (
+            _league: string,
+            _season: number | undefined,
+            teamRecords?: Map<string, string>,
+          ) => {
+            teamRecords?.set('NHL-BOS', '20-15-5');
+            teamRecords?.set('NHL-TOR', '18-17-5');
+            return [];
+          },
+        );
+      const updateRecordsSpy = jest
+        .spyOn(mockTeamService as any, 'updateRecords')
+        .mockResolvedValue(undefined);
+
+      const result = await service.refreshCurrentSeasonRecords();
+
+      expect(result.leagues).toEqual([League.NHL]);
+      expect(result.updatedTeams).toBe(2);
+      // Only the in-season league was fetched, with no season (current one)
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        League.NHL,
+        undefined,
+        expect.any(Map),
+      );
+      expect(updateRecordsSpy).toHaveBeenCalledWith([
+        { uniqueId: 'NHL-BOS', record: '20-15-5' },
+        { uniqueId: 'NHL-TOR', record: '18-17-5' },
+      ]);
+    });
+
+    it('should include leagues in playoffs even outside the regular season', async () => {
+      jest.spyOn(utils, 'isCurrentSeason').mockResolvedValue(false);
+      jest
+        .spyOn(utils, 'isPlayoffsPeriod')
+        .mockImplementation(async (league: string) => league === League.NBA);
+
+      jest
+        .spyOn(service as any, '_fetchUniqueGames')
+        .mockImplementation(
+          async (
+            _league: string,
+            _season: number | undefined,
+            teamRecords?: Map<string, string>,
+          ) => {
+            teamRecords?.set('NBA-LAL', '40-20');
+            return [];
+          },
+        );
+      const updateRecordsSpy = jest
+        .spyOn(mockTeamService as any, 'updateRecords')
+        .mockResolvedValue(undefined);
+
+      const result = await service.refreshCurrentSeasonRecords();
+
+      expect(result.leagues).toEqual([League.NBA]);
+      expect(updateRecordsSpy).toHaveBeenCalledWith([
+        { uniqueId: 'NBA-LAL', record: '40-20' },
+      ]);
+    });
+
+    it('should skip every league when none is in season and write nothing', async () => {
+      jest.spyOn(utils, 'isCurrentSeason').mockResolvedValue(false);
+      jest.spyOn(utils, 'isPlayoffsPeriod').mockResolvedValue(false);
+      const fetchSpy = jest.spyOn(service as any, '_fetchUniqueGames');
+      const updateRecordsSpy = jest.spyOn(
+        mockTeamService as any,
+        'updateRecords',
+      );
+
+      const result = await service.refreshCurrentSeasonRecords();
+
+      expect(result).toEqual({ leagues: [], updatedTeams: 0 });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(updateRecordsSpy).not.toHaveBeenCalled();
+    });
+
+    it('should keep processing the other leagues when one fetch fails', async () => {
+      jest
+        .spyOn(utils, 'isCurrentSeason')
+        .mockImplementation(async (league: string) =>
+          [League.NHL, League.NBA].includes(league as never),
+        );
+      jest.spyOn(utils, 'isPlayoffsPeriod').mockResolvedValue(false);
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      jest
+        .spyOn(service as any, '_fetchUniqueGames')
+        .mockImplementation(async (league: string) => {
+          if (league === League.NHL) throw new Error('ESPN down');
+          return [];
+        });
+      const updateRecordsSpy = jest
+        .spyOn(mockTeamService as any, 'updateRecords')
+        .mockResolvedValue(undefined);
+
+      const result = await service.refreshCurrentSeasonRecords();
+
+      expect(result.leagues).toEqual([League.NHL, League.NBA]);
+      expect(updateRecordsSpy).not.toHaveBeenCalled();
+    });
+
+    it('should never persist any game', async () => {
+      jest.spyOn(utils, 'isCurrentSeason').mockResolvedValue(true);
+      jest.spyOn(utils, 'isPlayoffsPeriod').mockResolvedValue(false);
+      const createSpy = jest.spyOn(service, 'create');
+      jest.spyOn(mockGameModel, 'deleteMany').mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ deletedCount: 0 }),
+      } as any);
+
+      await service.refreshCurrentSeasonRecords();
+
+      expect(createSpy).not.toHaveBeenCalled();
+      expect(mockGameModel.deleteMany).not.toHaveBeenCalled();
     });
   });
 
@@ -1087,7 +1221,7 @@ describe('GameService', () => {
         .mockResolvedValue({
           usedMB: 50,
           totalMB: 100,
-          percentage: 0.5, // well below the 95% threshold
+          percentage: 0.5, // well below the 97% threshold
         });
 
       const result = await service.purgeOldestMonthIfNeeded();
@@ -1125,9 +1259,9 @@ describe('GameService', () => {
       const getDiskUsageSpy = jest
         .spyOn(service as any, 'getDiskUsage')
         .mockResolvedValue({
-          usedMB: 97,
+          usedMB: 99,
           totalMB: 100,
-          percentage: 0.97, // 97% - at or above the 95% threshold
+          percentage: 0.99, // 99% - strictly above the 97% threshold
         });
 
       const result = await service.purgeOldestMonthIfNeeded();
@@ -1139,7 +1273,7 @@ describe('GameService', () => {
       expect(result.purgedMonth).toBe(9);
       expect(result.deletedCount).toBe(296);
       expect(result.remainingYears).toEqual([2017, 2023, 2024]);
-      expect(result.diskUsage.percentage).toBe(0.97);
+      expect(result.diskUsage.percentage).toBe(0.99);
 
       purgeOldestMonthSpy.mockRestore();
       getAvailableYearsSpy.mockRestore();
@@ -1171,9 +1305,9 @@ describe('GameService', () => {
 
       // Disk usage NEVER drops below the threshold (stale cache scenario)
       jest.spyOn(service as any, 'getDiskUsage').mockResolvedValue({
-        usedMB: 97,
+        usedMB: 99,
         totalMB: 100,
-        percentage: 0.97,
+        percentage: 0.99,
       });
 
       const result = await service.purgeOldestMonthIfNeeded();
@@ -1220,10 +1354,10 @@ describe('GameService', () => {
   });
 
   describe('DISK_USAGE_THRESHOLD', () => {
-    it('is set to 95%', () => {
+    it('is set to 97%', () => {
       // Single source of truth for every other fixture, doc and comment: if this
       // constant moves, this test moves with it instead of silently diverging.
-      expect((service as any).DISK_USAGE_THRESHOLD).toBe(0.95);
+      expect((service as any).DISK_USAGE_THRESHOLD).toBe(0.97);
     });
 
     it('is reported by getCapacityStatus and drives actionNeeded', async () => {
@@ -1231,21 +1365,21 @@ describe('GameService', () => {
 
       const getDiskUsageSpy = jest
         .spyOn(service as any, 'getDiskUsage')
-        .mockResolvedValue({ usedMB: 94, totalMB: 100, percentage: 0.94 });
+        .mockResolvedValue({ usedMB: 96, totalMB: 100, percentage: 0.96 });
       jest.spyOn(service as any, 'getAvailableYears').mockResolvedValue([]);
 
       const below = await service.getCapacityStatus();
-      expect(below.threshold).toBe(0.95);
+      expect(below.threshold).toBe(0.97);
       expect(below.actionNeeded).toBe(false);
 
       getDiskUsageSpy.mockResolvedValue({
-        usedMB: 95,
+        usedMB: 97,
         totalMB: 100,
-        percentage: 0.95,
+        percentage: 0.97,
       });
       // The comparison is `>=`, so sitting exactly on the threshold triggers it.
       const on = await service.getCapacityStatus();
-      expect(on.threshold).toBe(0.95);
+      expect(on.threshold).toBe(0.97);
       expect(on.actionNeeded).toBe(true);
 
       getDiskUsageSpy.mockRestore();
