@@ -2,6 +2,42 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Changed: oldies runs now force the capacity check after every league × year step
+
+### Problem
+
+`getOldiesGames()` called `purgeOldestMonthIfNeeded()` **without** `force` after each
+league × year step. `purgeOldestMonthIfNeeded()` refuses to run more than once per hour
+(`CHECK_INTERVAL_MS`), so in a long recovery (leagues × 5 seasons, minutes per step) every
+check after the first returned `{ action: 'none' }` without even measuring the disk. The purge
+therefore only happened once per hour while the DB kept growing — exactly the scenario that
+fills the cluster to 100%.
+
+### Changes
+
+- `backend/src/games/games.service.ts` — `getOldiesGames(yearStr?, leagueParam?, options?)`
+  accepts `options.forceCapacityCheck` (default `true`) and forwards it to
+  `purgeOldestMonthIfNeeded(force)`. With `force: true` the 1-hour guard is bypassed **and**
+  the 60s `getDiskUsage()` cache is invalidated, so each step measures the real usage and can
+  purge one month if usage is ≥ 95%. The call is wrapped in `try/catch` (an unavailable
+  `dbStats` must not abort the recovery) and logs
+  `[Oldies] Capacity purge after <LEAGUE> <year>: ...` when a month is actually purged.
+- `backend/src/games/games.controller.ts` — `POST /games/refresh/oldies` accepts `?force=false`
+  to opt back into the throttled (hourly) capacity check.
+- `backend/src/games/tests/games.service.spec.ts` — 3 new tests: forced by default, not forced
+  with `forceCapacityCheck: false`, and recovery continues when the capacity check throws.
+- Docs: `backend/docs/games/games.service.ts.md`, `backend/docs/games/games.controller.ts.md`.
+
+### Files changed
+
+- `backend/src/games/games.service.ts`
+- `backend/src/games/games.controller.ts`
+- `backend/src/games/tests/games.service.spec.ts`
+- `backend/docs/games/games.service.ts.md`
+- `backend/docs/games/games.controller.ts.md`
+
+---
+
 ## Added: per-game team records — final tally of a past season, most recent tally of the current one
 
 ### Goal

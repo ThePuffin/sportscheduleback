@@ -155,8 +155,14 @@ export class GamesController {
   async refreshOldies(
     @Query('year') year?: string,
     @Query('league') league?: string,
+    // Capacity check is forced by default so a long run cannot fill the DB to
+    // 100%. Pass `force=false` to fall back to the 1-hour throttled check.
+    @Query('force') force?: string,
   ) {
-    return this.GameService.getOldiesGames(year, league);
+    const forceCapacityCheck = force === undefined ? true : force !== 'false';
+    return this.GameService.getOldiesGames(year, league, {
+      forceCapacityCheck,
+    });
   }
 
   @Post('refresh/allOldies')

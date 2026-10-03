@@ -3505,7 +3505,21 @@ export class GameService {
     }
   }
 
-  async getOldiesGames(yearStr?: string, leagueParam?: string) {
+  /**
+   * Historical recovery over leagues × years (exposed via
+   * `POST /games/refresh/oldies`).
+   *
+   * @param options.forceCapacityCheck when true (default), the per-step capacity
+   * check bypasses the 1-hour `CHECK_INTERVAL_MS` guard, so a long oldies run
+   * cannot fill the database up to 100% between two hourly checks. Set it to
+   * false to restore the throttled behavior.
+   */
+  async getOldiesGames(
+    yearStr?: string,
+    leagueParam?: string,
+    options: { forceCapacityCheck?: boolean } = {},
+  ) {
+    const { forceCapacityCheck = true } = options;
     const currentYear = new Date().getFullYear();
     const minYear = currentYear - this.maxYearBeforeDelete;
 
@@ -3600,7 +3614,23 @@ export class GameService {
           console.info(
             `[Oldies] progress: ${pct}% (${completedSteps}/${totalSteps}) — last: ${league} ${year}`,
           );
-          await this.purgeOldestMonthIfNeeded();
+          // Capacity check after EVERY league x year step, forced by default:
+          // without `force`, the 1-hour guard would skip every check after the
+          // first one and the DB could reach 100% during a long oldies run.
+          try {
+            const purge =
+              await this.purgeOldestMonthIfNeeded(forceCapacityCheck);
+            if (purge.action === 'purged') {
+              console.info(
+                `[Oldies] Capacity purge after ${league} ${year}: removed ${purge.deletedCount} games from ${purge.purgedYear}-${String(purge.purgedMonth).padStart(2, '0')}.`,
+              );
+            }
+          } catch (error) {
+            console.error(
+              `[Oldies] Capacity check failed after ${league} ${year}:`,
+              error instanceof Error ? error.message : String(error),
+            );
+          }
         }
       }
     }

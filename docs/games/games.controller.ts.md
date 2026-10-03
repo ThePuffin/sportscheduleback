@@ -30,7 +30,7 @@ This controller exposes the HTTP API for game data operations.
 ### Refresh and sync
 
 - `POST /games/refresh/all` — refreshes all leagues
-- `POST /games/refresh/oldies` — recovers historical games (`year`/`league` query params optional)
+- `POST /games/refresh/oldies` — recovers historical games (`year`/`league` query params optional). The capacity check run after every league × year step is **forced by default** (`?force=false` restores the 1-hour throttled behavior), so a long recovery cannot fill the database up to 100%.
 - `POST /games/refresh/allOldies` — recovers history league by league (leagues in **random order** via
   `Object.values(League).sort(() => Math.random() - 0.5)`); after **each league's** `getOldiesGames`,
   retries `purgeOldestMonthIfNeeded(true)` up to **5 times** with a **30-second wait between attempts**

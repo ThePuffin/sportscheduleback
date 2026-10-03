@@ -436,6 +436,68 @@ describe('GameService', () => {
       expect(result.message).toContain('no new games were added');
       expect(result.message).toContain('already up to date');
     });
+
+    it('should force the capacity check after every step by default', async () => {
+      const purgeSpy = jest
+        .spyOn(service, 'purgeOldestMonthIfNeeded')
+        .mockResolvedValue({
+          action: 'none',
+          diskUsage: { usedMB: 100, totalMB: 512, percentage: 0.2 },
+        });
+
+      const currentYear = new Date().getFullYear();
+      await service.getOldiesGames(String(currentYear - 1), League.NHL);
+
+      // One league x one year -> exactly one capacity check, forced (true).
+      expect(purgeSpy).toHaveBeenCalledTimes(1);
+      expect(purgeSpy).toHaveBeenCalledWith(true);
+
+      purgeSpy.mockRestore();
+    });
+
+    it('should not force the capacity check when forceCapacityCheck is false', async () => {
+      const purgeSpy = jest
+        .spyOn(service, 'purgeOldestMonthIfNeeded')
+        .mockResolvedValue({
+          action: 'none',
+          diskUsage: { usedMB: 100, totalMB: 512, percentage: 0.2 },
+        });
+
+      const currentYear = new Date().getFullYear();
+      await service.getOldiesGames(String(currentYear - 1), League.NHL, {
+        forceCapacityCheck: false,
+      });
+
+      expect(purgeSpy).toHaveBeenCalledTimes(1);
+      expect(purgeSpy).toHaveBeenCalledWith(false);
+
+      purgeSpy.mockRestore();
+    });
+
+    it('should keep processing seasons when the capacity check throws', async () => {
+      const purgeSpy = jest
+        .spyOn(service, 'purgeOldestMonthIfNeeded')
+        .mockRejectedValue(new Error('dbStats unavailable'));
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
+
+      const currentYear = new Date().getFullYear();
+      const result = await service.getOldiesGames(
+        String(currentYear - 1),
+        League.NHL,
+      );
+
+      expect(getLeagueGamesSpy).toHaveBeenCalledTimes(1);
+      expect(result.message).toContain('History recovery');
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        `[Oldies] Capacity check failed after ${League.NHL} ${currentYear - 1}:`,
+        'dbStats unavailable',
+      );
+
+      purgeSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+    });
   });
 
   describe('getLeagueGames addMissingOnly (oldies recovery)', () => {
