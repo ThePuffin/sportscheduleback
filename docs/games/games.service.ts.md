@@ -86,8 +86,9 @@ games that have a complete home **and** away team. It logs added / skipped count
   - **Past games** (startTimeUTC < now): Null scores are allowed. The cron job's `fetchGamesScores()` will fill them later.
   - **Future games** (startTimeUTC ≥ now): Rejected to prevent scheduled games from polluting historical data.
 - **Deduplication**: For a `uniqueId` already in the DB:
-  - If the `uniqueId` matches AND both stored home/away scores equal the fetched ones → **skipped** (not overwritten).
-  - If the `uniqueId` exists but scores differ → treated as a stale/different result and **refreshed**.
+  - If the `uniqueId` matches, both stored home/away scores equal the fetched ones **and** the stored `homeTeamRecord` / `awayTeamRecord` already match (or are absent) → **skipped** (not overwritten).
+  - If the `uniqueId` exists but the scores differ → treated as a stale/different result and **refreshed**.
+  - If the scores match but the **team records** differ (typically a game stored before per-game records existed, i.e. `undefined` vs the fetched `"W-L-T"`) → **refreshed**, which backfills the record on the next oldies run. The comparison converges: once both sides carry the same value the game is skipped again.
   - Only complete, missing games are created.
 
 **Score stripping for future games (both flows):**
@@ -198,6 +199,13 @@ the payload as-is (it only applies its own league/team/bookmark chips filters).
 ### `fetchGamesScores()`
 
 Runs a recovery cycle that tries to fetch missing or stale scores for recent games from ESPN or PWHL sources.
+
+It updates scores, `gameStatus`, series info and the **team** records (`TeamService.updateRecord()`,
+which keeps `team.record` — the most recent win/loss/draw tally — up to date), but it deliberately
+does **not** write `game.homeTeamRecord` / `game.awayTeamRecord`. Doing so would freeze each game's
+tally at the moment the score was synced, whereas a game of the in-progress season must display the
+most recent record (via the `team.record` fallback in `_enrichGameWithTeamData()`). Finished seasons
+get their final tally from the schedule fetch instead.
 
 ### `fetchLiveScores(gameIds)`
 

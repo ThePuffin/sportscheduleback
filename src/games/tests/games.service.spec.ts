@@ -599,6 +599,107 @@ describe('GameService', () => {
 
       createSpy.mockRestore();
     });
+
+    it('backfills a stored game that has no per-game team records', async () => {
+      const currentYear = new Date().getFullYear();
+      const pastTime = new Date();
+      pastTime.setHours(pastTime.getHours() - 2);
+
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      // Stored before per-game records existed: same id, same scores, no records.
+      mockGameModel.exec.mockResolvedValue([
+        { uniqueId: 'existing-no-record', homeTeamScore: 3, awayTeamScore: 1 },
+      ]);
+
+      (service as any)._fetchUniqueGames = jest.fn().mockResolvedValue([
+        {
+          uniqueId: 'existing-no-record',
+          league: League.NHL,
+          homeTeamId: 'NHL-BOS',
+          awayTeamId: 'NHL-TOR',
+          homeTeamScore: 3,
+          awayTeamScore: 1,
+          startTimeUTC: pastTime.toISOString(),
+          homeTeamRecord: '33-39-10',
+          awayTeamRecord: '42-32-7',
+        },
+      ]);
+      (service as any)._deleteUnlinkedTeams = jest
+        .fn()
+        .mockResolvedValue(undefined);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+        season: currentYear - 1,
+        addMissingOnly: true,
+      });
+
+      // Identical scores but missing records -> refreshed instead of skipped
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          uniqueId: 'existing-no-record',
+          homeTeamRecord: '33-39-10',
+          awayTeamRecord: '42-32-7',
+        }),
+      );
+
+      createSpy.mockRestore();
+    });
+
+    it('skips a stored game whose scores and team records already match', async () => {
+      const currentYear = new Date().getFullYear();
+      const pastTime = new Date();
+      pastTime.setHours(pastTime.getHours() - 2);
+
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      mockGameModel.exec.mockResolvedValue([
+        {
+          uniqueId: 'existing-with-record',
+          homeTeamScore: 3,
+          awayTeamScore: 1,
+          homeTeamRecord: '33-39-10',
+          awayTeamRecord: '42-32-7',
+        },
+      ]);
+
+      (service as any)._fetchUniqueGames = jest.fn().mockResolvedValue([
+        {
+          uniqueId: 'existing-with-record',
+          league: League.NHL,
+          homeTeamId: 'NHL-BOS',
+          awayTeamId: 'NHL-TOR',
+          homeTeamScore: 3,
+          awayTeamScore: 1,
+          startTimeUTC: pastTime.toISOString(),
+          homeTeamRecord: '33-39-10',
+          awayTeamRecord: '42-32-7',
+        },
+      ]);
+      (service as any)._deleteUnlinkedTeams = jest
+        .fn()
+        .mockResolvedValue(undefined);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+        season: currentYear - 1,
+        addMissingOnly: true,
+      });
+
+      expect(createSpy).not.toHaveBeenCalled();
+
+      createSpy.mockRestore();
+    });
   });
 
   describe('getLeagueGames playoff grace period', () => {

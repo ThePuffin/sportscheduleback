@@ -53,6 +53,208 @@ const getScore = (competitor) => {
   return score?.value ?? (score != null ? Number(score) : null);
 };
 
+/**
+ * Reads a competitor's win/loss/draw tally from an ESPN payload.
+ *
+ * ESPN exposes it under two different keys depending on the endpoint:
+ * - `teams/{id}/schedule` -> `competitor.record` (singular) + `displayValue`
+ * - `scoreboard` / `summary` -> `competitor.records` (plural) + `summary`
+ *
+ * Entries are typed: the season schedule uses `ytd` (NHL, NBA, NFL, ...) while
+ * the post-season schedule and the scoreboard use `total`, so both are accepted
+ * (in that priority order) before falling back on the first entry. `home` /
+ * `road` entries are therefore never picked by mistake.
+ *
+ * Returns a bare `"W-L-T"` string: the trailing `", 109 PTS"` bonus-points
+ * suffix that ESPN appends for hockey is stripped.
+ */
+export const extractCompetitorRecord = (competitor: any): string => {
+  const entries = Array.isArray(competitor?.records)
+    ? competitor.records
+    : Array.isArray(competitor?.record)
+      ? competitor.record
+      : [];
+  if (!entries.length) return '';
+
+  const entry =
+    entries.find((e) => e?.type === 'total') ??
+    entries.find((e) => e?.type === 'ytd') ??
+    entries.find((e) => !!e) ??
+    null;
+
+  const raw = entry?.summary ?? entry?.displayValue ?? '';
+  return typeof raw === 'string' ? raw.split(',')[0].trim() : '';
+};
+
+/**
+ * Games implied by a `"W-L-T"` record string. Used to compare two tallies for
+ * the same team and keep the most complete one: a pre-season tally has fewer
+ * games than the regular-season one, which has as many as the post-season
+ * (frozen) one.
+ */
+const recordGamesPlayed = (record: string): number => {
+  const match = /^(\d+)-(\d+)(?:-(\d+))?/.exec(record ?? '');
+  if (!match) return -1;
+  return Number(match[1]) + Number(match[2]) + Number(match[3] ?? 0);
+};
+
+/**
+ * Rewrites the per-game records produced by `getEachTeamSchedule()` so that:
+ *
+ * - **the season is over** (every fetched game has already started): every game
+ *   of that season shows the same **final** season tally — the most complete
+ *   record found for each team wins (max games played).
+ * - **the season is still running**: the records are cleared, so readers fall
+ *   back to `team.record`, which always holds the most recent tally. Keeping
+ *   the per-game value there would freeze a stale record on the current season.
+ *
+ * PWHL is unaffected: its games are produced by `hockeyData.ts`, not by this
+ * module.
+ */
+export const applySeasonFinalRecords = (allGames: Record<string, any[]>) => {
+  const games = Object.values(allGames)
+    .flat()
+    .filter((game) => !!game);
+  if (!games.length) return;
+
+  const now = Date.now();
+  const seasonOver = games.every((game) => {
+    const start = game.startTimeUTC
+      ? new Date(game.startTimeUTC).getTime()
+      : NaN;
+    return Number.isFinite(start) && start < now;
+  });
+
+  if (!seasonOver) {
+    for (const game of games) {
+      game.homeTeamRecord = '';
+      game.awayTeamRecord = '';
+    }
+    return;
+  }
+
+  const finals = new Map<string, { gamesPlayed: number; record: string }>();
+  const track = (teamId?: string, record?: string) => {
+    if (!teamId || !record) return;
+    const gamesPlayed = recordGamesPlayed(record);
+    const current = finals.get(teamId);
+    if (!current || gamesPlayed > current.gamesPlayed) {
+      finals.set(teamId, { gamesPlayed, record });
+    }
+  };
+
+  for (const game of games) {
+    track(game.homeTeamId, game.homeTeamRecord);
+    track(game.awayTeamId, game.awayTeamRecord);
+  }
+
+  for (const game of games) {
+    game.homeTeamRecord =
+      finals.get(game.homeTeamId)?.record ?? game.homeTeamRecord ?? '';
+    game.awayTeamRecord =
+      finals.get(game.awayTeamId)?.record ?? game.awayTeamRecord ?? '';
+  }
+};
+
+/**
+ * Captures, for the team being fetched, the cumulative tally of the latest game
+ * it has **already started**, and stores it under its `uniqueId`.
+ *
+ * The `untilDate` cutoff inside `getEachTeamSchedule()` drops played games from
+ * a normal refresh, so the tally has to be harvested *before* that filter. This
+ * is the only source for leagues whose scoreboard, summary and team detail all
+ * expose no record at all (e.g. college hockey), and it costs nothing extra:
+ * the schedule is already being fetched.
+ */
+const collectTeamRecord = (
+  events: any[],
+  uniqueId: string,
+  espnTeamId: string,
+  out?: Map<string, string>,
+) => {
+  if (!out || !uniqueId || !Array.isArray(events) || !events.length) return;
+
+  const now = Date.now();
+  let bestDate = 0;
+  let best = '';
+
+  for (const event of events) {
+    const start = event?.date ? Date.parse(event.date) : NaN;
+    // Only already-played games carry a trustworthy tally; ESPN leaves
+    // `record` null on games that have not been played yet.
+    if (!Number.isFinite(start) || start > now) continue;
+
+    const competitors = event?.competitions?.[0]?.competitors;
+    if (!Array.isArray(competitors)) continue;
+
+    for (const competitor of competitors) {
+      if (String(competitor?.team?.id) !== String(espnTeamId)) continue;
+      const record = extractCompetitorRecord(competitor);
+      if (record && start >= bestDate) {
+        bestDate = start;
+        best = record;
+      }
+    }
+  }
+
+  if (!best) return;
+
+  // A team can be visited more than once (aggregate leagues): keep the most
+  // complete tally, since games played only ever grows inside a season.
+  const existing = out.get(uniqueId);
+  if (!existing || recordGamesPlayed(best) >= recordGamesPlayed(existing)) {
+    out.set(uniqueId, best);
+  }
+};
+
+/**
+ * Reads a team's current cumulative `"W-L[-T]"` record from its season schedule.
+ *
+ * Some ESPN feeds expose no record at all — college hockey's scoreboard and
+ * summary both return `records: []` and its team detail returns
+ * `record.items: []` — so `TeamService.updateRecord()` had nothing to work with
+ * and those teams' tallies stayed frozen at the last team refresh. The season
+ * schedule does carry the tally on every already-played event, which makes it
+ * the universal fallback.
+ *
+ * Returns `''` when nothing usable is found (unknown league, no ESPN id, no
+ * played game yet, network error).
+ */
+export const getTeamRecordFromSchedule = async (
+  leagueKey: string,
+  espnTeamId: string,
+): Promise<string> => {
+  const config = leagueConfigs[leagueKey];
+  if (!config || !espnTeamId) return '';
+
+  try {
+    const url = `${espnAPI}${config.sport}/${config.league}/teams/${espnTeamId}/schedule?seasontype=2`;
+    const res = await fetchWithRetry(url);
+    if (!res.ok) return '';
+    const data = await res.json();
+
+    let latest = '';
+    let latestDate = 0;
+    for (const event of data?.events || []) {
+      const start = event?.date ? Date.parse(event.date) : NaN;
+      if (!Number.isFinite(start) || start > Date.now()) continue;
+      const competitors = event?.competitions?.[0]?.competitors;
+      if (!Array.isArray(competitors)) continue;
+      for (const competitor of competitors) {
+        if (String(competitor?.team?.id) !== String(espnTeamId)) continue;
+        const record = extractCompetitorRecord(competitor);
+        if (record && start >= latestDate) {
+          latestDate = start;
+          latest = record;
+        }
+      }
+    }
+    return latest;
+  } catch {
+    return '';
+  }
+};
+
 const getNormalizedLeagueName = (leagueName: string) => {
   if (leagueName.includes('OLYMPICS')) {
     if (leagueName.includes('WOMEN')) return 'OLYMPICS-WOMEN';
@@ -409,6 +611,7 @@ export const getTeamsSchedule = async (
   leagueLogos,
   forceUpdate = false,
   season?: number,
+  teamRecords?: Map<string, string>,
 ) => {
   const allGames = {};
   const concurrencyLimit = 2;
@@ -431,11 +634,17 @@ export const getTeamsSchedule = async (
             },
             forceUpdate,
             season,
+            teamRecords,
           );
         },
       ),
     );
   }
+
+  // Normalize the per-game cumulative tallies into the record that must be
+  // displayed: the final tally of a finished season, nothing (so the most
+  // recent team record is used) while the season is still running.
+  applySeasonFinalRecords(allGames);
 
   console.info(`updated ${leagueName}`);
   return allGames;
@@ -445,6 +654,7 @@ const getEachTeamSchedule = async (
   { id, abbrev, value, leagueName, leagueLogos, color, backgroundColor },
   forceUpdate = false,
   season?: number,
+  teamRecords?: Map<string, string>,
 ) => {
   try {
     const normalizedLeagueName = getNormalizedLeagueName(leagueName);
@@ -463,6 +673,7 @@ const getEachTeamSchedule = async (
           },
           forceUpdate,
           season,
+          teamRecords,
         );
         allGames = [...allGames, ...games];
       }
@@ -509,6 +720,8 @@ const getEachTeamSchedule = async (
           console.info('no games found ' + leagueName, value, error);
         }
       }
+      // Scoreboard path: read the tally before anything is filtered out.
+      collectTeamRecord(games, value, id, teamRecords);
     } else {
       try {
         const baseUrl = leaguesData[leagueName].fetchGames.replace('${id}', id);
@@ -536,6 +749,11 @@ const getEachTeamSchedule = async (
         const now = new Date();
         const tenMonthAgo = new Date(now.getTime() - 300 * 24 * 60 * 60 * 1000);
         const untilDate = forceUpdate ? tenMonthAgo : now;
+
+        // Harvest the tally of the latest played game BEFORE the cutoff below
+        // throws those games away — it is the only place some leagues (college
+        // hockey) expose it at all.
+        collectTeamRecord(games, value, id, teamRecords);
 
         const gamesFilter = season
           ? games
@@ -630,6 +848,11 @@ const getEachTeamSchedule = async (
           homeTeamShort,
           homeTeamScore: homeTeamScore,
           awayTeamScore: awayTeamScore,
+          // Cumulative tally at the time of this game. `getTeamsSchedule()` then
+          // rewrites them into the season's final tally (finished season) or
+          // clears them (season in progress) via `applySeasonFinalRecords()`.
+          homeTeamRecord: extractCompetitorRecord(homeCompetitor),
+          awayTeamRecord: extractCompetitorRecord(awayCompetitor),
           seriesSummary: formatSeriesSummary(
             comp?.notes?.[0]?.headline || game.notes?.[0]?.headline || '',
           ),
@@ -767,10 +990,8 @@ export const getESPNScores = async (
                     ? Number(away.score)
                     : null;
                 const statusDetail = comp.status?.type || comp.status;
-                const homeTeamRecord =
-                  home?.records?.find((r) => r.type === 'total')?.summary || '';
-                const awayTeamRecord =
-                  away?.records?.find((r) => r.type === 'total')?.summary || '';
+                const homeTeamRecord = extractCompetitorRecord(home);
+                const awayTeamRecord = extractCompetitorRecord(away);
 
                 const homeTeamShort = home?.team?.abbreviation || undefined;
                 const awayTeamShort = away?.team?.abbreviation || undefined;
@@ -860,10 +1081,8 @@ export const getESPNScores = async (
             ? Number(away.score)
             : null;
 
-        const homeTeamRecord =
-          home?.records?.find((r) => r.type === 'total')?.summary || '';
-        const awayTeamRecord =
-          away?.records?.find((r) => r.type === 'total')?.summary || '';
+        const homeTeamRecord = extractCompetitorRecord(home);
+        const awayTeamRecord = extractCompetitorRecord(away);
 
         const homeTeamShort = home?.team?.abbreviation || undefined;
         const awayTeamShort = away?.team?.abbreviation || undefined;
@@ -966,10 +1185,8 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
       (typeof status?.name === 'string' &&
         /final|completed|post|full|finished/i.test(status.name));
 
-    const homeTeamRecord =
-      home?.records?.find((r) => r.type === 'total')?.summary || '';
-    const awayTeamRecord =
-      away?.records?.find((r) => r.type === 'total')?.summary || '';
+    const homeTeamRecord = extractCompetitorRecord(home);
+    const awayTeamRecord = extractCompetitorRecord(away);
 
     return {
       uniqueId: gameId,

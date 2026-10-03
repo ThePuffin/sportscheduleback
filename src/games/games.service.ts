@@ -14,6 +14,7 @@ import { CollegeLeague, League } from '../utils/enum';
 import {
   getESPNGameScore,
   getESPNScores,
+  getTeamRecordFromSchedule,
   getTeamsSchedule,
 } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
@@ -54,30 +55,8 @@ export class GameService {
   // it has been continuously missing for this many hours (default 48h, ~2 daily refresh cycles).
   gracePeriodHours = 48;
 
-  /**
-   * Matches an ESPN `series.summary` string that certifies a series is over, e.g.
-   * `"SD wins series 2-0"`, `"Padres win series 4"`, or `"Series over"`.
-   *
-   * When a future game carries such a status, it belongs to an already-decided series and
-   * can therefore never be played: ESPN simply never creates the event. Such a game is
-   * deactivated immediately instead of waiting out the `gracePeriodHours` window, which
-   * exists only for *undecided* "if necessary" games that may transiently disappear.
-   */
-  private readonly decidedSeriesPattern =
-    /(?:win|wins|won)\s+(?:the\s+)?series\b|series\s+(?:is\s+)?over\b|series\s+won\b/i;
-
-  /**
-   * Whether `seriesStatus` proves the series this game belongs to is already decided.
-   * An empty/absent status returns false: absence of proof means the series may still
-   * be ongoing, so the normal grace period must apply.
-   */
-  private _isSeriesDecided(seriesStatus?: string): boolean {
-    if (!seriesStatus || typeof seriesStatus !== 'string') return false;
-    return this.decidedSeriesPattern.test(seriesStatus.trim());
-  }
-
   // Capacity-based purge configuration
-  private readonly DISK_USAGE_THRESHOLD = 0.96; // 96%
+  private readonly DISK_USAGE_THRESHOLD = 0.9; // 90%
   private readonly CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
   private readonly DISK_USAGE_CACHE_TTL_MS = 60 * 1000; // 60 seconds cache for disk usage stats
   private readonly CLUSTER_TOTAL_MB = 512; // Total cluster storage in MB (adjust to your Atlas plan)
@@ -234,8 +213,16 @@ export class GameService {
    * return them flattened + deduplicated by `uniqueId`, WITHOUT persisting them.
    * Used by `getLeagueGames` (which saves) and by the "dry run" season counting
    * for the oldies cron job.
+   *
+   * When `teamRecords` is given, it is filled with the most recent tally of
+   * every team of the league, harvested from the schedule that is already being
+   * fetched — the only source for leagues whose scoreboard carries no records.
    */
-  private async _fetchUniqueGames(normalizedLeague: string, season?: number) {
+  private async _fetchUniqueGames(
+    normalizedLeague: string,
+    season?: number,
+    teamRecords?: Map<string, string>,
+  ) {
     const leagueTeams = await this.teamService.findAll([normalizedLeague]);
     const leagueLogos = await this.getTeamsLogo(leagueTeams);
 
@@ -256,6 +243,7 @@ export class GameService {
         leagueLogos,
         true,
         season,
+        teamRecords,
       );
     }
 
@@ -491,10 +479,28 @@ export class GameService {
 
       // Fetch teams and logos for the league, then fetch + deduplicate the
       // season's games (same pipeline used by getSeasonStatus, without saving).
+      // `teamRecords` additionally collects each team's latest tally straight
+      // from the schedule (see `_fetchUniqueGames`), so leagues whose scoreboard
+      // exposes no `records` at all (college hockey) still get theirs refreshed.
+      const teamRecords = new Map<string, string>();
       const uniqueGames = await this._fetchUniqueGames(
         normalizedLeague,
         season,
+        teamRecords,
       );
+
+      // Never write a stale tally over the current one while a season is in
+      // progress: oldies (`season` given) are left alone on purpose, because
+      // there the historical record must stay frozen.
+      if (!season && teamRecords.size > 0) {
+        await this.teamService.updateRecords(
+          Array.from(teamRecords, ([uniqueId, record]) => ({
+            uniqueId,
+            record,
+          })),
+        );
+      }
+
       const games = uniqueGames;
       // Only deactivate future games if we are not fetching an old season, and only the
       // ones that are absent from the freshly fetched season. This turns the previous
@@ -515,14 +521,10 @@ export class GameService {
                 isActive: true,
                 startTimeUTC: { $gt: now.toISOString() },
               },
-              { uniqueId: 1, missingSince: 1, seriesStatus: 1, _id: 0 },
+              { uniqueId: 1, missingSince: 1, _id: 0 },
             )
             .lean()
-            .exec()) as Array<{
-            uniqueId?: string;
-            missingSince?: string;
-            seriesStatus?: string;
-          }>;
+            .exec()) as Array<{ uniqueId?: string; missingSince?: string }>;
 
           const graceMs = this.gracePeriodHours * 60 * 60 * 1000;
           const nowIso = now.toISOString();
@@ -531,7 +533,6 @@ export class GameService {
           const toMarkMissing: string[] = [];
           const toDeactivate: string[] = [];
           const toConfirm: string[] = [];
-          const toDeactivateDecided: string[] = [];
 
           for (const g of existingFuture) {
             const id = g.uniqueId;
@@ -544,15 +545,6 @@ export class GameService {
             }
 
             // Game absent from the freshly fetched source.
-            //
-            // Short-circuit: if its series is already decided, the game can never be
-            // played (ESPN never creates the event for a decided series), so there is no
-            // reason to keep it around during the grace period. Deactivate right away.
-            if (this._isSeriesDecided(g.seriesStatus)) {
-              toDeactivateDecided.push(id);
-              continue;
-            }
-
             if (!g.missingSince) {
               // First time it is seen missing: start the grace period, keep it active.
               toMarkMissing.push(id);
@@ -577,21 +569,6 @@ export class GameService {
             );
             console.info(
               `[Games] ${toMarkMissing.length} future game(s) missing from source for ${normalizedLeague}; grace period started (kept active pending confirmation).`,
-            );
-          }
-
-          if (toDeactivateDecided.length > 0) {
-            await this.gameModel.updateMany(
-              {
-                league: normalizedLeague,
-                uniqueId: { $in: toDeactivateDecided },
-                isActive: true,
-                startTimeUTC: { $gt: nowIso },
-              },
-              { $set: { isActive: false }, $unset: { missingSince: 1 } },
-            );
-            console.info(
-              `[Games] Deactivated ${toDeactivateDecided.length} future game(s) for ${normalizedLeague}: their series is already decided, so they will never be played (grace period skipped).`,
             );
           }
 
@@ -626,12 +603,19 @@ export class GameService {
       }
       if (uniqueGames && uniqueGames.length > 0) {
         // Oldies recovery: only ever add missing games without overwriting an existing match.
-        // A game is considered "already present" (same game) only when its uniqueId matches
-        // AND both the home and the away scores match the stored ones.
+        // A game is considered "already present" (same game) only when its uniqueId matches,
+        // both the home and the away scores match the stored ones AND the stored team records
+        // already match (or are absent) — so seasons fetched before per-game records existed
+        // are backfilled instead of being skipped forever.
         // Otherwise we refresh it with the fresh (more complete) data.
         const existingResults = new Map<
           string,
-          { homeTeamScore?: number; awayTeamScore?: number }
+          {
+            homeTeamScore?: number;
+            awayTeamScore?: number;
+            homeTeamRecord?: string;
+            awayTeamRecord?: string;
+          }
         >();
         if (addMissingOnly) {
           const ids = uniqueGames.map((g) => g?.uniqueId).filter((id) => !!id);
@@ -639,7 +623,14 @@ export class GameService {
             const existing = await this.gameModel
               .find(
                 { uniqueId: { $in: ids } },
-                { uniqueId: 1, homeTeamScore: 1, awayTeamScore: 1, _id: 0 },
+                {
+                  uniqueId: 1,
+                  homeTeamScore: 1,
+                  awayTeamScore: 1,
+                  homeTeamRecord: 1,
+                  awayTeamRecord: 1,
+                  _id: 0,
+                },
               )
               .lean()
               .exec();
@@ -647,6 +638,8 @@ export class GameService {
               existingResults.set(g?.uniqueId, {
                 homeTeamScore: g?.homeTeamScore,
                 awayTeamScore: g?.awayTeamScore,
+                homeTeamRecord: g?.homeTeamRecord,
+                awayTeamRecord: g?.awayTeamRecord,
               });
             }
           }
@@ -674,7 +667,9 @@ export class GameService {
 
           if (addMissingOnly) {
             // Treat as "already present" only ifthe stored game has the same result
-            // (id AND home/away scores). Otherwise we refresh it with the fresh data.
+            // (id AND home/away scores) and already carries the same team records.
+            // The records comparison is what backfills games stored before per-game
+            // records were introduced.
             const stored = game?.uniqueId
               ? existingResults.get(game?.uniqueId)
               : undefined;
@@ -682,7 +677,10 @@ export class GameService {
               stored &&
               (stored.homeTeamScore ?? null) ===
                 (game?.homeTeamScore ?? null) &&
-              (stored.awayTeamScore ?? null) === (game?.awayTeamScore ?? null);
+              (stored.awayTeamScore ?? null) ===
+                (game?.awayTeamScore ?? null) &&
+              (stored.homeTeamRecord ?? '') === (game?.homeTeamRecord ?? '') &&
+              (stored.awayTeamRecord ?? '') === (game?.awayTeamRecord ?? '');
             if (game?.uniqueId && sameResult) {
               skippedExisting++;
               logInsertProgress(idx + 1);
@@ -1797,8 +1795,11 @@ export class GameService {
             }
 
             if ((needsUpdate || score.isFinal) && score.isFinal) {
-              (game as any).homeTeamRecord = score.homeTeamRecord;
-              (game as any).awayTeamRecord = score.awayTeamRecord;
+              // Per-game records are deliberately NOT written here: they would
+              // freeze the tally at the time the score was synced, whereas a
+              // game of the in-progress season must display the most recent
+              // win/loss/draw record (`team.record` fallback). Finished seasons
+              // get their final tally from the schedule fetch instead.
               appliedUpdates.push(game);
             }
           }
@@ -2001,6 +2002,98 @@ export class GameService {
     return updatedGames;
   }
 
+  /**
+   * Schedule lookups below are only a fallback for leagues whose scoreboard
+   * carries no records at all (college hockey): cache them so a game that never
+   * resolves cannot re-fetch a team schedule on every 10-minute score cycle.
+   */
+  private readonly teamRecordCache = new Map<
+    string,
+    { at: number; record: string }
+  >();
+  private static readonly TEAM_RECORD_CACHE_TTL_MS = 30 * 60 * 1000;
+
+  /**
+   * Computes the post-game tally from the current DB tally + this game's
+   * outcome. Scoreboard `records` are a pre-game snapshot (they exclude the
+   * just-finished game), so incrementing locally is the only way to keep
+   * `team.record` up to date on opening night. Returns `''` when the current
+   * tally is unknown.
+   */
+  private _nextRecord(
+    team: any,
+    teamScore: number,
+    oppScore: number,
+    league = '',
+    period?: number,
+  ): string {
+    if (!team) return '';
+    let wins = Number(team.wins);
+    let losses = Number(team.losses);
+    let third = Number(team.otLosses ?? team.ties);
+    const hasNumbers =
+      Number.isFinite(wins) && Number.isFinite(losses) && Number.isFinite(third);
+    if (!hasNumbers) {
+      const parsed = String(team.record || '')
+        .split('-')
+        .map((part) => Number.parseInt(part, 10));
+      if (parsed.length < 2 || parsed.slice(0, 3).some((n) => !Number.isFinite(n))) {
+        return '';
+      }
+      wins = parsed[0];
+      losses = parsed[1];
+      third = Number.isFinite(parsed[2]) ? parsed[2] : 0;
+    }
+
+    if (teamScore > oppScore) {
+      wins += 1;
+    } else if (teamScore < oppScore) {
+      const isOtLoss =
+        (league === 'NHL' || league === 'PWHL') &&
+        typeof period === 'number' &&
+        period > 3;
+      if (isOtLoss) {
+        third += 1;
+      } else {
+        losses += 1;
+      }
+    } else {
+      // Draw (soccer / college hockey ties).
+      third += 1;
+    }
+
+    return `${wins}-${losses}-${third}`;
+  }
+
+  /**
+   * Resolves a team's current tally from its ESPN season schedule — the only
+   * source for leagues whose scoreboard, summary and team detail all omit it.
+   * Returns `''` when it cannot be resolved.
+   */
+  private async _resolveTeamRecord(league: string, teamUniqueId: string) {
+    const key = `${league}:${teamUniqueId}`;
+    const cached = this.teamRecordCache.get(key);
+    if (cached && Date.now() - cached.at < GameService.TEAM_RECORD_CACHE_TTL_MS) {
+      return cached.record;
+    }
+
+    let record = '';
+    try {
+      const team = await this.teamService.findOne(teamUniqueId);
+      if (team?.id) {
+        record = await getTeamRecordFromSchedule(league, team.id);
+      }
+    } catch (error) {
+      console.error(
+        `[syncGameWithScore] Could not resolve the schedule record for ${teamUniqueId}:`,
+        (error as any)?.message || error,
+      );
+    }
+
+    this.teamRecordCache.set(key, { at: Date.now(), record });
+    return record;
+  }
+
   private async syncGameWithScore(
     matchedScore: any,
     game: mongoose.Document<unknown, object, Game> &
@@ -2008,6 +2101,7 @@ export class GameService {
       Required<{ _id: unknown }> & { __v: number },
   ) {
     const resolvedStatus = this._resolveStatus(matchedScore);
+    const previousStatus = (game.gameStatus as string) || '';
 
     // Only update scores and game time information if the game is in progress or finished.
     // This avoids filling the database with temporary scores (e.g., 0-0) for games that are still "scheduled".
@@ -2043,18 +2137,62 @@ export class GameService {
     game.seriesSummary = matchedScore.seriesSummary;
     game.seriesStatus = matchedScore.seriesStatus;
 
-    // Update team records
-    if (matchedScore.homeTeamRecord && game.homeTeamId) {
-      await this.teamService.updateRecord(
-        game.homeTeamId,
-        matchedScore.homeTeamRecord,
-      );
+    // Update team records.
+    // Scoreboard `records` are a *pre-game* snapshot: the just-finished game is
+    // not included in them yet. Deriving `team.record` from them would therefore
+    // freeze e.g. `0-0-0` forever on the opening game. Instead, when the game is
+    // final and its score is known, the post-game tally is computed from the
+    // current DB tally + this game's outcome — exactly once per game (guarded by
+    // the previous `gameStatus`, since this sync runs on every score cycle).
+    // Leagues such as college hockey expose no `records` on the scoreboard nor
+    // on the summary (`records: []`) and no `record.items` on the team detail,
+    // so the team's season schedule is used there as a fallback source.
+    const isFinalGame =
+      resolvedStatus === 'FINISHED' || matchedScore.isFinal === true;
+    const wasAlreadyFinal = previousStatus === 'FINISHED';
+    let homeTeamRecord = matchedScore.homeTeamRecord;
+    let awayTeamRecord = matchedScore.awayTeamRecord;
+
+    if (isFinalGame && !wasAlreadyFinal) {
+      const homeScore = game.homeTeamScore;
+      const awayScore = game.awayTeamScore;
+      const scoresKnown =
+        typeof homeScore === 'number' && typeof awayScore === 'number';
+
+      if (scoresKnown && game.homeTeamId && game.awayTeamId) {
+        const [homeTeam, awayTeam] = await Promise.all([
+          this.teamService.findOne(game.homeTeamId),
+          this.teamService.findOne(game.awayTeamId),
+        ]);
+        homeTeamRecord =
+          this._nextRecord(homeTeam, homeScore, awayScore, game.league, game.gamePeriod) ||
+          homeTeamRecord;
+        awayTeamRecord =
+          this._nextRecord(awayTeam, awayScore, homeScore, game.league, game.gamePeriod) ||
+          awayTeamRecord;
+      }
+
+      if ((!homeTeamRecord || !awayTeamRecord) && game.homeTeamId) {
+        if (!homeTeamRecord) {
+          homeTeamRecord =
+            (await this._resolveTeamRecord(game.league, game.homeTeamId)) ||
+            homeTeamRecord;
+        }
+        if (!awayTeamRecord && game.awayTeamId) {
+          awayTeamRecord =
+            (await this._resolveTeamRecord(game.league, game.awayTeamId)) ||
+            awayTeamRecord;
+        }
+      }
     }
-    if (matchedScore.awayTeamRecord && game.awayTeamId) {
-      await this.teamService.updateRecord(
-        game.awayTeamId,
-        matchedScore.awayTeamRecord,
-      );
+
+    if (homeTeamRecord && game.homeTeamId) {
+      game.homeTeamRecord = homeTeamRecord;
+      await this.teamService.updateRecord(game.homeTeamId, homeTeamRecord);
+    }
+    if (awayTeamRecord && game.awayTeamId) {
+      game.awayTeamRecord = awayTeamRecord;
+      await this.teamService.updateRecord(game.awayTeamId, awayTeamRecord);
     }
 
     // Propagate series info to future games in the same series

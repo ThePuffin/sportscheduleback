@@ -1,4 +1,7 @@
-export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: string }> = {
+export const ColorsTeamEnum: Record<
+  string,
+  { color: string; backgroundColor: string }
+> = {
   'MLB-ARI': {
     color: '#aa182c',
     backgroundColor: '#000000',

@@ -2,6 +2,66 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: per-game team records — final tally of a past season, most recent tally of the current one
+
+### Goal
+
+Opening a game of a **past season** must show the win/loss/draw tally of that season (option chosen:
+the **final, end-of-season** tally, identical on every game of that season), while a game of the
+**current season** must show the **most recent** tally. ESPN leagues only.
+
+### Problem
+
+- The team-schedule path of `getEachTeamSchedule()` (the one used by NHL, NBA, MLB, NFL, the 6
+  college leagues …) returned **no** `homeTeamRecord` / `awayTeamRecord` at all, so past seasons had
+  no record and `_enrichGameWithTeamData()` fell back to `team.record` — today's tally, which is
+  wrong for an old season.
+- The scoreboard/summary paths read `competitor.records.find(r => r.type === 'total')`, but the NHL
+  scoreboard and the NHL season schedule only expose `type: 'ytd'` (and the season schedule puts the
+  data under the singular `competitor.record`). Those lookups always returned `''` — a latent bug for
+  every `ytd`-shaped league.
+- `fetchGamesScores()` froze `game.homeTeamRecord` at the time the score was synced, which is the
+  opposite of "most recent" for the current season.
+
+### Solution
+
+- **`backend/src/utils/fetchData/espnAllData.ts`**
+  - New `extractCompetitorRecord(competitor)` — reads both ESPN shapes (`record` / `records`,
+    `displayValue` / `summary`), picks `total` → `ytd` → first entry, strips the `", 109 PTS"`
+    hockey suffix. Now used by the 3 former `records.find(… 'total' …)` sites **and** by the
+    team-schedule mapping, which gained `homeTeamRecord` / `awayTeamRecord` (cumulative per game).
+  - New `applySeasonFinalRecords(allGames)`, called at the end of `getTeamsSchedule()` so it sees the
+    whole league batch (a single team's fetch does not contain its opponents' last game, hence the
+    league-level pass):
+    - every fetched game already started (season over) → each team's **final** tally, taken from its
+      most complete record (max games played, so pre-season tallies lose), copied onto all its games;
+    - any game still upcoming (season in progress) → records **cleared**, so readers fall back to
+      `team.record`, always kept up to date by `syncGameWithScore()` → `updateRecord()`.
+- **`backend/src/games/games.service.ts`**
+  - The `addMissingOnly` (oldies) comparison now also checks `homeTeamRecord` / `awayTeamRecord`, and
+    the `existingResults` projection fetches them. Games stored before this change are therefore
+    **backfilled** on the next oldies run instead of being skipped forever, and the check converges
+    (both sides equal afterwards).
+  - `fetchGamesScores()` no longer writes the per-game record (see above).
+- **PWHL is untouched** (`hockeyData.ts` was not modified), as requested.
+
+### Files changed
+
+- `backend/src/utils/fetchData/espnAllData.ts` — `extractCompetitorRecord()`, `recordGamesPlayed()`, `applySeasonFinalRecords()`, records on the team-schedule mapping, 3 unified lookups.
+- `backend/src/games/games.service.ts` — records included in the oldies `existingResults` projection + `sameResult`, record freeze removed from `fetchGamesScores()`.
+- `backend/src/utils/fetchData/espnAllData.spec.ts` (new) + `backend/src/games/tests/games.service.spec.ts` — unit tests.
+- `backend/docs/utils/fetchData/espnAllData.ts.md`, `backend/docs/games/games.service.ts.md` — documentation.
+
+### Result
+
+- `npx jest` → 8/8 suites, 191/191 tests pass.
+- Live checks against the real ESPN API:
+  - NHL `season=2025`: 3012 games, 0 empty record, **0 team with more than one value**; `NHL-BOS 33-39-10`, `NHL-WSH 51-22-9` (the true 2024-25 final tallies).
+  - NHL current season: 2646 games, all records cleared → `team.record` (most recent).
+  - MLS `season=2025` (scoreboard path): 1088 games, 0 team with more than one value (the only 2 empty records are the MLS All-Star game, `MLS-MLS` vs `MLS-LMX`, which has no season tally).
+  - MLS current season: 212/212 records cleared.
+  - `getESPNScores('NHL', '2025-04-01')` now returns `"30-36-9"` instead of `''` (the `ytd` bug), same for `getESPNGameScore()`.
+
 ## Fix: capacity purge threshold raised to 96% — tests and docs aligned
 
 ### Problem
