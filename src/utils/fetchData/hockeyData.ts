@@ -13,24 +13,95 @@ import { capitalize, getLuminance } from '../utils';
 const leagueName = League.NHL;
 const pwhlAPI = 'https://lscluster.hockeytech.com/feed/';
 
+/**
+ * A season entry of the HockeyTech feed.
+ *
+ * Pre-season, **regular season** and **playoffs each carry their own
+ * `season_id`**, and several of them overlap the same calendar year: 2025 is
+ * covered by the 2024-25 regular season, the 2025 playoffs, the 2025-26
+ * pre-season *and* the 2025-26 regular season. A season therefore has to be
+ * resolved from the exact date — picking every season that overlaps a year and
+ * merging their schedules would tally several seasons into one record.
+ */
+type PWHLSeason = {
+  season_id: string;
+  season_name: string;
+  start_date: string;
+  end_date: string;
+};
+
 export class HockeyData {
   /**
    * Fetch the list of PWHL seasons (by default ordered from most recent to oldest).
    */
-  private async getPWHLSeasons(): Promise<
-    {
-      season_id: string;
-      season_name: string;
-      start_date: string;
-      end_date: string;
-    }[]
-  > {
+  private async getPWHLSeasons(): Promise<PWHLSeason[]> {
     const response = await fetch(
       `${pwhlAPI}index.php?feed=modulekit&view=seasons&key=446521baf8c38984&client_code=pwhl&fmt=json`,
     );
     const json = await response.json();
     const seasons = json?.SiteKit?.Seasons;
     return Array.isArray(seasons) ? seasons : [];
+  }
+
+  /**
+   * Fetch one season's schedule. Without `seasonId` the feed silently answers
+   * with its **default** season (currently the 2026-27 pre-season), which is
+   * why the season must always be resolved explicitly when reading history.
+   */
+  private async getPWHLSchedule(seasonId?: string): Promise<PWHLGameAPI[]> {
+    const response = await fetch(
+      `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl${
+        seasonId ? `&season_id=${seasonId}` : ''
+      }`,
+    );
+    const json = await response.json();
+    const games = json?.SiteKit?.Schedule;
+    return Array.isArray(games) ? games : [];
+  }
+
+  /**
+   * Resolve, for one exact date, the season holding its games and the season
+   * the record must be replayed from.
+   *
+   * - `gameSeason` — the entry whose date span covers the date (regular season
+   *   first, then playoffs, then pre-season when two entries overlap).
+   * - `recordSeason` — the regular season a team's W-L-OTL comes from: the one
+   *   covering the date, or, for a playoff date, the most recent regular season
+   *   that ended before it. Pre-season dates therefore show the last completed
+   *   tally rather than the upcoming season's (still empty) one.
+   */
+  private async getPWHLSeasonsForDate(
+    date: string,
+  ): Promise<{ gameSeason?: PWHLSeason; recordSeason?: PWHLSeason }> {
+    try {
+      const seasons = await this.getPWHLSeasons();
+      if (!Array.isArray(seasons) || seasons.length === 0) return {};
+
+      const isRegular = (s: PWHLSeason) =>
+        /regular season/i.test(s.season_name);
+      const covers = (s: PWHLSeason) =>
+        s.start_date <= date && s.end_date >= date;
+      const rank = (s: PWHLSeason) =>
+        isRegular(s) ? 0 : /playoff/i.test(s.season_name) ? 1 : 2;
+
+      const covering = seasons.filter(covers);
+      const gameSeason = [...covering].sort((a, b) => rank(a) - rank(b))[0];
+
+      const regulars = seasons.filter(isRegular);
+      const recordSeason =
+        regulars.find(covers) ??
+        regulars
+          .filter((s) => s.end_date <= date)
+          .sort((a, b) => b.end_date.localeCompare(a.end_date))[0];
+
+      return { gameSeason, recordSeason };
+    } catch (error) {
+      console.error(
+        'Error resolving PWHL seasons for date:',
+        error instanceof Error ? error.message : String(error),
+      );
+      return {};
+    }
   }
 
   /**
@@ -470,6 +541,9 @@ export class HockeyData {
     if (!games || games.length === 0) {
       return [];
     }
+    const isActive = true;
+    // Built once, not per game: the filters below compare against "now".
+    const now = new Date();
     const gamesData: GameFormatted[] = games
       .map((game: PWHLGameAPI) => {
         const {
@@ -493,8 +567,6 @@ export class HockeyData {
             game.game_status?.toUpperCase().startsWith('FINAL'),
         );
         const status = isFinished ? 'FINISHED' : null;
-        const now = new Date();
-        const isActive = true;
 
         if (season) {
           const gameYear = new Date(GameDateISO8601).getFullYear();
@@ -565,6 +637,9 @@ export class HockeyData {
       season,
     );
 
+    const now = new Date();
+    const isActive = true;
+
     let gamesData: GameFormatted[] = games.map((game: NHLGameAPI) => {
       const {
         awayTeam,
@@ -575,9 +650,6 @@ export class HockeyData {
         startTimeUTC,
         gameCenterLink,
       } = game;
-
-      const now = new Date();
-      const isActive = true;
 
       if (!season) {
         if (new Date(startTimeUTC) < now) return;
@@ -635,10 +707,18 @@ export class HockeyData {
    *   `team.record` (most recent tally).
    *
    * HockeyTech exposes no per-game cumulative record, hence the local replay:
-   * finished regular-season games are walked in chronological order and each
-   * team's W/L/OTL is incremented (OT/SO loss when `overtime`/`shootout` is
-   * set or `game_status` mentions OT/SO, regulation loss otherwise). Playoff
-   * games are skipped, mirroring the standings view.
+   * finished games are walked in chronological order and each team's W/L/OTL is
+   * incremented (OT/SO loss when `overtime`/`shootout` is set or `game_status`
+   * mentions OT/SO, regulation loss otherwise).
+   *
+   * Callers must pass a **regular season** schedule: HockeyTech gives the
+   * playoffs their own `season_id`, and a W-L-OTL tally is a regular-season
+   * figure (that is what the standings show). `getPWHLScores()` therefore picks
+   * the regular season covering the date — or, on a playoff date, the regular
+   * season that ended just before it. Note that `game_type` is an empty string
+   * in **both** feeds today, so the `isPlayoff` guard below never actually
+   * filters anything; the season choice, not that guard, is what keeps
+   * playoff games out of the tally.
    */
   private applyPWHLHistoricalRecords(allGames: PWHLGameAPI[]): {
     finals: Map<string, string>;
@@ -703,61 +783,82 @@ export class HockeyData {
     return { finals, seasonOver };
   }
 
+  /**
+   * Scores of one day, with each team's record for that day.
+   *
+   * The season is resolved from the **exact date**. Without it the feed
+   * answers with its default season (the live pre-season), so the requested day
+   * is simply absent from the payload: the `date_played` filter returns nothing
+   * and `applyPWHLHistoricalRecords` finds no finished game, which left both
+   * `seasonOver` false and `finals` empty — hence no record on any past date.
+   *
+   * Records come from the **regular season alone**: pre-season, playoffs and
+   * regular season have distinct `season_id`s and several of them overlap a
+   * single calendar year, so merging every season that overlaps the year would
+   * total several seasons into one (plausible-looking but wrong) tally.
+   */
   getPWHLScores = async (date: string) => {
     try {
-      const fetchedGames = await fetch(
-        `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
-      );
-      const response = await fetchedGames.json();
-      const allGames: PWHLGameAPI[] = response.SiteKit.Schedule;
-      const { finals, seasonOver } = this.applyPWHLHistoricalRecords(allGames);
+      const { gameSeason, recordSeason } =
+        await this.getPWHLSeasonsForDate(date);
 
-      return allGames
-        .filter((game) => game.date_played === date)
-        .map((game) => {
-          let gameStatus = game.game_status;
-          if (
-            gameStatus === 'In Progress' &&
-            (game as any).game_clock &&
-            (game as any).period
-          ) {
-            gameStatus = `${(game as any).game_clock} - ${(game as any).period}`;
-          }
-          const gameKey = (code: string) => `${String(game.id)}::${code}`;
-          // Same rule as the ESPN leagues (`applySeasonFinalRecords`): a
-          // finished season shows that year's final tally on every game;
-          // a season in progress leaves records empty so readers fall
-          // back to the live `team.record` (most recent tally, kept via
-          // `syncGameWithScore()` -> `_nextRecord()`).
-          const homeRecord = seasonOver
-            ? finals.get(game.home_team_code) || ''
-            : '';
-          const awayRecord = seasonOver
-            ? finals.get(game.visiting_team_code) || ''
-            : '';
-          void gameKey;
-          return {
-            homeTeamScore: Number(game.home_goal_count),
-            awayTeamScore: Number(game.visiting_goal_count),
-            homeTeamShort: game.home_team_code,
-            awayTeamShort: game.visiting_team_code,
-            homeTeamId: `${League.PWHL}-${game.home_team_code}`,
-            awayTeamId: `${League.PWHL}-${game.visiting_team_code}`,
-            isFinal: game.final === '1',
-            homeTeamRecord: homeRecord,
-            awayTeamRecord: awayRecord,
-            status: game.game_status,
-            gameStatus: gameStatus,
-            gameClock: (game as any).game_clock,
-            gamePeriod: (game as any).period,
-            startTimeUTC: new Date(game.GameDateISO8601).toISOString(),
-            uniqueId: game.id,
-            gameDate: date,
-            league: League.PWHL,
-            seriesSummary: game?.game_number ? `Game ${game.game_number}` : '',
-            seriesStatus: game?.game_number ? `Game ${game.game_number}` : '',
-          };
-        });
+      // Games of the requested day, from the season that actually covers it.
+      // When no season covers the date (or the seasons feed failed) this falls
+      // back to the default season rather than losing the whole day.
+      const dayGames = await this.getPWHLSchedule(gameSeason?.season_id);
+      const gamesOfDay = dayGames.filter((game) => game.date_played === date);
+
+      // The tally is replayed from the regular season — the same schedule when
+      // the day already belongs to it, one extra request otherwise.
+      const recordGames =
+        recordSeason && recordSeason.season_id !== gameSeason?.season_id
+          ? await this.getPWHLSchedule(recordSeason.season_id)
+          : dayGames;
+      const { finals, seasonOver } =
+        this.applyPWHLHistoricalRecords(recordGames);
+
+      return gamesOfDay.map((game) => {
+        let gameStatus = game.game_status;
+        if (
+          gameStatus === 'In Progress' &&
+          (game as any).game_clock &&
+          (game as any).period
+        ) {
+          gameStatus = `${(game as any).game_clock} - ${(game as any).period}`;
+        }
+        // Same rule as the ESPN leagues (`applySeasonFinalRecords`): a
+        // finished season shows that year's final tally on every game;
+        // a season in progress leaves records empty so readers fall
+        // back to the live `team.record` (most recent tally, kept via
+        // `syncGameWithScore()` -> `_nextRecord()`).
+        const homeRecord = seasonOver
+          ? finals.get(game.home_team_code) || ''
+          : '';
+        const awayRecord = seasonOver
+          ? finals.get(game.visiting_team_code) || ''
+          : '';
+        return {
+          homeTeamScore: Number(game.home_goal_count),
+          awayTeamScore: Number(game.visiting_goal_count),
+          homeTeamShort: game.home_team_code,
+          awayTeamShort: game.visiting_team_code,
+          homeTeamId: `${League.PWHL}-${game.home_team_code}`,
+          awayTeamId: `${League.PWHL}-${game.visiting_team_code}`,
+          isFinal: game.final === '1',
+          homeTeamRecord: homeRecord,
+          awayTeamRecord: awayRecord,
+          status: game.game_status,
+          gameStatus: gameStatus,
+          gameClock: (game as any).game_clock,
+          gamePeriod: (game as any).period,
+          startTimeUTC: new Date(game.GameDateISO8601).toISOString(),
+          uniqueId: game.id,
+          gameDate: date,
+          league: League.PWHL,
+          seriesSummary: game?.game_number ? `Game ${game.game_number}` : '',
+          seriesStatus: game?.game_number ? `Game ${game.game_number}` : '',
+        };
+      });
     } catch (error) {
       console.error('Error fetching PWHL scores:', error);
       return [];

@@ -159,3 +159,168 @@ describe('HockeyData.getHockeySchedule — PWHL team records', () => {
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 });
+
+/**
+ * `getPWHLScores()` regression: the schedule used to be requested **without**
+ * `season_id`, and HockeyTech then answers with its default season (the live
+ * pre-season). A past date was simply absent from the payload, so the day
+ * filter returned nothing and the record replay produced neither `finals` nor
+ * `seasonOver` — no record on any past date.
+ *
+ * It also had to pick the season from the **exact date**: pre-season, regular
+ * season and playoffs each have their own `season_id`, and several of them
+ * overlap a single calendar year, so merging every season that overlaps the
+ * year would total several seasons into one record.
+ */
+describe('HockeyData.getPWHLScores — season resolution', () => {
+  const originalFetch = global.fetch;
+
+  const SEASONS = [
+    {
+      season_id: '11',
+      season_name: '2026-27 Regular Season',
+      start_date: '2026-12-04',
+      end_date: '2027-04-19',
+    },
+    {
+      season_id: '10',
+      season_name: '2026-27 Pre-Season',
+      start_date: '2026-10-01',
+      end_date: '2026-11-30',
+    },
+    {
+      season_id: '9',
+      season_name: '2026 Playoffs',
+      start_date: '2026-04-28',
+      end_date: '2026-05-28',
+    },
+    {
+      season_id: '8',
+      season_name: '2025-26 Regular Season',
+      start_date: '2025-11-21',
+      end_date: '2026-04-27',
+    },
+    {
+      season_id: '6',
+      season_name: '2025 Playoffs',
+      start_date: '2025-05-06',
+      end_date: '2025-06-03',
+    },
+    {
+      season_id: '5',
+      season_name: '2024-25 Regular Season',
+      start_date: '2024-11-25',
+      end_date: '2025-05-05',
+    },
+  ];
+
+  const game = (over: Record<string, unknown> = {}) => ({
+    id: 'g1',
+    date_played: '2025-02-15',
+    GameDateISO8601: '2025-02-15T00:00:00',
+    home_team_code: 'MTL',
+    visiting_team_code: 'NY',
+    home_goal_count: '6',
+    visiting_goal_count: '2',
+    final: '1',
+    status: '4',
+    game_status: 'FINAL',
+    game_type: '',
+    overtime: '0',
+    shootout: '0',
+    ...over,
+  });
+
+  let hockeyData: HockeyData;
+
+  const mockFeed = (schedules: Record<string, any[]>) => {
+    global.fetch = jest.fn(async (url: string) => {
+      const isSeasons = String(url).includes('view=seasons');
+      const seasonId = new URL(String(url)).searchParams.get('season_id');
+      const body = isSeasons
+        ? { SiteKit: { Seasons: SEASONS } }
+        : { SiteKit: { Schedule: schedules[seasonId ?? 'default'] ?? [] } };
+      return { json: async () => body } as any;
+    }) as any;
+  };
+
+  const requestedSeasonIds = () =>
+    (global.fetch as jest.Mock).mock.calls
+      .map(([url]) => String(url))
+      .filter((u) => u.includes('view=schedule'))
+      .map((u) => new URL(u).searchParams.get('season_id'));
+
+  beforeEach(() => {
+    hockeyData = new HockeyData();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('requests the regular season covering a past date, not the default feed', async () => {
+    mockFeed({ '5': [game()] });
+
+    const scores = await hockeyData.getPWHLScores('2025-02-15');
+
+    expect(requestedSeasonIds()).toContain('5');
+    expect(requestedSeasonIds()).not.toContain(null);
+    expect(scores).toHaveLength(1);
+  });
+
+  it('computes the record from the regular season, not from the playoffs feed', async () => {
+    // A playoff day: games live in season 6, the W-L-OTL in season 5.
+    mockFeed({
+      '6': [
+        game({
+          id: 'po1',
+          date_played: '2025-05-07',
+          GameDateISO8601: '2025-05-07T00:00:00',
+          home_team_code: 'TOR',
+          visiting_team_code: 'MIN',
+        }),
+      ],
+      // Regular season replay: TOR beat MIN, so TOR = 1-0-0 and MIN = 0-1-0.
+      '5': [
+        game({
+          id: 'rs1',
+          home_team_code: 'TOR',
+          visiting_team_code: 'MIN',
+          home_goal_count: '6',
+          visiting_goal_count: '2',
+        }),
+      ],
+    });
+
+    const scores = await hockeyData.getPWHLScores('2025-05-07');
+
+    // Both feeds are read: the day from the playoffs, the tally from the
+    // regular season that ended just before it.
+    expect(requestedSeasonIds()).toEqual(expect.arrayContaining(['6', '5']));
+    expect(scores).toHaveLength(1);
+    expect(scores[0].homeTeamRecord).toBe('1-0-0');
+    expect(scores[0].awayTeamRecord).toBe('0-1-0');
+  });
+
+  it('reads a single schedule when the day already belongs to the record season', async () => {
+    mockFeed({ '8': [game({ date_played: '2026-04-11' })] });
+
+    await hockeyData.getPWHLScores('2026-04-11');
+
+    expect(requestedSeasonIds()).toEqual(['8']);
+  });
+
+  it('falls back to the default feed when no season covers the date', async () => {
+    mockFeed({ default: [] });
+
+    await hockeyData.getPWHLScores('1999-01-05');
+
+    expect(requestedSeasonIds()).toEqual([null]);
+  });
+
+  it('returns an empty list when the date has no games', async () => {
+    mockFeed({ '5': [game()] });
+
+    await expect(hockeyData.getPWHLScores('2025-02-16')).resolves.toEqual([]);
+  });
+});

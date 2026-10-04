@@ -2,6 +2,70 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: no record on any past PWHL game (season never requested)
+
+### Problem
+
+`getPWHLScores(date)` requested the HockeyTech schedule **without `season_id`**:
+
+```ts
+fetch(`${pwhlAPI}?feed=modulekit&view=schedule&key=…&client_code=pwhl`);
+```
+
+The feed then silently answers with its **default** season — measured live, `season_id=10`
+(2026-27 Pre-Season, 12 games, all dated 2026-11-22 → 2026-11-30). Two consequences, one after the
+other:
+
+1. the requested past day is **absent from the payload**, so `filter(date_played === date)` returned
+   an empty list;
+2. `applyPWHLHistoricalRecords()` replayed 12 **unplayed, future** games, so `seasonOver` was `false`
+   and `finals` empty — hence `homeTeamRecord`/`awayTeamRecord` always `''`.
+
+So no PWHL game from a past date ever showed a record.
+
+### Why the obvious fix is not enough
+
+Resolving the year through `getPWHLSeasonIds(year)` — what `fetchGamesData()` does — returns **four**
+seasons for 2025: `2024-25 Regular Season`, `2025 Playoffs`, `2025-26 Preseason` and
+`2025-26 Regular Season`. Merging their schedules into one `allGames` feeds **four seasons** to the
+record replay, totalling them into a single plausible-looking but wrong record. It would also flip
+`seasonOver` back to `false` for 2026 (the 2026-27 season starts in December).
+
+### Changes
+
+- **`backend/src/utils/fetchData/hockeyData.ts`**
+  - new `getPWHLSchedule(seasonId?)` helper (the schedule fetch, now season-explicit);
+  - new `getPWHLSeasonsForDate(date)` returning **`gameSeason`** (the entry whose span covers the
+    date — regular season first, then playoffs, then pre-season) and **`recordSeason`** (the regular
+    season a W-L-OTL comes from: the one covering the date, or, on a playoff date, the most recent
+    regular season that ended before it);
+  - `getPWHLScores()` reads the day's games from `gameSeason` and replays the record from
+    `recordSeason` — one request when both are the same season, two otherwise. When no season covers
+    the date (or the seasons feed fails) it falls back to the default feed rather than losing the day.
+  - `PWHLSeason` is now a named type instead of an inline shape.
+- **`backend/src/utils/fetchData/hockeyData.spec.ts`** — 5 new tests: the regular season covering a
+  past date is requested, a playoff day reads games from the playoffs feed but the tally from the
+  regular season, a single request when the day already belongs to the record season, the fallback to
+  the default feed, and an empty result for a day with no game.
+- **`backend/docs/utils/fetchData/hockeyData.ts.md`** — season-resolution rules and the record replay
+  rewritten.
+
+### Side findings, not fixed here
+
+- `applyPWHLHistoricalRecords()` skips playoff games via a `game_type` guard, but `game_type` is an
+  **empty string in both** the regular-season and the playoffs feeds, so that guard never fires. The
+  tally stays correct because the replay is always fed a regular-season schedule; the comment and the
+  documentation now say so instead of claiming playoffs are filtered out.
+- `selectedTeam` / `show` are set to `home === id` in all three fetchers (`espnAllData`,
+  `hockeyData` ×2). Taken alone that reads like a bug — the flags are `false` when the queried team
+  plays away — but since every match is stored **twice**, exactly one of the two documents has the
+  home team as its `teamSelectedId`, so `filterGames({ selectedTeam: true })` is in practice a
+  de-duplication filter that keeps one row per match. Changing it to "home **or** away" would make the
+  flag true on both copies and return each match twice. Left untouched.
+
+Verified live: `getPWHLScores('2025-02-15')` → 1 match, `MTL 19-8-3` vs `NY 12-13-5`;
+`getPWHLScores('2025-05-07')` (playoffs) → `TOR 15-9-6` vs `MIN 15-11-4`.
+
 ## Fixed: a match was counted twice in the form dots (double-stored documents)
 
 ### Problem

@@ -6,14 +6,42 @@ Provides NHL and PWHL team, schedule, standings, and score data adapters.
 
 ## PWHL Historical Seasons
 
-Historical requests resolve a calendar year to all overlapping HockeyTech `season_id` values,
-then filter returned games to the requested calendar year. This supports regular seasons and
-playoffs while avoiding the provider's default preseason response.
+HockeyTech gives **pre-season, regular season and playoffs their own `season_id`**, and several of
+them overlap the same calendar year — 2025 is covered by the 2024-25 regular season, the 2025
+playoffs, the 2025-26 pre-season _and_ the 2025-26 regular season. Two different resolution rules
+follow from that.
+
+- **Whole-season history** (`fetchGamesData`, oldies): a calendar year is resolved to **all**
+  overlapping `season_id`s and their schedules are merged, then games are filtered to the requested
+  year. Merging is safe here — every game belongs to exactly one feed, so nothing is double counted.
+- **One day's scores** (`getPWHLScores`): the season is resolved from the **exact date** instead.
+  Merging every season overlapping the year would feed several seasons to the record replay and total
+  them into one tally. `getPWHLSeasonsForDate()` returns two entries:
+  - `gameSeason` — the entry whose span covers the date (regular season first, then playoffs, then
+    pre-season when two entries overlap). Its schedule provides the day's games.
+  - `recordSeason` — the **regular season** a W-L-OTL comes from: the one covering the date, or, on a
+    playoff date, the most recent regular season that ended before it.
+
+Without an explicit `season_id` the feed silently answers with its **default** season (currently the
+2026-27 pre-season, 12 games all in the future), which is why a past date used to yield neither games
+nor records.
 
 ## Score Mapping
 
 Completed games use HockeyTech's official final markers (`final`, status `4`, or a `Final`
 status string). Scores are preserved even when one team has zero goals.
+
+## Records on a Game (`homeTeamRecord` / `awayTeamRecord`)
+
+HockeyTech exposes no per-game cumulative record, so `applyPWHLHistoricalRecords()` replays a season:
+finished games are walked chronologically and each team's W/L/OTL is incremented (OT/SO loss when
+`overtime`/`shootout` is set or the status mentions OT/SO). Following the ESPN leagues, a **finished**
+season shows its final tally on every one of its games, while a season still in progress leaves the
+record empty so the reader falls back to the live `team.record`.
+
+Playoff games stay out of the tally because the replay is always fed a **regular season** schedule —
+**not** because of the `isPlayoff` guard, which never fires: `game_type` is an empty string in both
+the regular-season and the playoffs feeds today.
 
 ## Team Records (`teamRecords`)
 
