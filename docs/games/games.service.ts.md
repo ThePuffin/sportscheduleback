@@ -91,6 +91,36 @@ games that have a complete home **and** away team. It logs added / skipped count
   - If the scores match but the **team records** differ (typically a game stored before per-game records existed, i.e. `undefined` vs the fetched `"W-L-T"`) → **refreshed**, which backfills the record on the next oldies run. The comparison converges: once both sides carry the same value the game is skipped again.
   - Only complete, missing games are created.
 
+**Records backfill at the end of an oldies run (`_backfillSeasonRecords()`):**
+
+After the insert loop, the oldies path sweeps the stored season once more and writes the season
+tally onto every game whose `homeTeamRecord` / `awayTeamRecord` is still **empty**. It exists because
+the insert loop cannot reach every case on its own: a game stored before the per-game records existed
+whose freshly fetched season carries no `record` for that team is *skipped* by the comparison above
+(both sides empty), so it would keep an empty record forever.
+
+- The tally per team is read from the fetched games, which `applySeasonFinalRecords()` has already
+  normalized to the season's final value. Only tallies **verified as complete** by
+  `getSeasonFinals()` (`espnAllData.ts`) are restored: a truncated fetch yields intermediate numbers,
+  and writing them would freeze a wrong record on the stored games. Such a team is left untouched for
+  a later run. This filter is **not** redundant with `applySeasonFinalRecords()` — that pass
+  deliberately leaves a truncated team's games holding their own cumulative value, so rebuilding the
+  tally without the filter would pick an arbitrary intermediate number. No truncation warning is
+  logged here: `applySeasonFinalRecords()` already reported it for the same batch.
+- Only games whose stored record is empty are written, so the pass can **only fill gaps, never
+  destroy data** — an already-stored record is never overwritten.
+- The sweep is restricted to the `uniqueId`s of the current fetch, so a concurrent refresh of the
+  current season is never touched.
+- Failures are caught and logged (`[Oldies] Could not backfill records for <LEAGUE>:`) and never
+  abort the run. The number of updated games is appended to the `[Oldies]` summary line as
+  `records backfilled <n>`.
+
+**Record protection in `create()`:** a fetched `homeTeamRecord` / `awayTeamRecord` that is empty
+(`''`, `null` or `undefined`) never overwrites a stored one — the same guard already applied to the
+scores and to `gameStatus` / `gameClock` / `gamePeriod`. This matters on the oldies path, where a game
+refreshed because its **scores** changed would otherwise have its correct records wiped by a season
+for which ESPN returns no `record`.
+
 **Score stripping for future games (both flows):**
 
 Before `create(game)` is called, scores are nullified for any game whose `startTimeUTC` is in the future. The ESPN/PWHL APIs may return scores for games that haven't started yet; without this guard, scores would be written to the DB and then removed by `fixScoreIssue()` on every `fetchGamesScores()` cycle, creating log spam.

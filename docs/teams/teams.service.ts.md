@@ -26,6 +26,14 @@ Fetches teams for a specific league or for all supported leagues, imports them, 
 
 Expose team lookup helpers for the controller and other services.
 
+When `leagues` is given and the query matches **no** team, the missing league is re-fetched
+from the provider — **for that league only** (`getTeams(leagues[0])`), and the result is filtered
+back on `leagues`. The bootstrap call `getTeams()` with no argument stays reserved for the
+no-filter case. Previously the fallback ran unfiltered whatever the caller had asked for, so a
+single-league lookup (e.g. `GameService._fetchUniqueGames('NWSL')`) received the teams of **every**
+league and then processed them all under the one requested `leagueName`, building schedule URLs
+from a league those teams do not belong to.
+
 ### `updateRecord()`
 
 Updates team records such as wins/losses and ties/OT losses.

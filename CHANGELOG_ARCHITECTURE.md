@@ -2,6 +2,151 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: a truncated ESPN fetch froze an intermediate tally as the season record
+
+### Problem
+
+`applySeasonFinalRecords()` decides that a finished season is over, then copies each team's **most
+complete** tally onto **every** game of that season. Nothing checked that the batch actually held the
+whole season, so a **truncated** fetch (ESPN quota exhausted, pagination cut short, or a team fetch
+that silently failed) silently produced a wrong result: the intermediate tally of whatever games were
+retrieved was written on the entire season, and displayed as the season's final record.
+
+The `_backfillSeasonRecords()` pass added for the oldies records inherited the same flaw — it would
+have propagated those partial numbers onto the stored games.
+
+### The invariant used
+
+A team's tally on its last game of a season accounts for **every** game it played that season. So a
+tally implying **more** games than were fetched for that team is proof the batch is incomplete. Games
+are de-duplicated per team by game identity, so the two rows a match produces (one per
+`teamSelectedId`) do not inflate the count.
+
+### Changes
+
+- **`backend/src/utils/fetchData/espnAllData.ts`**
+  - new exported **`getSeasonFinals(games)`** returning `{ verified, truncated }`: `verified` maps a
+    `teamId` to its tally only when that tally accounts for every game held for the team; `truncated`
+    lists the teams whose tally was rejected as incomplete.
+  - `applySeasonFinalRecords()` uses it: a rejected team keeps its own per-game cumulative value instead
+    of being given a number that may not be the season's, and a
+    `[ESPN] Season looks truncated for N team(s) (…)` warning is logged.
+- **`backend/src/games/games.service.ts`**
+  - `_backfillSeasonRecords()` restores **only verified** tallies, so a partial fetch can never freeze a
+    wrong record on the stored games. Truncated teams are left for a later, complete run. This filter is
+    **not** redundant with `applySeasonFinalRecords()`: that pass deliberately leaves a truncated team's
+    games holding their own cumulative value, so rebuilding the tally without the filter would pick an
+    arbitrary intermediate number. No extra truncation warning is logged — `applySeasonFinalRecords()`
+    already reported it for the same batch.
+- **Tests**: `getSeasonFinals` (complete tally verified, oversized tally rejected, a duplicated match
+  not counted twice, most-complete tally kept); `applySeasonFinalRecords` leaves the per-game tally
+  untouched on a truncated season.
+
+### Note on the existing fixtures
+
+Two `applySeasonFinalRecords` tests used unrealistic data (a `33-39-10` tally — 82 games — on a batch of
+two games). Under the new invariant that is a truncated season, so the fixtures were corrected to
+tallies consistent with the number of games held. The behaviour they cover is unchanged.
+
+### Files changed
+
+- `backend/src/utils/fetchData/espnAllData.ts`
+- `backend/src/utils/fetchData/espnAllData.spec.ts`
+- `backend/src/games/games.service.ts`
+- `backend/docs/utils/fetchData/espnAllData.ts.md`, `backend/docs/games/games.service.ts.md`
+- `backend/CHANGELOG_ARCHITECTURE.md` — this entry.
+
+## Added: oldies runs now refresh the per-game records at the end of the season
+
+### Problem
+
+An oldies run (`getLeagueGames({ addMissingOnly: true })`) could leave a past game with an **empty**
+`homeTeamRecord` / `awayTeamRecord` forever, even once the season had been fetched again:
+
+- A game stored **before** the per-game records existed has no record. The `addMissingOnly`
+  comparison skips a game as soon as the stored records **match** the fetched ones. When the freshly
+  fetched season carries no `record` for that team (ESPN omits it on some seasons), *both sides are
+  empty* → the comparison says "identical" → the game is skipped and its record is never filled.
+- Worse, `create()` protected the **scores** against being overwritten by `null`, but **not** the
+  records. A game refreshed because its scores differed (`Object.assign(existingGame, gameDto)`)
+  therefore had its correct stored records overwritten by the empty fetched ones.
+
+### Changes
+
+- **`backend/src/games/games.service.ts`**
+  - new private **`_backfillSeasonRecords(league, fetchedGames)`**: runs at the end of every oldies
+    pass. It reads the season tally per team from the fetched games (already normalized to the final
+    value by `applySeasonFinalRecords()`) and writes it onto every **stored** game of that season
+    whose record is still empty. Restricted to the `uniqueId`s of the current fetch, and it only ever
+    writes an empty slot, so it can fill gaps but never destroy data. Errors are caught and logged.
+  - the `[Oldies] <LEAGUE> (season <year>)` summary line now also reports `records backfilled <n>`.
+  - `create()` now drops an incoming `homeTeamRecord` / `awayTeamRecord` that is empty
+    (`''` / `null` / `undefined`) when a record is already stored — mirroring the existing score guard.
+- **Tests** (`games.service.spec.ts`): records backfilled onto a stored game with empty records; a
+  stored record is never overwritten by the sweep; `create()` keeps the stored record when the fetched
+  one is empty but still applies a score change; `create()` still writes a record when one is fetched.
+
+### Files changed
+
+- `backend/src/games/games.service.ts`
+- `backend/src/games/tests/games.service.spec.ts`
+- `backend/docs/games/games.service.ts.md`
+- `backend/CHANGELOG_ARCHITECTURE.md` — this entry.
+
+## Fixed: `Cannot read properties of undefined (reading 'fetchGames')` on every refresh
+
+### Problem
+
+Production logs were full of this, for unrelated leagues (`NCAAMH-BRWN`, `NCAAWH-QUIN`,
+`NWSL-CHI`, `OLYMPICS-HOCKEY-WOMEN-SUI`, …):
+
+```
+TypeError: Cannot read properties of undefined (reading 'fetchGames')
+    at getEachTeamSchedule (espnAllData.ts:777:49)
+    at <anonymous> (espnAllData.ts:675:38)
+    at Array.map (<anonymous>)
+    at async GameService.getLeagueGames (games.service.ts:583:27)
+```
+
+Two independent defects stacked up:
+
+1. **`leaguesData[leagueName]` was read without a guard** (`const baseUrl =
+   leaguesData[leagueName].fetchGames…`). `leaguesData` is built from `leagueConfigs`, so it has
+   **no entry** for the PWHL (its games come from `hockeyData.ts`) nor for any unrecognized name.
+2. **`TeamService.findAll(leagues)` fell back to an *unfiltered* re-fetch.** When the query for the
+   requested league matched nothing, it called `getTeams()` with **no argument**, which returns the
+   teams of **every** league. Those teams were then processed under the single requested
+   `leagueName` — so an `NWSL` refresh ended up iterating `NCAAMH-BRWN` and building NWSL schedule
+   URLs for a college hockey team. That is why the failing team names had no relation to the league
+   being refreshed, and why the problem showed up on many leagues at once.
+
+The `TypeError` was then swallowed by `getEachTeamSchedule()`'s `catch`, which returned
+`undefined`; both callers (`[...allGames, ...games]` in the aggregate-league recursion, and
+`allGames[leagueID] = …` in `getTeamsSchedule()`) require an array, so the failure surfaced a
+second time as a `TypeError` on `Array.map` — hiding the real cause behind a noisy stack.
+
+### Changes
+
+- **`backend/src/utils/fetchData/espnAllData.ts`**
+  - `getEachTeamSchedule()` now checks `leaguesData[leagueName]` right after the aggregate-league
+    branch and returns `[]` with a `No ESPN schedule config for league "<X>" (team <Y>) — skipped.`
+    log — mirroring the guard `getESPNScores()` already had.
+  - the `catch` returns `[]` instead of `undefined`.
+- **`backend/src/teams/teams.service.ts`**
+  - `findAll(leagues)` re-fetches **only the requested league** (`getTeams(leagues[0])`) and filters
+    the result back on `leagues`; the unfiltered `getTeams()` bootstrap is now reserved for the
+    no-filter case.
+- **Tests**: two regression tests in `espnAllData.spec.ts` asserting `getTeamsSchedule()` resolves
+  with empty lists (never `undefined`) for a league with no ESPN config.
+
+### Files changed
+
+- `backend/src/utils/fetchData/espnAllData.ts`
+- `backend/src/utils/fetchData/espnAllData.spec.ts`
+- `backend/src/teams/teams.service.ts`
+- `backend/docs/utils/fetchData/espnAllData.ts.md`, `backend/docs/teams/teams.service.ts.md`
+- `backend/CHANGELOG_ARCHITECTURE.md` — this entry.
+
 ## Fixed: no record on any past PWHL game (season never requested)
 
 ### Problem

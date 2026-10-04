@@ -153,8 +153,17 @@ export class TeamService {
       .lean()
       .exec();
     if (!allTeams?.length) {
-      const teams = await this.getTeams();
-      return teams.map((team) => this.addRecord(team));
+      // Bootstrap only when no league was requested at all. When the caller DID
+      // ask for specific league(s), re-fetching with no argument would return
+      // the teams of EVERY league, which then got processed under the single
+      // requested `leagueName` (e.g. an NWSL fetch iterating `NCAAMH-BRWN`), and
+      // built URLs from a league those teams do not belong to.
+      const teams = leagues?.length
+        ? await this.getTeams(leagues[0])
+        : await this.getTeams();
+      return teams
+        .filter((team) => !leagues?.length || leagues.includes(team.league))
+        .map((team) => this.addRecord(team));
     }
 
     const lastMonth = new Date();

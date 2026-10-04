@@ -1,8 +1,68 @@
 import {
   applySeasonFinalRecords,
   extractCompetitorRecord,
+  getSeasonFinals,
+  getTeamsSchedule,
   resolveScheduleGameStatus,
 } from './espnAllData';
+
+describe('getSeasonFinals', () => {
+  const game = (id, home, away, homeRecord, awayRecord) => ({
+    uniqueId: id,
+    startTimeUTC: '2025-04-15T23:00:00.000Z',
+    homeTeamId: home,
+    awayTeamId: away,
+    homeTeamRecord: homeRecord,
+    awayTeamRecord: awayRecord,
+  });
+
+  it('verifies a tally that accounts for every fetched game', () => {
+    // BOS played 2 games here and its final tally says 2 games ("1-1-0").
+    const { verified, truncated } = getSeasonFinals([
+      game('g1', 'NHL-BOS', 'NHL-TOR', '1-0-0', '0-1-0'),
+      game('g2', 'NHL-BOS', 'NHL-MTL', '1-1-0', '0-1-0'),
+    ]);
+
+    expect(verified.get('NHL-BOS')).toBe('1-1-0');
+    expect(truncated).not.toContain('NHL-BOS');
+  });
+
+  it('rejects a tally implying more games than were fetched', () => {
+    // Truncated fetch: only 1 game held, but the tally claims 82 — that is an
+    // intermediate number, not the season final.
+    const { verified, truncated } = getSeasonFinals([
+      game('g1', 'NHL-BOS', 'NHL-TOR', '33-39-10', '42-32-7'),
+    ]);
+
+    expect(verified.has('NHL-BOS')).toBe(false);
+    expect(verified.has('NHL-TOR')).toBe(false);
+    expect(truncated).toEqual(expect.arrayContaining(['NHL-BOS', 'NHL-TOR']));
+  });
+
+  it('does not count the same match twice for a team', () => {
+    // The same match is stored twice (one row per teamSelectedId): the tally
+    // must still compare against 1 distinct game, not 2.
+    const { verified, truncated } = getSeasonFinals([
+      game('g1', 'NHL-BOS', 'NHL-TOR', '1-0-0', '0-1-0'),
+      game('g1', 'NHL-BOS', 'NHL-TOR', '1-0-0', '0-1-0'),
+    ]);
+
+    expect(verified.get('NHL-BOS')).toBe('1-0-0');
+    expect(truncated).not.toContain('NHL-BOS');
+  });
+
+  it('keeps the most complete tally per team', () => {
+    // 3 games fetched for BOS, whose best tally covers exactly those 3 games.
+    const { verified } = getSeasonFinals([
+      game('g1', 'NHL-BOS', 'NHL-TOR', '1-0-0', '0-1-0'),
+      game('g2', 'NHL-BOS', 'NHL-TOR', '2-0-0', '0-2-0'),
+      game('g3', 'NHL-BOS', 'NHL-TOR', '2-1-0', '1-2-0'),
+    ]);
+
+    expect(verified.get('NHL-BOS')).toBe('2-1-0');
+    expect(verified.get('NHL-TOR')).toBe('1-2-0');
+  });
+});
 
 describe('resolveScheduleGameStatus', () => {
   it('maps the plain final statuses to FINISHED', () => {
@@ -109,7 +169,11 @@ describe('applySeasonFinalRecords', () => {
     awayTeamId: string,
     homeTeamRecord: string,
     awayTeamRecord: string,
+    uniqueId?: string,
   ) => ({
+    // Same start for every fixture: games are de-duplicated per team by identity,
+    // so a test holding several BOS vs TOR matches must give them distinct ids.
+    uniqueId: uniqueId ?? `${homeTeamId}-${awayTeamId}-${homeTeamRecord}`,
     startTimeUTC: '2025-04-15T23:00:00.000Z',
     homeTeamId,
     awayTeamId,
@@ -118,12 +182,14 @@ describe('applySeasonFinalRecords', () => {
   });
 
   it('replaces the cumulative per-game tallies with the final season tally', () => {
+    // Tallies must stay consistent with the number of games held for each team,
+    // otherwise the batch is (correctly) treated as truncated.
     const allGames = {
       'NHL-BOS': [
-        pastGame('NHL-BOS', 'NHL-TOR', '1-1-0', '1-1-0'), // pre-season
-        pastGame('NHL-BOS', 'NHL-TOR', '33-39-10', '42-32-7'), // final
+        pastGame('NHL-BOS', 'NHL-TOR', '1-0-0', '0-1-0'), // pre-season
+        pastGame('NHL-BOS', 'NHL-TOR', '1-1-0', '1-1-0'), // final (2 games)
       ],
-      'NHL-TOR': [pastGame('NHL-TOR', 'NHL-BOS', '42-32-7', '33-39-10')],
+      'NHL-TOR': [pastGame('NHL-TOR', 'NHL-BOS', '1-1-0', '1-1-0')],
     };
 
     applySeasonFinalRecords(allGames);
@@ -131,10 +197,10 @@ describe('applySeasonFinalRecords', () => {
     const games = [...allGames['NHL-BOS'], ...allGames['NHL-TOR']];
     for (const game of games) {
       expect(game.homeTeamRecord).toBe(
-        game.homeTeamId === 'NHL-BOS' ? '33-39-10' : '42-32-7',
+        game.homeTeamId === 'NHL-BOS' ? '1-1-0' : '1-1-0',
       );
       expect(game.awayTeamRecord).toBe(
-        game.awayTeamId === 'NHL-BOS' ? '33-39-10' : '42-32-7',
+        game.awayTeamId === 'NHL-BOS' ? '1-1-0' : '1-1-0',
       );
     }
   });
@@ -142,8 +208,24 @@ describe('applySeasonFinalRecords', () => {
   it('keeps the pre-season tally out of the final one (fewer games played)', () => {
     const allGames = {
       'NHL-BOS': [
-        pastGame('NHL-BOS', 'NHL-TOR', '4-1-0', '2-3-0'), // pre-season, 5 games
-        pastGame('NHL-BOS', 'NHL-TOR', '33-39-10', '42-32-7'), // 82 games
+        pastGame('NHL-BOS', 'NHL-TOR', '1-0-0', '0-1-0'), // 1 game
+        pastGame('NHL-BOS', 'NHL-TOR', '1-1-0', '1-1-0'), // 2 games
+      ],
+    };
+
+    applySeasonFinalRecords(allGames);
+
+    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('1-1-0');
+    expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('1-1-0');
+  });
+
+  it('leaves the per-game tally untouched when the season is truncated', () => {
+    // The tally claims 82 games but only 2 are held: the batch is incomplete, so
+    // the intermediate number must NOT be frozen on the whole season.
+    const allGames = {
+      'NHL-BOS': [
+        pastGame('NHL-BOS', 'NHL-TOR', '33-39-10', '42-32-7'),
+        pastGame('NHL-BOS', 'NHL-TOR', '33-39-10', '42-32-7'),
       ],
     };
 
@@ -191,5 +273,33 @@ describe('applySeasonFinalRecords', () => {
 
   it('is a no-op when there is nothing to process', () => {
     expect(() => applySeasonFinalRecords({})).not.toThrow();
+  });
+});
+
+describe('getTeamsSchedule (leagues with no ESPN schedule config)', () => {
+  // Regression: `leaguesData[leagueName].fetchGames` threw
+  // "Cannot read properties of undefined (reading 'fetchGames')" for any league
+  // absent from `leagueConfigs` (the PWHL, unknown names). The TypeError was
+  // swallowed by the catch, which returned `undefined`, and that then broke
+  // the callers (`[...allGames, ...games]` and the `allGames[leagueID]` store)
+  // with a second TypeError on `Array.map`.
+  const team = {
+    id: '1',
+    abbrev: 'SEA',
+    value: 'PWHL-SEA',
+    uniqueId: 'PWHL-SEA',
+  };
+
+  it('resolves with an empty list instead of throwing', async () => {
+    await expect(getTeamsSchedule([team], 'PWHL', {}, true)).resolves.toEqual({
+      'PWHL-SEA': [],
+    });
+  });
+
+  it('never stores an undefined entry, whatever the league', async () => {
+    const result = await getTeamsSchedule([team], 'NOT_A_LEAGUE', {}, true);
+    for (const games of Object.values(result)) {
+      expect(games).toEqual([]);
+    }
   });
 });

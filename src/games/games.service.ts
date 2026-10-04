@@ -18,6 +18,7 @@ import {
 import {
   getESPNGameScore,
   getESPNScores,
+  getSeasonFinals,
   getTeamRecordFromSchedule,
   getTeamsSchedule,
 } from '../utils/fetchData/espnAllData';
@@ -226,10 +227,22 @@ export class GameService {
           const fieldsToProtect = ['gameStatus', 'gameClock', 'gamePeriod'];
 
           fieldsToProtect.forEach((field) => {
-            if (
-              (gameDto[field] === null || gameDto[field] === undefined) &&
-              existingGame[field] !== null
-            ) {
+            if (gameDto[field] === null || gameDto[field] === undefined) {
+              if (existingGame[field] !== null) {
+                delete gameDto[field];
+              }
+            }
+          });
+
+          // Same protection for the per-game records: an empty fetched record must
+          // never wipe a stored one. This happens on the oldies path when a game is
+          // refreshed because its scores changed while the freshly fetched season
+          // carried no `record` for that team (ESPN omits it on some seasons).
+          ['homeTeamRecord', 'awayTeamRecord'].forEach((field) => {
+            const incoming = gameDto[field];
+            const isEmpty =
+              incoming === null || incoming === undefined || incoming === '';
+            if (isEmpty && existingGame[field]) {
               delete gameDto[field];
             }
           });
@@ -436,6 +449,91 @@ export class GameService {
       complete,
       isCurrentSeason: isCurrent,
     };
+  }
+
+  /**
+   * Rewrites the per-game records of an already-stored oldies season.
+   *
+   * The insert loop above only touches the games present in the current fetch, and
+   * the `addMissingOnly` comparison skips a game as soon as its stored records
+   * match — which is exactly the case for a game stored **before** the per-game
+   * records existed (both sides empty) if the freshly fetched season carries no
+   * `record` for that team. Such a game would then keep an empty record forever.
+   *
+   * `applySeasonFinalRecords()` has already turned every game of a finished season
+   * into the season's final tally, so the value to restore is simply the one held
+   * by the games of this fetch, per team. Only games whose stored record is empty
+   * are written: a record already present is never overwritten, so this pass can
+   * only fill gaps, never destroy data.
+   *
+   * Returns the number of games updated.
+   */
+  private async _backfillSeasonRecords(
+    normalizedLeague: string,
+    fetchedGames: any[],
+  ): Promise<number> {
+    try {
+      const games = (fetchedGames || []).filter((g) => !!g);
+      if (!games.length) return 0;
+
+      // Only tallies verified as complete season finals are restored: a truncated
+      // fetch yields intermediate numbers, and writing them would freeze a wrong
+      // record on the stored games. Such a team is simply left for a later run.
+      // This check is NOT redundant with `applySeasonFinalRecords()`: that pass
+      // deliberately leaves a truncated team's games holding their own cumulative
+      // value, so without this filter the tally rebuilt below would pick an
+      // arbitrary intermediate number for it. No warning is logged here —
+      // `applySeasonFinalRecords()` already reported the truncation for this batch.
+      const tally = getSeasonFinals(games).verified;
+      if (!tally.size) return 0;
+
+      // Restrict the sweep to the season being processed, so a concurrent refresh
+      // of the current season is never touched.
+      const uniqueIds = games.map((g) => g?.uniqueId).filter((id) => !!id);
+      if (!uniqueIds.length) return 0;
+
+      const stored = await this.gameModel
+        .find(
+          { league: normalizedLeague, uniqueId: { $in: uniqueIds } },
+          {
+            uniqueId: 1,
+            homeTeamId: 1,
+            awayTeamId: 1,
+            homeTeamRecord: 1,
+            awayTeamRecord: 1,
+            _id: 0,
+          },
+        )
+        .lean()
+        .exec();
+
+      let updated = 0;
+      for (const game of stored as any[]) {
+        const set: Record<string, string> = {};
+
+        const home = tally.get(game?.homeTeamId);
+        if (home && !game?.homeTeamRecord) set.homeTeamRecord = home;
+
+        const away = tally.get(game?.awayTeamId);
+        if (away && !game?.awayTeamRecord) set.awayTeamRecord = away;
+
+        if (!Object.keys(set).length) continue;
+
+        await this.gameModel
+          .updateOne({ uniqueId: game.uniqueId }, { $set: set })
+          .exec();
+        updated++;
+      }
+
+      return updated;
+    } catch (err) {
+      // Never let this safety net fail an oldies run.
+      console.error(
+        `[Oldies] Could not backfill records for ${normalizedLeague}:`,
+        (err as any)?.message || err,
+      );
+      return 0;
+    }
   }
 
   async getLeagueGames(params): Promise<any> {
@@ -866,8 +964,20 @@ export class GameService {
         }
 
         if (addMissingOnly) {
+          // Final safety net for the records: the insert loop above can only write
+          // the records of the games present in this fetch, and `create()` now
+          // refuses to overwrite a stored record with an empty one. Sweep the whole
+          // stored season once more so that games already present with an empty (or
+          // missing) record get the season tally computed by
+          // `applySeasonFinalRecords()`, which is the value every game of a finished
+          // season must show.
+          const backfilled = await this._backfillSeasonRecords(
+            normalizedLeague,
+            uniqueGames,
+          );
+
           console.info(
-            `[Oldies] ${normalizedLeague} ${season ? `(season ${season})` : ''}: added ${added}, skipped (existing identical) ${skippedExisting}, skipped (missing team/score data) ${skippedMissingTeamData}.`,
+            `[Oldies] ${normalizedLeague} ${season ? `(season ${season})` : ''}: added ${added}, skipped (existing identical) ${skippedExisting}, skipped (missing team/score data) ${skippedMissingTeamData}, records backfilled ${backfilled}.`,
           );
           return { added, skippedExisting, skippedMissingTeamData };
         }

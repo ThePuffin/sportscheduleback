@@ -1131,6 +1131,190 @@ describe('GameService', () => {
 
       createSpy.mockRestore();
     });
+
+    it('backfills records on stored games that have none left', async () => {
+      const currentYear = new Date().getFullYear();
+      const pastTime = new Date();
+      pastTime.setHours(pastTime.getHours() - 2);
+
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      // reset() drops any implementation left queued by a previous test.
+      mockGameModel.exec.mockReset();
+      // First call = the addMissingOnly `existing` lookup (no stored record),
+      // second call = the `_backfillSeasonRecords` sweep (game still stored with
+      // an empty record, i.e. exactly the gap this pass must fill).
+      mockGameModel.exec
+        .mockResolvedValueOnce([
+          { uniqueId: 'old-no-record', homeTeamScore: 3, awayTeamScore: 1 },
+        ])
+        .mockResolvedValueOnce([
+          {
+            uniqueId: 'old-no-record',
+            homeTeamId: 'NHL-BOS',
+            awayTeamId: 'NHL-TOR',
+            homeTeamRecord: '',
+            awayTeamRecord: '',
+          },
+        ])
+        // Default for any further query, so no queued value leaks into the next test.
+        .mockResolvedValue([]);
+
+      (service as any)._fetchUniqueGames = jest.fn().mockResolvedValue([
+        {
+          uniqueId: 'old-no-record',
+          league: League.NHL,
+          homeTeamId: 'NHL-BOS',
+          awayTeamId: 'NHL-TOR',
+          homeTeamScore: 3,
+          awayTeamScore: 1,
+          startTimeUTC: pastTime.toISOString(),
+          // Tallies must match the single fetched game, otherwise the batch is
+          // (correctly) treated as truncated and nothing is written.
+          homeTeamRecord: '1-0-0',
+          awayTeamRecord: '0-1-0',
+        },
+      ]);
+      (service as any)._deleteUnlinkedTeams = jest
+        .fn()
+        .mockResolvedValue(undefined);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+        season: currentYear - 1,
+        addMissingOnly: true,
+      });
+
+      // The stored game is written with the season tally, not left empty.
+      expect(mockGameModel.updateOne).toHaveBeenCalledWith(
+        { uniqueId: 'old-no-record' },
+        { $set: { homeTeamRecord: '1-0-0', awayTeamRecord: '0-1-0' } },
+      );
+
+      createSpy.mockRestore();
+    });
+
+    it('never overwrites a record that is already stored', async () => {
+      const currentYear = new Date().getFullYear();
+      const pastTime = new Date();
+      pastTime.setHours(pastTime.getHours() - 2);
+
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      // reset() drops any implementation left queued by a previous test.
+      mockGameModel.exec.mockReset();
+      // Two queries: the addMissingOnly `existing` lookup, then the backfill sweep.
+      // The stored game already carries a record, so the sweep must leave it alone.
+      mockGameModel.exec
+        .mockResolvedValueOnce([
+          {
+            uniqueId: 'old-has-record',
+            homeTeamScore: 3,
+            awayTeamScore: 1,
+            homeTeamRecord: '1-0-0',
+            awayTeamRecord: '0-1-0',
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            uniqueId: 'old-has-record',
+            homeTeamId: 'NHL-BOS',
+            awayTeamId: 'NHL-TOR',
+            homeTeamRecord: '1-0-0',
+            awayTeamRecord: '0-1-0',
+          },
+        ])
+        .mockResolvedValue([]);
+
+      (service as any)._fetchUniqueGames = jest.fn().mockResolvedValue([
+        {
+          uniqueId: 'old-has-record',
+          league: League.NHL,
+          homeTeamId: 'NHL-BOS',
+          awayTeamId: 'NHL-TOR',
+          homeTeamScore: 3,
+          awayTeamScore: 1,
+          startTimeUTC: pastTime.toISOString(),
+          // Tallies consistent with the single fetched game, so the sweep does run.
+          homeTeamRecord: '1-0-0',
+          awayTeamRecord: '0-1-0',
+        },
+      ]);
+      (service as any)._deleteUnlinkedTeams = jest
+        .fn()
+        .mockResolvedValue(undefined);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+        season: currentYear - 1,
+        addMissingOnly: true,
+      });
+
+      // Records differ, so the game is refreshed through create() (which carries
+      // the fresh tally) — but the backfill sweep itself writes nothing.
+      expect(mockGameModel.updateOne).not.toHaveBeenCalled();
+
+      createSpy.mockRestore();
+    });
+  });
+
+  describe('create: record protection', () => {
+    it('does not wipe a stored record when the fetched one is empty', async () => {
+      const existingGame: any = {
+        uniqueId: 'NHL-BOS-NHL-TOR',
+        homeTeamScore: 3,
+        awayTeamScore: 1,
+        homeTeamRecord: '33-39-10',
+        awayTeamRecord: '42-32-7',
+        save: jest.fn().mockResolvedValue(undefined),
+      };
+      jest.spyOn(service, 'findOne').mockResolvedValue(existingGame as any);
+
+      // Score changed (so the game is refreshed) but ESPN returned no record.
+      await service.create({
+        uniqueId: 'NHL-BOS-NHL-TOR',
+        homeTeamScore: 4,
+        awayTeamScore: 1,
+        homeTeamRecord: '',
+        awayTeamRecord: '',
+      } as any);
+
+      expect(existingGame.homeTeamRecord).toBe('33-39-10');
+      expect(existingGame.awayTeamRecord).toBe('42-32-7');
+      // The score refresh still applies.
+      expect(existingGame.homeTeamScore).toBe(4);
+    });
+
+    it('still writes a record when one is fetched', async () => {
+      const existingGame: any = {
+        uniqueId: 'NHL-BOS-NHL-TOR',
+        homeTeamScore: 3,
+        awayTeamScore: 1,
+        homeTeamRecord: '30-40-12',
+        awayTeamRecord: '40-34-8',
+        save: jest.fn().mockResolvedValue(undefined),
+      };
+      jest.spyOn(service, 'findOne').mockResolvedValue(existingGame as any);
+
+      await service.create({
+        uniqueId: 'NHL-BOS-NHL-TOR',
+        homeTeamScore: 3,
+        awayTeamScore: 1,
+        homeTeamRecord: '33-39-10',
+        awayTeamRecord: '42-32-7',
+      } as any);
+
+      expect(existingGame.homeTeamRecord).toBe('33-39-10');
+      expect(existingGame.awayTeamRecord).toBe('42-32-7');
+    });
   });
 
   describe('getLeagueGames playoff grace period', () => {

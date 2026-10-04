@@ -149,6 +149,74 @@ const recordGamesPlayed = (record: string): number => {
 };
 
 /**
+ * Computes the season tally of every team of a batch, and separates the tallies
+ * that are **provably complete** from the ones that cannot be trusted.
+ *
+ * A team's tally on its last game of a season accounts for every game it played
+ * in that season, so a final tally implies exactly as many games as were
+ * fetched for that team. A tally implying **more** games than were fetched means
+ * the season was **truncated** — ESPN quota exhausted, pagination cut short, or
+ * a team fetch that silently failed — so the batch does not hold the whole
+ * season and its "final" number is only an intermediate one.
+ *
+ * Games are de-duplicated per team by game identity, so the two rows a match
+ * produces (one per `teamSelectedId`) never inflate the count.
+ *
+ * Returns `{ verified, truncated }`: `verified` maps `teamId` to the tally that
+ * can safely be written on every game of the season, `truncated` lists the teams
+ * whose tally was rejected as incomplete.
+ */
+export const getSeasonFinals = (
+  games: any[],
+): { verified: Map<string, string>; truncated: string[] } => {
+  const list = (games || []).filter((game) => !!game);
+  const verified = new Map<string, string>();
+  const truncated: string[] = [];
+  if (!list.length) return { verified, truncated };
+
+  const gameKey = (game: any) =>
+    game?.uniqueId ||
+    `${game?.homeTeamId ?? ''}-${game?.awayTeamId ?? ''}-${game?.startTimeUTC ?? ''}`;
+
+  // Distinct games held for each team.
+  const gamesPerTeam = new Map<string, Set<string>>();
+  for (const game of list) {
+    for (const teamId of [game?.homeTeamId, game?.awayTeamId]) {
+      if (!teamId) continue;
+      if (!gamesPerTeam.has(teamId)) gamesPerTeam.set(teamId, new Set());
+      gamesPerTeam.get(teamId)!.add(gameKey(game));
+    }
+  }
+
+  // Most complete tally per team (games played only grows within a season).
+  const finals = new Map<string, { gamesPlayed: number; record: string }>();
+  const track = (teamId?: string, record?: string) => {
+    if (!teamId || !record) return;
+    const gamesPlayed = recordGamesPlayed(record);
+    const current = finals.get(teamId);
+    if (!current || gamesPlayed > current.gamesPlayed) {
+      finals.set(teamId, { gamesPlayed, record });
+    }
+  };
+
+  for (const game of list) {
+    track(game?.homeTeamId, game?.homeTeamRecord);
+    track(game?.awayTeamId, game?.awayTeamRecord);
+  }
+
+  for (const [teamId, { gamesPlayed, record }] of finals) {
+    const fetched = gamesPerTeam.get(teamId)?.size ?? 0;
+    if (gamesPlayed <= fetched) {
+      verified.set(teamId, record);
+    } else {
+      truncated.push(teamId);
+    }
+  }
+
+  return { verified, truncated };
+};
+
+/**
  * Rewrites the per-game records produced by `getEachTeamSchedule()` so that:
  *
  * - **the season is over** (every fetched game has already started): every game
@@ -183,26 +251,27 @@ export const applySeasonFinalRecords = (allGames: Record<string, any[]>) => {
     return;
   }
 
-  const finals = new Map<string, { gamesPlayed: number; record: string }>();
-  const track = (teamId?: string, record?: string) => {
-    if (!teamId || !record) return;
-    const gamesPlayed = recordGamesPlayed(record);
-    const current = finals.get(teamId);
-    if (!current || gamesPlayed > current.gamesPlayed) {
-      finals.set(teamId, { gamesPlayed, record });
-    }
-  };
-
-  for (const game of games) {
-    track(game.homeTeamId, game.homeTeamRecord);
-    track(game.awayTeamId, game.awayTeamRecord);
+  // Only the tallies that account for every game we hold are season finals; a
+  // truncated fetch would otherwise freeze an intermediate tally on the whole
+  // season (see `getSeasonFinals`).
+  const { verified, truncated } = getSeasonFinals(games);
+  if (truncated.length) {
+    console.warn(
+      `[ESPN] Season looks truncated for ${truncated.length} team(s) (${truncated
+        .slice(0, 5)
+        .join(
+          ', ',
+        )}${truncated.length > 5 ? ', …' : ''}); their per-game record is left untouched.`,
+    );
   }
 
   for (const game of games) {
+    // A team whose tally could not be verified keeps its own per-game cumulative
+    // value rather than being given a number that may not be the season's.
     game.homeTeamRecord =
-      finals.get(game.homeTeamId)?.record ?? game.homeTeamRecord ?? '';
+      verified.get(game.homeTeamId) ?? game.homeTeamRecord ?? '';
     game.awayTeamRecord =
-      finals.get(game.awayTeamId)?.record ?? game.awayTeamRecord ?? '';
+      verified.get(game.awayTeamId) ?? game.awayTeamRecord ?? '';
   }
 };
 
@@ -729,6 +798,19 @@ const getEachTeamSchedule = async (
       }
       return allGames;
     }
+
+    // `leaguesData` is derived from `leagueConfigs`, so any league missing from
+    // it (the PWHL, which is served by `hockeyData.ts`, or an unknown/typo'd
+    // name) has no `fetchGames` URL to build. Bail out explicitly instead of
+    // letting `leaguesData[leagueName].fetchGames` throw a TypeError that the
+    // catch below would swallow into an `undefined` return.
+    if (!leaguesData[leagueName]) {
+      console.error(
+        `No ESPN schedule config for league "${leagueName}" (team ${value}) — skipped.`,
+      );
+      return [];
+    }
+
     let games = [];
     const soccerLeagues = new Set([League.MLS, League.NWSL]);
 
@@ -942,6 +1024,10 @@ const getEachTeamSchedule = async (
     return gamesData;
   } catch (error) {
     console.error(`Error in getEachTeamSchedule for ${value}:`, error);
+    // Always hand back an array: the aggregate-league recursion spreads the
+    // result (`[...allGames, ...games]`), and `getTeamsSchedule()` stores it,
+    // so an `undefined` here propagates as a TypeError in both callers.
+    return [];
   }
 };
 
