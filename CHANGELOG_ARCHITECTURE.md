@@ -94,6 +94,10 @@ runs inside a 4 AM-11 AM New York window. So the record could stay stale for day
     and **discards the games** — only the harvested per-team tallies are used, so no `Game`
     document is created, updated or deactivated;
   - writes them through `TeamService.updateRecords()` and returns `{ leagues, updatedTeams }`;
+  - the **PWHL is handled specially**: its HockeyTech schedule carries **no** per-game record, so
+    `_fetchUniqueGames()` forwards `teamRecords` to `HockeyData.getHockeySchedule()`, which fills
+    the map from the official standings (fallback: a local replay of the schedule). Without this
+    the map stayed empty for the PWHL and no `team.record` was ever written for it;
   - a league that throws is logged (`[Records] Could not refresh records for …`) and does not
     abort the remaining leagues.
 - **`backend/src/cronJob/cronJob.service.ts`** — two daily crons sharing
@@ -119,9 +123,12 @@ runs inside a 4 AM-11 AM New York window. So the record could stay stale for day
 - `backend/src/games/games.service.ts`
 - `backend/src/games/games.controller.ts`
 - `backend/src/cronJob/cronJob.service.ts`
+- `backend/src/utils/fetchData/hockeyData.ts`
+- `backend/src/utils/fetchData/hockeyData.spec.ts` (new)
 - `backend/src/games/tests/games.service.spec.ts`
 - `backend/src/cronJob/tests/cronJob.service.spec.ts`
 - `backend/docs/cronJob/cronJob.service.ts.md`
+- `backend/docs/utils/fetchData/hockeyData.ts.md`
 - `backend/docs/games/games.service.ts.md`
 - `backend/docs/games/games.controller.ts.md`
 

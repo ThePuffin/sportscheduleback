@@ -204,14 +204,87 @@ export class HockeyData {
     }
   }
 
+  /**
+   * Fills `teamRecords` with the **current** PWHL tally of every team
+   * (`PWHL-<CODE>` -> `"W-L-OTL"`), read from HockeyTech's official standings
+   * feed (`getPWHLStandings()`), which already resolves the current regular
+   * season for us.
+   *
+   * PWHL needs this because — unlike the ESPN leagues, where the team schedule
+   * carries a per-game cumulative record — `getHockeySchedule()` has no
+   * per-game record at all, so without this the `teamRecords` map stays empty
+   * for the PWHL and no `team.record` is ever refreshed.
+   *
+   * Falls back to the local replay of the schedule (`applyPWHLHistoricalRecords`,
+   * which recomputes W-L-OTL from the played games) when the standings feed is
+   * unavailable, so one failing source does not leave the PWHL without records.
+   */
+  private async collectPWHLTeamRecords(
+    teamRecords: Map<string, string>,
+  ): Promise<void> {
+    const apply = (records: Record<string, string>) => {
+      for (const [code, record] of Object.entries(records ?? {})) {
+        if (record) teamRecords.set(`${League.PWHL}-${code}`, record);
+      }
+    };
+
+    try {
+      const standings = await this.getPWHLStandings();
+      if (standings && Object.keys(standings).length > 0) {
+        apply(standings);
+        return;
+      }
+      console.warn(
+        '[Records] PWHL standings returned nothing — falling back to the schedule replay.',
+      );
+    } catch (error) {
+      console.error(
+        '[Records] Error fetching PWHL standings:',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+
+    try {
+      const response = await fetch(
+        `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
+      );
+      const json = await response.json();
+      const allGames: PWHLGameAPI[] = json?.SiteKit?.Schedule;
+      if (Array.isArray(allGames) && allGames.length > 0) {
+        const { finals } = this.applyPWHLHistoricalRecords(allGames);
+        apply(Object.fromEntries(finals));
+      }
+    } catch (error) {
+      console.error(
+        '[Records] PWHL schedule replay fallback failed:',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
   getHockeySchedule = async (
     activeTeams,
     leagueLogos,
     league,
     forceUpdate = false,
     season?: number,
+    teamRecords?: Map<string, string>,
   ) => {
     const allGames = {};
+
+    // Standings-based tallies are only harvested for the CURRENT season: during
+    // oldies the historical record must stay frozen (same rule as the ESPN
+    // leagues, which is handled in `GameService.getLeagueGames`).
+    if (teamRecords && league === League.PWHL && season === undefined) {
+      try {
+        await this.collectPWHLTeamRecords(teamRecords);
+      } catch (error) {
+        console.error(
+          'Error collecting PWHL team records:',
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
 
     await Promise.all(
       activeTeams.map(async (team) => {
@@ -626,8 +699,7 @@ export class HockeyData {
       else tally(loser).l += 1;
     }
 
-    for (const [code, t] of tallies)
-      finals.set(code, `${t.w}-${t.l}-${t.otl}`);
+    for (const [code, t] of tallies) finals.set(code, `${t.w}-${t.l}-${t.otl}`);
     return { finals, seasonOver };
   }
 
@@ -638,8 +710,7 @@ export class HockeyData {
       );
       const response = await fetchedGames.json();
       const allGames: PWHLGameAPI[] = response.SiteKit.Schedule;
-      const { finals, seasonOver } =
-        this.applyPWHLHistoricalRecords(allGames);
+      const { finals, seasonOver } = this.applyPWHLHistoricalRecords(allGames);
 
       return allGames
         .filter((game) => game.date_played === date)
@@ -659,10 +730,10 @@ export class HockeyData {
           // back to the live `team.record` (most recent tally, kept via
           // `syncGameWithScore()` -> `_nextRecord()`).
           const homeRecord = seasonOver
-            ? (finals.get(game.home_team_code) || '')
+            ? finals.get(game.home_team_code) || ''
             : '';
           const awayRecord = seasonOver
-            ? (finals.get(game.visiting_team_code) || '')
+            ? finals.get(game.visiting_team_code) || ''
             : '';
           void gameKey;
           return {

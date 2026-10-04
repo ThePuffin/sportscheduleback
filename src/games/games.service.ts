@@ -319,6 +319,7 @@ export class GameService {
         normalizedLeague,
         true,
         season,
+        teamRecords,
       );
     } else {
       gamesObj = await getTeamsSchedule(
