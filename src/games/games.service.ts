@@ -36,6 +36,18 @@ import { UpdateGameDto } from './dto/update-game.dto';
 import { RefreshTimestampService } from './refresh-timestamps.service';
 import { Game } from './schemas/game.schema';
 
+/**
+ * How many extra rows `findRecentFormGames` fetches before deduplicating.
+ *
+ * A single match is stored **twice**: each upstream feed creates its own
+ * document for the team it was asked about, so both rows share the same
+ * `uniqueId` and differ only by `teamSelectedId` (`removeDuplicatesAndOlds`
+ * keys on `teamSelectedId + startTimeUTC`, so it never removes them). Without
+ * an over-fetch those twins consume the `limit` and push real games out of the
+ * result. Two feeds per match is the normal case; the slack covers a third.
+ */
+const FORM_DUPLICATE_OVERFETCH = 3;
+
 @Injectable()
 export class GameService {
   private isFetchingGames: { [league: string]: boolean } = {};
@@ -1194,6 +1206,93 @@ export class GameService {
     }
 
     return games;
+  }
+
+  /**
+   * Returns a team's most recent **finished** games, newest first, for the
+   * "recent form" row of the game modal.
+   *
+   * Why this exists instead of reusing `findResultsByTeam`: that endpoint (and
+   * `filterGames`) filters on `teamSelectedId`, which is the team whose schedule
+   * happened to produce the document (see `espnAllData` / `hockeyData`) and is
+   * therefore only set for **one** of the two sides of a match — games are
+   * deduplicated by `uniqueId`, so the opponent's id never lands on the
+   * document. Filtering here on `homeTeamId`/`awayTeamId` instead returns every
+   * game of the team, whichever side it was stored from.
+   *
+   * @param teamId      `uniqueId` of the team, e.g. `MLS-SKC-CITY`
+   * @param before      ISO date; only games starting strictly before it are
+   *                    returned (the caller passes the displayed game's start so
+   *                    the row describes the games played before it)
+   * @param limit       maximum number of games
+   */
+  async findRecentFormGames(teamId: string, before?: string, limit = 5) {
+    const safeLimit = Math.min(
+      Math.max(Number.parseInt(String(limit), 10) || 5, 1),
+      20,
+    );
+
+    const filter: any = {
+      isActive: true,
+      $or: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+      // The score condition belongs to the query, not to a post-filter: `limit`
+      // is applied by the database, and a team's most recent games by date are
+      // its *scheduled fixtures*, which carry no score yet. Filtering after the
+      // limit therefore consumed the whole budget with unplayed games and the
+      // row came back empty for every upcoming game (a past game was saved only
+      // because its `before` bound already excluded the future fixtures).
+      homeTeamScore: { $ne: null },
+      awayTeamScore: { $ne: null },
+    };
+
+    if (before) {
+      const beforeDate = new Date(before);
+      if (!Number.isNaN(beforeDate.getTime())) {
+        filter.startTimeUTC = { $lt: beforeDate.toISOString() };
+      }
+    }
+
+    const games = (await this.gameModel
+      .find(filter)
+      .sort({ startTimeUTC: -1 })
+      // Over-fetched: the duplicate documents of a single match would otherwise
+      // eat the whole budget (see FORM_DUPLICATE_OVERFETCH).
+      .limit(safeLimit * FORM_DUPLICATE_OVERFETCH)
+      .select(
+        'uniqueId league homeTeamId awayTeamId homeTeamScore awayTeamScore gameStatus gamePeriod startTimeUTC teamSelectedId',
+      )
+      .lean()
+      .exec()) as Array<Partial<Game>>;
+
+    // Keep one row per match. `uniqueId` cannot be used as the key: it is prefixed
+    // with the team the upstream feed was asked about, so the two documents of
+    // a single match carry `NHL-ANA-401892433` and `NHL-VGK-401892433`. The
+    // stable identity of a match is the pair of teams plus its start time.
+    // Without this, each twin rendered a dot of its own and pushed a real game
+    // out of the row. Rows arrive newest first, so the first kept ones are the
+    // most recent.
+    const seen = new Set<string>();
+    const deduplicated: Array<Partial<Game>> = [];
+    for (const game of games) {
+      const key = `${game.homeTeamId}-${game.awayTeamId}-${game.startTimeUTC}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduplicated.push(game);
+    }
+
+    // Already guaranteed by the query above; kept as a cheap belt-and-braces so
+    // a document stored with an explicit `undefined` can never reach the client.
+    // The status itself is returned untouched, so the client keeps a single
+    // source of truth for what counts as finished (and for the overtime rule).
+    return deduplicated
+      .filter(
+        (game) =>
+          game.homeTeamScore !== null &&
+          game.homeTeamScore !== undefined &&
+          game.awayTeamScore !== null &&
+          game.awayTeamScore !== undefined,
+      )
+      .slice(0, safeLimit);
   }
 
   async findResultsByLeague(

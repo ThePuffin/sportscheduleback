@@ -127,3 +127,11 @@ GameSchema.index({
   league: 1,
   startTimeUTC: 1,
 });
+
+// Per-team lookups (recent form, day views, orphan-team cleanup) filter on
+// `homeTeamId`/`awayTeamId`, which are plain props with no index of their own.
+// Without these two compound indexes the `$or` query degenerates into a full
+// collection scan on every request, since the sort on `startTimeUTC` and the
+// `before` bound can then only be applied in memory.
+GameSchema.index({ isActive: 1, homeTeamId: 1, startTimeUTC: -1 });
+GameSchema.index({ isActive: 1, awayTeamId: 1, startTimeUTC: -1 });

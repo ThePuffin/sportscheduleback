@@ -436,6 +436,241 @@ describe('GameService', () => {
     });
   });
 
+  describe('findRecentFormGames', () => {
+    // `jest.clearAllMocks()` does not reset implementations, so the `find`
+    // override below would leak into every other suite of this file.
+    afterEach(() => {
+      mockGameModel.find.mockReset();
+      mockGameModel.find.mockReturnThis();
+    });
+
+    it('matches the team on BOTH home and away sides', async () => {
+      let filter: any = null;
+      mockGameModel.find.mockImplementation((f: any) => {
+        filter = f;
+        return {
+          sort: () => ({
+            limit: () => ({
+              select: () => ({ lean: () => ({ exec: async () => [] }) }),
+            }),
+          }),
+        };
+      });
+
+      await service.findRecentFormGames('MLS-SKC-CITY');
+
+      expect(filter).toEqual({
+        isActive: true,
+        $or: [{ homeTeamId: 'MLS-SKC-CITY' }, { awayTeamId: 'MLS-SKC-CITY' }],
+        homeTeamScore: { $ne: null },
+        awayTeamScore: { $ne: null },
+      });
+    });
+
+    it('requires both scores IN the query, not after the limit', async () => {
+      let filter: any = null;
+      mockGameModel.find.mockImplementation((f: any) => {
+        filter = f;
+        return {
+          sort: () => ({
+            limit: () => ({
+              select: () => ({ lean: () => ({ exec: async () => [] }) }),
+            }),
+          }),
+        };
+      });
+
+      await service.findRecentFormGames('NHL-BOS');
+
+      // Regression: with no `before` bound (an upcoming game), a team's most
+      // recent games by date are its scheduled fixtures. `limit` is applied by
+      // the database, so filtering the scores afterwards let those fixtures
+      // consume the whole budget and the row came back empty. The condition
+      // therefore has to be part of the query itself.
+      expect(filter.homeTeamScore).toEqual({ $ne: null });
+      expect(filter.awayTeamScore).toEqual({ $ne: null });
+    });
+
+    it('bounds the query with a strict "before" on startTimeUTC', async () => {
+      let filter: any = null;
+      mockGameModel.find.mockImplementation((f: any) => {
+        filter = f;
+        return {
+          sort: () => ({
+            limit: () => ({
+              select: () => ({ lean: () => ({ exec: async () => [] }) }),
+            }),
+          }),
+        };
+      });
+
+      const before = new Date('2026-03-20T18:00:00.000Z');
+      await service.findRecentFormGames('NHL-BOS', before.toISOString());
+
+      // `$lt` (not `$lte`) so the displayed game itself never comes back.
+      expect(filter.startTimeUTC).toEqual({ $lt: before.toISOString() });
+    });
+
+    it('ignores an invalid "before" instead of filtering on it', async () => {
+      let filter: any = null;
+      mockGameModel.find.mockImplementation((f: any) => {
+        filter = f;
+        return {
+          sort: () => ({
+            limit: () => ({
+              select: () => ({ lean: () => ({ exec: async () => [] }) }),
+            }),
+          }),
+        };
+      });
+
+      await service.findRecentFormGames('NHL-BOS', 'not-a-date');
+
+      expect(filter.startTimeUTC).toBeUndefined();
+    });
+
+    it('drops games without both scores and keeps the rest', async () => {
+      mockGameModel.find.mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnValue({
+              lean: jest.fn().mockReturnValue({
+                exec: jest.fn().mockResolvedValue([
+                  {
+                    uniqueId: 'a',
+                    homeTeamId: 'NHL-H1',
+                    awayTeamId: 'NHL-BOS',
+                    startTimeUTC: '2026-01-04T00:00:00.000Z',
+                    homeTeamScore: 2,
+                    awayTeamScore: 1,
+                  },
+                  {
+                    uniqueId: 'b',
+                    homeTeamId: 'NHL-H2',
+                    awayTeamId: 'NHL-BOS',
+                    startTimeUTC: '2026-01-03T00:00:00.000Z',
+                    homeTeamScore: null,
+                    awayTeamScore: 1,
+                  },
+                  {
+                    uniqueId: 'c',
+                    homeTeamId: 'NHL-H3',
+                    awayTeamId: 'NHL-BOS',
+                    startTimeUTC: '2026-01-02T00:00:00.000Z',
+                    homeTeamScore: 0,
+                    awayTeamScore: 0,
+                  },
+                  {
+                    uniqueId: 'd',
+                    homeTeamId: 'NHL-H4',
+                    awayTeamId: 'NHL-BOS',
+                    startTimeUTC: '2026-01-01T00:00:00.000Z',
+                    homeTeamScore: 3,
+                  },
+                ]),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const result = await service.findRecentFormGames('NHL-BOS');
+
+      expect(result.map((g) => g.uniqueId)).toEqual(['a', 'c']);
+    });
+
+    it('collapses the two stored copies of a single match', async () => {
+      // Each upstream feed writes its own document for the team it was asked
+      // about, so a finished match is stored twice. `uniqueId` differs (it is
+      // prefixed with the selected team), only the match itself is identical.
+      const copy = (suffix: string) => ({
+        homeTeamId: 'NHL-VGK',
+        awayTeamId: 'NHL-ANA',
+        startTimeUTC: '2026-10-03T02:00:00.000Z',
+        homeTeamScore: 3,
+        awayTeamScore: 4,
+        teamSelectedId: suffix,
+      });
+
+      mockGameModel.find.mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnValue({
+              lean: jest.fn().mockReturnValue({
+                exec: jest.fn().mockResolvedValue([
+                  { ...copy('NHL-ANA'), uniqueId: 'NHL-ANA-401892433' },
+                  { ...copy('NHL-VGK'), uniqueId: 'NHL-VGK-401892433' },
+                ]),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const result = await service.findRecentFormGames('NHL-ANA');
+
+      // One match, one result — otherwise it would fill two dots.
+      expect(result).toHaveLength(1);
+    });
+
+    it('over-fetches so the duplicates cannot push real games out', async () => {
+      const limitArg = jest.fn();
+      mockGameModel.find.mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockImplementation((n: number) => {
+            limitArg(n);
+            return {
+              select: () => ({ lean: () => ({ exec: async () => [] }) }),
+            };
+          }),
+        }),
+      });
+
+      await service.findRecentFormGames('NHL-BOS');
+
+      // 5 rows requested, 15 fetched: the limit is applied after deduplication.
+      expect(limitArg).toHaveBeenLastCalledWith(15);
+    });
+
+    it('clamps the limit between 1 and 20', async () => {
+      const limitArg = jest.fn();
+      mockGameModel.find.mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockImplementation((n: number) => {
+            limitArg(n);
+            return {
+              select: () => ({ lean: () => ({ exec: async () => [] }) }),
+            };
+          }),
+        }),
+      });
+
+      await service.findRecentFormGames('NHL-BOS', undefined, 1);
+      expect(limitArg).toHaveBeenLastCalledWith(3);
+
+      await service.findRecentFormGames('NHL-BOS', undefined, 999);
+      expect(limitArg).toHaveBeenLastCalledWith(60);
+    });
+
+    it('falls back to the default limit for a non-numeric one', async () => {
+      const limitArg = jest.fn();
+      mockGameModel.find.mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockImplementation((n: number) => {
+            limitArg(n);
+            return {
+              select: () => ({ lean: () => ({ exec: async () => [] }) }),
+            };
+          }),
+        }),
+      });
+
+      await service.findRecentFormGames('NHL-BOS', undefined, 'abc' as never);
+
+      expect(limitArg).toHaveBeenLastCalledWith(15);
+    });
+  });
+
   describe('getOldiesGames', () => {
     let getLeagueGamesSpy: jest.SpyInstance;
 

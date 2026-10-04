@@ -17,6 +17,10 @@ This controller exposes the HTTP API for game data operations.
 - `GET /games` — returns all active games
 - `GET /games/team/:teamSelectedId` — returns games for a team
 - `GET /games/team/:teamSelectedId/results` — returns completed results for a team
+- `GET /games/team/:teamSelectedId/form` — returns the team's last finished games (form dots), newest
+  first. Query params: `before` (ISO date, optional — strict `startTimeUTC <` bound; omit for the most
+  recent games) and `limit` (optional, clamped to 1–20, default 5). Matches the team on both
+  `homeTeamId` and `awayTeamId`
 - `GET /games/league/:league/results` — returns completed results for a league
 - `GET /games/filter` — filters games by date range and team selection
 - `GET /games/dates/range` — returns min/max game dates (optional `leagues` query param scopes the range to the given league list)

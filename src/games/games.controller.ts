@@ -42,6 +42,15 @@ export class GamesController {
     return this.GameService.findResultsByTeam(teamSelectedId, startDate);
   }
 
+  @Get('/team/:teamSelectedId/form')
+  findRecentFormGames(
+    @Param('teamSelectedId') teamSelectedId: string,
+    @Query('before') before?: string,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+  ) {
+    return this.GameService.findRecentFormGames(teamSelectedId, before, limit);
+  }
+
   @Get('/league/:league/results')
   findResultsByLeague(
     @Param('league') league: string,

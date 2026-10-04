@@ -49,7 +49,7 @@ An empty fetch still causes no deactivation.
 
 **Decided-series short-circuit (grace period bypass):**
 
-The grace period exists for *undecided* "if necessary" playoff games (a Game 5/6/7 that may
+The grace period exists for _undecided_ "if necessary" playoff games (a Game 5/6/7 that may
 transiently disappear from the source). A future game whose **series is already decided** is a
 different case: the game can never be played, because ESPN never creates the event at all for a
 decided series (e.g. an NLWC Game 3 after a 2-0 sweep simply does not exist in the feed). Such a
@@ -152,6 +152,37 @@ dedicated helpers so it is easy to follow:
    boundary onwards** (upcoming match).
 
 Both helpers are `private`; only `getClosestDates` is exposed.
+
+### `findRecentFormGames(teamId, before?, limit = 5)`
+
+Backs `GET /games/team/:teamId/form` and the modal's form dots: the team's last finished games,
+newest first. Unlike `findResultsByTeam`, it filters on `$or: [{ homeTeamId }, { awayTeamId }]`
+rather than `teamSelectedId`, because the latter is produced by whichever upstream feed happened to
+create the document and is therefore set on only **one** side of a deduplicated match — filtering on
+it returned an incomplete history for the opponent.
+
+- `before` is only applied when it parses as a date, as a strict `startTimeUTC: { $lt: ... }` bound
+  (strict so the displayed game itself is never returned). No `before` → the team's most recent games.
+- `limit` is clamped to `[1, 20]`, defaulting to 5 when it is missing or non-numeric.
+- **Deduplication**: a finished match is stored **twice** — each upstream feed writes its own
+  document for the team it was asked about — so the rows are collapsed on
+  `` `${homeTeamId}-${awayTeamId}-${startTimeUTC}` `` before the `limit` is applied. `uniqueId`
+  cannot be used as that key: it is prefixed with the _selected_ team, so the two copies carry
+  `NHL-ANA-401892433` and `NHL-VGK-401892433`. Because the twins would otherwise consume the
+  budget, the query **over-fetches** `limit * FORM_DUPLICATE_OVERFETCH` rows and the limit is only
+  applied at the very end. Without this, one match filled two dots and pushed a real game out of
+  the row — which is also why the dots of two consecutive games could disagree.
+- Games missing either score are dropped: only games already played count as a result. The condition
+  lives **in the Mongo query** (`homeTeamScore: { $ne: null }`, `awayTeamScore: { $ne: null }`) and
+  not in a post-filter, because `limit` is applied by the database: with no `before` bound (an
+  upcoming game), a team's most recent games by date are its _scheduled fixtures_, which carry no
+  score yet, so a post-filter let them consume the whole budget and returned an empty row. The
+  JS-side filter that remains is only belt-and-braces for documents stored with an explicit
+  `undefined`. The status is returned untouched so the client stays the single source of truth for
+  what counts as finished and for the overtime rule.
+- **Indexing**: `homeTeamId` and `awayTeamId` are plain props, so the schema also declares
+  `{ isActive: 1, homeTeamId: 1, startTimeUTC: -1 }` and `{ isActive: 1, awayTeamId: 1, startTimeUTC: -1 }`
+  (`game.schema.ts`). Without them the `$or` query is a full collection scan on every request.
 
 ### `findByTeam()` / `findResultsByTeam()`
 

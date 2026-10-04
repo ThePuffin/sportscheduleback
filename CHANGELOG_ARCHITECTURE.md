@@ -2,6 +2,111 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: a match was counted twice in the form dots (double-stored documents)
+
+### Problem
+
+A finished match is stored **twice**: each upstream feed writes its own document for the team it was
+asked about, so the two rows describe the same match but differ by `teamSelectedId` — and their
+`uniqueId`s differ too, because that id is prefixed with the selected team (`NHL-ANA-401892433` vs
+`NHL-VGK-401892433`). `findRecentFormGames` returned both copies, so a single result filled **two
+dots** and pushed a real game out of the `limit`. Because the duplicates have to fit inside the
+`before` window to be counted, the outcome depended on where that bound fell: the modals of two
+consecutive games showed rows that did not match each other.
+
+`removeDuplicatesAndOlds` never cleaned this up — it keys on `teamSelectedId + startTimeUTC`, which
+differs between the two copies.
+
+### Changes
+
+- **`backend/src/games/games.service.ts`** — the rows are collapsed on
+  `${homeTeamId}-${awayTeamId}-${startTimeUTC}`, the stable identity of a match (`uniqueId` cannot be
+  used as that key). Since the twins would otherwise consume the budget, the query **over-fetches**
+  `limit * FORM_DUPLICATE_OVERFETCH` rows and the `limit` is applied only after deduplication.
+- **`backend/src/games/tests/games.service.spec.ts`** — new test asserting the two copies of a match
+  collapse into a single result, plus one for the over-fetch; the limit-clamping tests now assert the
+  over-fetched value (1 → 3, 20 → 60, default 5 → 15).
+
+### Deliberately left out of scope
+
+The duplicate documents are still in the database, and `removeDuplicatesAndOlds` still does not
+remove them: it keys on `teamSelectedId` (which differs between the copies) and then deletes by
+`uniqueId` (which would remove both copies at once). Re-keying that cleanup is a destructive change
+on the whole collection and deserves its own change.
+
+## Fixed: form dots stayed empty for upcoming games (score filter applied after `limit`)
+
+### Problem
+
+`findRecentFormGames` dropped games without both scores **after** the query, in JavaScript, while
+`limit` was applied by the database. With no `before` bound — which is exactly what an upcoming
+game sends — a team's most recent games by date are its _scheduled fixtures_: the `$or` query
+returned the next 5 unplayed games, the JS filter removed all of them, and the row came back empty.
+A past game escaped the bug only because its own `startTimeUTC` already excluded the future fixtures.
+
+### Changes
+
+- **`backend/src/games/games.service.ts`** — the played-only condition moved into the Mongo filter:
+  `homeTeamScore: { $ne: null }` and `awayTeamScore: { $ne: null }` now sit alongside `isActive` and
+  the `$or`, so the database only counts finished games when applying `limit`. The JS-side filter is
+  kept as belt-and-braces for documents stored with an explicit `undefined`.
+- **`backend/src/games/tests/games.service.spec.ts`** — the filter assertion now includes both score
+  conditions, plus a regression test asserting they are part of the _query_ rather than a post-filter.
+
+## Added: `GET /games/team/:teamId/form` for the game modal's form dots
+
+### Problem
+
+The frontend derived a team's last-5 results from `GET /games/team/:id/results`, which filters on
+`teamSelectedId`. Games are deduplicated by `uniqueId`, and `teamSelectedId` is produced by whichever
+upstream feed happened to create the document, so it is stored on only **one** side of a match: the
+opponent's id never lands on it. The returned history was therefore incomplete for that side (dots
+missing or empty), and the query matched on a field that is not a reliable team key.
+
+### Changes
+
+- **`backend/src/games/games.service.ts`** — new `findRecentFormGames(teamId, before?, limit = 5)`:
+  - filters on `$or: [{ homeTeamId: teamId }, { awayTeamId: teamId }]` (plus `isActive: true`), sorted
+    by `startTimeUTC` descending, capped at `limit`, projected to the fields the client needs;
+  - `before` is applied only when it parses as a date, as a **strict** `startTimeUTC: { $lt: before }`
+    bound — strict so the displayed game itself is never returned. With no `before`, the team's most
+    recent games are returned.
+  - `limit` is clamped to `[1, 20]`, defaulting to 5 when it is missing or non-numeric.
+  - Games missing either score are dropped: only a game already played counts as a result. The status
+    is returned untouched, so the client stays the single source of truth for what counts as finished
+    and for the overtime rule.
+- **`backend/src/games/games.controller.ts`** — new `GET /games/team/:teamSelectedId/form`, forwarding
+  `before` and `limit`. Like every other read route of the controller (`/team/:id`,
+  `/team/:id/results`, `/league/:league/results`, …) it is **public**: `ApiKeyGuard` is reserved for the
+  write and maintenance routes, and the frontend never sends an `x-api-key` header. Guarding it made
+  every modal open return **401**.
+- **`backend/src/games/schemas/game.schema.ts`** — two compound indexes added:
+  `{ isActive: 1, homeTeamId: 1, startTimeUTC: -1 }` and `{ isActive: 1, awayTeamId: 1, startTimeUTC: -1 }`.
+  `homeTeamId` / `awayTeamId` are plain props with no index of their own, so the `$or` query was a
+  **full collection scan** on every call — the sort and the `before` bound could only be applied in
+  memory. The same scan affected the day views and the orphan-team cleanup
+  (`findUsedTeamIds()`), which query the same two fields.
+
+### Notes / limits
+
+- Storing a pre-computed "recent form" on the game or team document was considered and **rejected**:
+  the computation is negligible, and three existing jobs mutate past games retroactively —
+  `purgeOldestMonth()` deletes the oldest month under disk pressure,
+  `getOldiesGames({ addMissingOnly })` backfills historical games, and `fetchGamesScores()` fills null
+  scores later — so any stored row would silently drift from the truth. The index removes the real
+  cost (the collection scan) without that risk.
+
+### Tests
+
+`backend/src/games/tests/games.service.spec.ts` — new `findRecentFormGames` describe block (7 tests):
+the `$or` filter on both team fields with `isActive`, the strict `$lt` bound, an unparsable `before`
+producing no bound, score-less games dropped, and the `limit` clamping (default 5, `1`, `20`, and
+non-numeric → 5). The suite was 109 tests green after the change. The `afterEach` calls
+`jest.clearAllMocks()` **and** `mockReset()` + `mockReturnThis()`: the former does not reset
+`mockImplementation`, so the `find` override written for this block leaked into the sibling suites.
+
+---
+
 ## Fixed: a completed game was deleted as "unresolved" because of its `gameStatus`
 
 ### Problem
@@ -12,20 +117,20 @@ The backend logged, on every `fetchGamesScores()` cycle:
 [fetchGamesScores] Removing unresolved game MLS-SEA-557514 (MLS) started more than 90 days ago without a final status...
 ```
 
-…even though the match is finished and shows a score on ESPN (SEA 4-3 DAL, *final after extra time*,
+…even though the match is finished and shows a score on ESPN (SEA 4-3 DAL, _final after extra time_,
 19/10/2019 — `STATUS_FINAL_AET`, `state: post`, `completed: true`).
 
 Two independent defects combined:
 
 1. **The import wrote a status no terminal-state check recognized.** The `gameStatus` IIFE of
-   `getEachTeamSchedule()` (the *scoreboard* path used by MLS/NWSL/Olympics) compared ESPN status
+   `getEachTeamSchedule()` (the _scoreboard_ path used by MLS/NWSL/Olympics) compared ESPN status
    names by **equality** against `STATUS_FINAL`, `STATUS_FULL_TIME`, `STATUS_POSTPONED`,
    `STATUS_CANCELLED`. ESPN suffixes the final states with how the game ended
    (`STATUS_FINAL_AET`, `STATUS_FINAL_PEN`, `STATUS_FULL_TIME_2`, …), so every one of them fell
    through to the generic `STATUS_*` branch and was stored as `"FINAL AET"` — a value outside the
    `['FINISHED', 'FINAL', 'CANCELLED', 'POSTPONED']` exclusion list.
 2. **The 90-day purge deleted anything carrying such a status**, with no regard for the score. Its
-   purpose (cf. the "stale active PWHL game" entry below) is to drop *stuck* games whose result can
+   purpose (cf. the "stale active PWHL game" entry below) is to drop _stuck_ games whose result can
    never be recovered — not real historical games whose result is known.
 
 The score cycle could not save it either: `fetchGamesForLiveScoreUpdate()` bounds its scan to the
@@ -71,7 +176,7 @@ status, and hardening the purge protects the records already in the database (wh
 
 A game older than 90 days is still never re-scored by `fetchGamesForLiveScoreUpdate()` (the lower
 bound that fixed a heap-OOM restart loop). Records already stored with a non-normalized status are
-therefore *kept* rather than resolved; correcting them requires a bounded one-off backfill or a
+therefore _kept_ rather than resolved; correcting them requires a bounded one-off backfill or a
 recovery pass that calls `getESPNGameScore()` (which resolves any ESPN event id, including 2019
 ones) before purging.
 
@@ -236,7 +341,7 @@ the **final, end-of-season** tally, identical on every game of that season), whi
 
 `GameService.DISK_USAGE_THRESHOLD` was raised from `0.9` (90%) to `0.95` (95%), but the test
 fixtures and the documentation still assumed 90%. Two tests in
-`backend/src/games/tests/games.service.spec.ts` mocked `getDiskUsage()` at `0.95` — exactly *at*
+`backend/src/games/tests/games.service.spec.ts` mocked `getDiskUsage()` at `0.95` — exactly _at_
 the threshold, so `purgeOldestMonthIfNeeded()` returned `"none"` while the tests expected
 `"purged"`:
 
@@ -255,12 +360,12 @@ the threshold, so `purgeOldestMonthIfNeeded()` returned `"none"` while the tests
 - **Docs** updated from 90% to 95%: `backend/docs/games/games.service.ts.md`,
   `backend/docs/games/games.controller.ts.md`, `backend/docs/cronJob/cronJob.service.ts.md`.
 - The `0.85` "CRITICAL" early-warning in `getDiskUsage()` is unchanged (still below the 95%
-  trigger, so it keeps warning *before* a purge).
+  trigger, so it keeps warning _before_ a purge).
 
 ### Result
 
 - `npx jest` → 8/8 suites, 199/199 tests pass (the 2 previously failing purge tests are fixed).
-- Note: the 2 failures listed as "pre-existing" in the *phantom playoff games* entry below are
+- Note: the 2 failures listed as "pre-existing" in the _phantom playoff games_ entry below are
   exactly these tests; they are now resolved.
 
 ## Fix: phantom playoff games now deactivated immediately when their series is already decided
@@ -274,7 +379,7 @@ no `STATUS_POSTPONED`, nothing — the game is simply absent from the feed. Thos
 (`missingSince: 2026-10-01T16:53:58Z` → deactivation only on 2026-10-03), showing users a match
 that could never be played.
 
-The grace period was designed for the opposite case: *undecided* "if necessary" playoff games
+The grace period was designed for the opposite case: _undecided_ "if necessary" playoff games
 (Game 5/6/7) that transiently disappear from the source and reappear, where a flicker must be
 avoided. A decided series is not transient — the game will never come back.
 
@@ -434,7 +539,7 @@ more month.
 - Renamed `purgeOldestYearsIfNeeded()` → **`purgeOldestMonthIfNeeded()`**.
 - Return shape changed: `{ action, diskUsage, purgedYear?, purgedMonth?, deletedCount?, remainingYears? }`
   (replaces `purgedYears?: number[]`).
-- `diskUsage` in the response is the measurement that *triggered* the purge (taken before the deletion); it is
+- `diskUsage` in the response is the measurement that _triggered_ the purge (taken before the deletion); it is
   re-measured on the next check once the 60-second cache expires.
 - Removed the now-unused private helper `deleteGamesForYear()`.
 
@@ -464,7 +569,6 @@ more month.
 
 ---
 
-
 ## Changed: `getOldGames` cron selects a random year strictly between `currentYear - 1` and `currentYear - maxYearBeforeDelete`
 
 ### Purpose
@@ -478,7 +582,6 @@ In `CronService.getOldGames()` (runs daily at 10:00 AM), the random year selecti
 - `backend/src/cronJob/tests/cronJob.service.spec.ts`: updated the unit test to verify that `randomYear` is strictly within `minYear .. currentYear - 1` and never hits `currentYear`.
 
 ---
-
 
 ## Added: weekly purge of stale teams without active games
 
@@ -526,6 +629,7 @@ Documentation now describes general architecture and maintenance rather than tea
 Entries where `color` equals `backgroundColor` (e.g. `#000000`/`#000000`, or the `#NULL` artifact) are unusable for display. New `isDegenerateTeamColors()` in `Colors.ts` makes such pairs "unknown" everywhere: `getTeamColors()` never returns one (cross-college fallback then `DEFAULT_TEAM_COLORS`), `_resolveTeamColors()` in `games.service.ts` no longer trusts them, and the ESPN team mapping (`espnAllData.ts`) replaces a `color === alternateColor` pair with the resolved fallback colors. General validation guidance is maintained in `COLORS_REPORT.md`.
 
 ### Files
+
 - `backend/src/utils/Colors.ts` — `isDegenerateTeamColors()` + degenerate-aware `getTeamColors()`
 - `backend/src/utils/fetchData/espnAllData.ts` — degenerate pair guard at fetch time
 - `backend/src/games/games.service.ts` — `_resolveTeamColors()` degenerate-aware
@@ -537,6 +641,7 @@ Entries where `color` equals `backgroundColor` (e.g. `#000000`/`#000000`, or the
 Some university teams come back from ESPN without colors; their `ColorsTeam` entry was then stored as the generic placeholder (`#ffffff` on `#000000`) and the UI showed a white-on-black card. `backend/src/utils/Colors.ts` now exposes `getTeamColors(uniqueId)`: a known, non-placeholder entry is returned as-is; for a **university league** with a missing/placeholder entry the same university abbreviation is looked up in the other college leagues (a school keeps the same colors across sports, e.g. `NCAAB-X` → `NCAAF-X`); every other case (non-college leagues included) keeps `Colors.default`. This applies at fetch time (ESPN + NHL/PWHL team mapping) and at display time via the new `GameService._resolveTeamColors()`, so already-stored teams show the borrowed colors without waiting for a re-fetch.
 
 ### Files
+
 - `backend/src/utils/Colors.ts` — `DEFAULT_TEAM_COLORS`, `isDefaultTeamColors()`, `COLLEGE_LEAGUES`, `getTeamColors()`
 - `backend/src/utils/fetchData/espnAllData.ts` — fallback branch uses `getTeamColors(uniqueId)`
 - `backend/src/utils/fetchData/hockeyData.ts` — NHL/PWHL team mapping uses `getTeamColors(uniqueId)`
@@ -549,6 +654,7 @@ Some university teams come back from ESPN without colors; their `ColorsTeam` ent
 `getESPNTeams()` keeps the classic `GET teams` list, then enriches `CollegeLeague` teams add-only by scanning up to 10 scoreboard pages (`limit=1000`, early stop) of the current year; teams without `isActive` (partial scoreboard objects) are accepted. New `resolveUniversityLogo(league, abbrev)` tries `'{LEAGUE}-{ABBREV}'` first with systematic fallback to `'{ABBREV}'` (used in team mapping, match payloads, `getTeamsLogo()`, pre-save fallback). Missing logo links are backfilled with AND without the league prefix by `backfillMissingUniversityLogos()`, which runs ONLY at the end of `getTeams()` (manual `POST /teams/refresh` or monthly `updateTeams` cron — never on game fetches). Colors already keyed per league via `uniqueId` — unchanged.
 
 ### Files
+
 - `backend/src/utils/fetchData/espnAllData.ts` — 10-page scoreboard enrichment + `resolveUniversityLogo()` + match logo fallbacks
 - `backend/src/teams/teams.service.ts` — pre-save resolver + `backfillMissingUniversityLogos()` at end of `getTeams()` only
 - `backend/src/games/games.service.ts` — `getTeamsLogo()` + `_enrichGameWithTeamData()` use the resolver
@@ -559,6 +665,7 @@ Some university teams come back from ESPN without colors; their `ColorsTeam` ent
 College leagues (`NCAAF, NCAAB, NCCABB, WNCAAB, NCAAMH, NCAAWH`) fetch history via the team schedule endpoint again (`teams/{id}/schedule?seasontype=&season=`): the `scoreboard?dates={year}` path (introduced in `e2e60ed`) does not return their full history. Olympics + soccer (`MLS`/`NWSL`) keep the scoreboard path, including oldies via explicit `season`. `NCAAS` is intentionally not restored.
 
 ### Files
+
 - `backend/src/utils/fetchData/espnAllData.ts` — removed `collegeLeagues` from the scoreboard branch (back to `else`/team-schedule path)
 - `backend/docs/utils/fetchData/espnAllData.ts.md` — created, documents both fetch paths
 
@@ -567,6 +674,7 @@ College leagues (`NCAAF, NCAAB, NCCABB, WNCAAB, NCAAMH, NCAAWH`) fetch history v
 Without a `year` param, `getOldiesGames()` now loops from `currentYear - 1` down to the oldest allowed year instead of starting at `currentYear`. The current (in-progress) season is already covered by the normal refresh (`getLeagueGames` / rotation cron), so fetching it again via oldies was duplicate work. Forcing remains possible via `POST /games/refresh/oldies?year=<currentYear>&league=<LEAGUE>` — the explicit-year validation (`minYear..currentYear`) is unchanged.
 
 ### Files
+
 - `backend/src/games/games.service.ts` — default loop starts at `currentYear - 1`
 - `backend/src/games/tests/games.service.spec.ts` — updated default-loop test, added explicit-current-year test
 - `backend/docs/games/games.service.ts.md` — documented the default exclusion + explicit force
@@ -578,6 +686,7 @@ Without a `year` param, `getOldiesGames()` now loops from `currentYear - 1` down
 The per-game insertion loop in `getLeagueGames()` (oldies path only, `addMissingOnly: true`) also logs `[Oldies] <LEAGUE> (season <year>): insert progress: <pct>% (<processed>/<total>) — added <n>` at every 20% milestone plus a final 100% line, so the DB insertion phase itself shows advancement even when most games are skipped as already existing.
 
 ### Files
+
 - `backend/src/games/games.service.ts` — progress counter in `getOldiesGames()` + insert-progress milestones in `getLeagueGames()`
 - `backend/docs/games/games.service.ts.md` — documented the progress logging
 
@@ -594,6 +703,7 @@ A temporarily interrupted game (e.g. a baseball rain delay / suspension) was bei
 - Postponed/cancelled games keep their existing behavior (unchanged).
 
 ### Files
+
 - `backend/src/games/games.service.ts` — `_resolveStatus()` now returns `DELAYED` for interrupted games
 - `backend/docs/games/games.service.ts.md` — documented the `DELAYED` status
 
@@ -616,6 +726,7 @@ In `getLeagueGames()`, the ESPN/PWHL APIs return scores for games that haven't s
 Added a guard in `getLeagueGames()` that nullifies `homeTeamScore` and `awayTeamScore` for any game whose `startTimeUTC` is in the future, right before `create(game)` is called. This prevents pre-game scores from ever being persisted, eliminating the cycle.
 
 ### Files
+
 - `backend/src/games/games.service.ts` — added score-stripping guard before `create(game)` in the import loop
 - `backend/docs/games/games.service.ts.md` — documented the guard
 
@@ -628,6 +739,7 @@ The `refreshLeaguesOneByOne()` cron skipped off-season leagues entirely (`isCurr
 ### Solution
 
 Replaced the hard off-season skip with a `needRefresh()` check that uses `numberOfDaysToRefresh()`:
+
 - **Playoffs**: refresh every day
 - **Regular season**: refresh every 3 days
 - **Off-season**: refresh every 7 days
@@ -635,6 +747,7 @@ Replaced the hard off-season skip with a `needRefresh()` check that uses `number
 This ensures off-season leagues are still checked weekly for newly released schedules, while in-season leagues get refreshed more frequently.
 
 ### Files
+
 - `backend/src/cronJob/cronJob.service.ts` — replaced `isCurrentSeason` skip with `needRefresh()` check in `refreshLeaguesOneByOne()`
 - `backend/docs/cronJob/cronJob.service.ts.md` — updated documentation
 
@@ -647,14 +760,17 @@ Different leagues had different fetch behaviors for normal refreshes, causing co
 ### Solution
 
 Unified the year selection logic for **all leagues**:
+
 - **Normal fetch** (no `season` param): Fetches only the **current season years** based on `startSeason`/`endSeason` config
 - **Fetch oldest (`getOldiesGames`)**: Fetches historical years via the `season` parameter (up to 10 years back)
 
 Added new utility function `getCurrentSeasonYears(leagueName)` in `utils.ts`:
+
 - For seasons spanning two years (e.g., NHL Oct-Apr): returns both years (e.g., [2025, 2026] or [2026, 2027])
 - For single-year seasons (e.g., MLB Mar-Sep): returns only the current year
 
 This applies to:
+
 - Games fetching in `getEachTeamSchedule()` for NCAA and Olympics (scoreboard API)
 - Teams fetching fallback in `getESPNTeams()` for NCAA and Olympics
 
@@ -673,6 +789,7 @@ This applies to:
 The NCAA college leagues were using the ESPN `/teams/${id}/schedule` endpoint with `seasontype` parameter to fetch games. However, ESPN does not populate this route for some college sports - it returns empty arrays or 404 errors.
 
 This caused:
+
 - No past games being retrieved for NCAA leagues
 - No future games being retrieved for NCAA leagues
 - Missing schedule data for these leagues
@@ -682,6 +799,7 @@ This caused:
 Added all NCAA college leagues to the `collegeLeagues` set that uses the **scoreboard API** instead of the schedule API. The scoreboard API (`/scoreboard?dates=${year}`) returns all games for a year, which are then filtered by team ID.
 
 The college leagues now using the scoreboard API:
+
 - NCAAF (College Football)
 - NCAAB (Men's College Basketball)
 - NCCABB (College Baseball)
@@ -864,6 +982,7 @@ existing refresh, already gated to leagues in season or playoffs.
 The response message from `POST /games/refresh/oldies` used to list all requested years (e.g. "2026, 2025, 2024, ...") regardless of whether any games were inserted. Years where `added: 0` (all games already existed) cluttered the response.
 
 Now:
+
 - `getLeagueGames` returns `{ added, skippedExisting, skippedMissingTeamData }` when `addMissingOnly: true` (instead of the games array — only the oldies path uses this flag).
 - `getOldiesGames` tracks which years had `added > 0` and only includes those in the message.
 - When no years had additions, the message reads "completed — no new games were added (all years already up to date)".
@@ -957,7 +1076,6 @@ Avoids calling third-party APIs (ESPN, PWHL) for leagues that are off-season:
 
 ---
 
-
 ## Added: Historical teams fallback for enrichment (`HistoricalTeams.ts`)
 
 Old ("oldies") games involving defunct, relocated or renamed franchises previously
@@ -971,7 +1089,7 @@ team `label`, `abbrev`, logo, dark logo, colors and optional `record`.
 - `GameService._enrichGameWithTeamData` falls back to `HistoricalTeams[id]` when a
   game's `homeTeamId` / `awayTeamId` is not found in the DB `teamsMap`, so old games
   render correct name / logo / colors again.
-- This file resolves **enrichment only**. Fetching *new* historical games still needs the
+- This file resolves **enrichment only**. Fetching _new_ historical games still needs the
   numeric ESPN team `id` (a Core API `seasons/{year}/teams` sync) and is out of scope.
 
 ### Guards / non-regression
@@ -1243,12 +1361,12 @@ that season, even when the DB already had every game. It is now aware of what it
   real refresh) **without saving anything** — then compares the number of obtained games against
   how many of those `uniqueId`s are already stored in the DB. Returns
   `{ league, season, obtained, stored, complete }`. It also reports `isCurrentSeason`:
-  a season is the current/upcoming one when no `season` is given, or when `isCurrentSeason`
+  a season is the current/upcoming one when no `season`is given, or when`isCurrentSeason`
   matches for a representative date in that season (June 30). **For the current season the
-  comparison is not trusted** (`complete` is always `true`) because a partial live DB is normal.
+  comparison is not trusted** (`complete`is always`true`) because a partial live DB is normal.
 - **`GameService.\_fetchUniqueGames(league, season?)** (new private helper): extracts the
-  fetch + flatten + `uniqueId` deduplication logic previously inlined in `getLeagueGames`, and
-  is now shared by `getLeagueGames` (which saves) and `getSeasonStatus` (which doesn't).
+  fetch + flatten + `uniqueId`deduplication logic previously inlined in`getLeagueGames`, and
+  is now shared by `getLeagueGames`(which saves) and`getSeasonStatus` (which doesn't).
 - **`CronService.getOldGames`** (`backend/src/cronJob/cronJob.service.ts`): now
   1. picks a **random league**;
   2. loops over the last `maxYearBeforeDelete` years, most recent first;
