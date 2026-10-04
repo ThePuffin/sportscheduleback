@@ -85,6 +85,9 @@ export class UpdateGameDto {
   @ApiProperty({ default: new Date() })
   updateDate: string;
 
+  @ApiProperty({ required: false })
+  dataChangedAt?: string;
+
   @ApiProperty()
   gameStatus: string | null;
 }

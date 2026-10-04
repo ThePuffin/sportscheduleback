@@ -2,6 +2,32 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: `game.dataChangedAt` — the instant the live data actually changed
+
+### Problem
+
+`updateDate` is rewritten by `syncGameWithScore()` on **every** live sync, whether or not anything
+moved. It therefore answers "when did we last poll the provider", which is useless for the frontend
+question "is this game actually still being reported?" — a provider stuck on `"02:00"` for twenty
+minutes is indistinguishable from one refreshing normally. Without a real change timestamp, the app
+cannot tell a finished game from a live one whose feed went silent, and a live-looking clock can hang
+on the card indefinitely.
+
+### Changes
+
+- **`backend/src/games/schemas/game.schema.ts`** — new optional `dataChangedAt` prop: ISO-8601 string of
+  when `gameClock` / `gamePeriod` / scores / `gameStatus` last **changed value**.
+- **`backend/src/games/games.service.ts`** — `syncGameWithScore()` snapshots the previous clock, period,
+  both scores and the previous status before overwriting them, still writes `updateDate` on every sync,
+  and writes `dataChangedAt` only when one of those values differs. A document that has no
+  `dataChangedAt` yet gets one on its first sync, so existing data backfills itself without a migration.
+- **`backend/src/games/dto/create-game.dto.ts`** and **`update-game.dto.ts`** — `dataChangedAt?: string`.
+
+**Consumers:** the frontend `isLiveFeedStale()` (`frontend/utils/date.ts`) compares this timestamp
+against a 15-minute threshold to decide when the `"Finalisation"` label should replace a stale live
+clock. `updateDate` keeps its existing meaning and existing consumers (stale-team purge, grace
+periods) are untouched.
+
 ## Fixed: a truncated ESPN fetch froze an intermediate tally as the season record
 
 ### Problem

@@ -2480,7 +2480,27 @@ export class GameService {
       game.gamePeriod = matchedScore.gamePeriod;
     }
 
-    game.updateDate = new Date().toISOString();
+    // `updateDate` is rewritten on every sync; `dataChangedAt` only when a value the
+    // user actually sees moved. A provider that keeps answering with the exact same
+    // clock ("02:00" frozen) leaves `dataChangedAt` untouched, which is what lets
+    // the frontend detect a game whose feed went silent.
+    const previousClock = game.gameClock;
+    const previousPeriod = game.gamePeriod;
+    const previousHomeScore = game.homeTeamScore;
+    const previousAwayScore = game.awayTeamScore;
+    const now = new Date().toISOString();
+
+    game.updateDate = now;
+    if (
+      !game.dataChangedAt ||
+      previousClock !== game.gameClock ||
+      previousPeriod !== game.gamePeriod ||
+      previousHomeScore !== game.homeTeamScore ||
+      previousAwayScore !== game.awayTeamScore ||
+      previousStatus !== resolvedStatus
+    ) {
+      game.dataChangedAt = now;
+    }
     game.gameStatus = resolvedStatus;
     game.seriesSummary = matchedScore.seriesSummary;
     game.seriesStatus = matchedScore.seriesStatus;

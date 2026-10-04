@@ -121,6 +121,16 @@ scores and to `gameStatus` / `gameClock` / `gamePeriod`. This matters on the old
 refreshed because its **scores** changed would otherwise have its correct records wiped by a season
 for which ESPN returns no `record`.
 
+**`dataChangedAt` (staleness tracking):** `updateDate` is rewritten on **every** sync, so it means
+"last time we polled the provider", not "last time anything changed" — useless for detecting a feed
+that stopped. `syncGameWithScore()` therefore captures the previous `gameClock`, `gamePeriod`, both
+scores and the previous `gameStatus` **before** overwriting them, and refreshes `dataChangedAt` only
+when one of those values actually differs — or when the field is still missing, so documents created
+before it existed are backfilled on their first sync. A provider that keeps answering with the exact
+same clock (`"02:00"` frozen) leaves `dataChangedAt` untouched, which is what lets the frontend tell a
+genuinely finished game from a live one whose feed went silent (`isLiveFeedStale()` in
+`frontend/utils/date.ts`).
+
 **Score stripping for future games (both flows):**
 
 Before `create(game)` is called, scores are nullified for any game whose `startTimeUTC` is in the future. The ESPN/PWHL APIs may return scores for games that haven't started yet; without this guard, scores would be written to the DB and then removed by `fixScoreIssue()` on every `fetchGamesScores()` cycle, creating log spam.
