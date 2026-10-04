@@ -12,6 +12,10 @@ import {
 import { addHours, readableDate } from '../utils/date';
 import { CollegeLeague, League } from '../utils/enum';
 import {
+  isTerminalGameStatus,
+  TERMINAL_GAME_STATUSES,
+} from '../utils/gameStatus';
+import {
   getESPNGameScore,
   getESPNScores,
   getTeamRecordFromSchedule,
@@ -1655,9 +1659,7 @@ export class GameService {
         },
         $or: [
           {
-            gameStatus: {
-              $nin: ['FINISHED', 'FINAL', 'CANCELLED', 'POSTPONED'],
-            },
+            gameStatus: { $nin: TERMINAL_GAME_STATUSES },
           },
           {
             // Explicitly target games with scores but no status
@@ -2005,18 +2007,36 @@ export class GameService {
       .find({
         isActive: true,
         startTimeUTC: { $lte: cutoff.toISOString(), $nin: ['', null] },
-        gameStatus: {
-          $nin: ['FINISHED', 'FINAL', 'CANCELLED', 'POSTPONED'],
-        },
+        gameStatus: { $nin: TERMINAL_GAME_STATUSES },
+        // The purge exists for stuck games whose result can never be recovered.
+        // A game that already carries a score is a real historical game (e.g. an
+        // old import whose `gameStatus` was never normalized), not a stuck one,
+        // so it must never be deleted.
+        homeTeamScore: null,
+        awayTeamScore: null,
       })
       .exec();
+
+    // `gameStatus` is not guaranteed to be uppercase (e.g. a legacy record stored
+    // as "Final" or "final aet"), so the terminal-state check is applied in memory
+    // as well: a game whose status reads as decided is never purged.
+    const gamesToPurge = staleGames.filter(
+      (game) => !isTerminalGameStatus(game.gameStatus),
+    );
+    const skippedWithStatus = staleGames.length - gamesToPurge.length;
 
     console.info(
       `[fetchGamesScores] ${staleGames.length} active game(s) unresolved for more than ${maxAgeDays} days. Processing...`,
     );
 
+    if (skippedWithStatus > 0) {
+      console.info(
+        `[fetchGamesScores] Skipped ${skippedWithStatus} old game(s) carrying a score or a decided status: they are not stuck games.`,
+      );
+    }
+
     let deletedCount = 0;
-    for (const game of staleGames) {
+    for (const game of gamesToPurge) {
       console.info(
         `[fetchGamesScores] Removing unresolved game ${game.uniqueId} (${game.league}) started more than ${maxAgeDays} days ago without a final status...`,
       );
@@ -2030,7 +2050,7 @@ export class GameService {
       );
     }
 
-    return staleGames;
+    return gamesToPurge;
   }
 
   async fetchLiveScores(gameIds: string[]): Promise<any[]> {

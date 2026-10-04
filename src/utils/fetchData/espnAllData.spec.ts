@@ -1,7 +1,51 @@
 import {
   applySeasonFinalRecords,
   extractCompetitorRecord,
+  resolveScheduleGameStatus,
 } from './espnAllData';
+
+describe('resolveScheduleGameStatus', () => {
+  it('maps the plain final statuses to FINISHED', () => {
+    expect(resolveScheduleGameStatus('STATUS_FINAL')).toBe('FINISHED');
+    expect(resolveScheduleGameStatus('STATUS_FULL_TIME')).toBe('FINISHED');
+  });
+
+  it('maps the suffixed final statuses to FINISHED', () => {
+    // Regression: MLS 557514 (SEA 4-3 DAL) carries STATUS_FINAL_AET. The old
+    // equality whitelist stored "FINAL AET", which no terminal-state check
+    // recognized, so the fully played game was purged as "unresolved".
+    expect(resolveScheduleGameStatus('STATUS_FINAL_AET')).toBe('FINISHED');
+    expect(resolveScheduleGameStatus('STATUS_FINAL_PEN')).toBe('FINISHED');
+    expect(resolveScheduleGameStatus('STATUS_FINAL_OT')).toBe('FINISHED');
+    expect(resolveScheduleGameStatus('STATUS_FULL_TIME_2')).toBe('FINISHED');
+  });
+
+  it('is case insensitive', () => {
+    expect(resolveScheduleGameStatus('status_final_aet')).toBe('FINISHED');
+  });
+
+  it('preserves postponement and cancellation', () => {
+    expect(resolveScheduleGameStatus('STATUS_POSTPONED')).toBe('POSTPONED');
+    expect(resolveScheduleGameStatus('STATUS_CANCELLED')).toBe('CANCELLED');
+    expect(resolveScheduleGameStatus('STATUS_CANCELED')).toBe('CANCELLED');
+  });
+
+  it('maps a temporary interruption to DELAYED', () => {
+    expect(resolveScheduleGameStatus('STATUS_DELAYED')).toBe('DELAYED');
+    expect(resolveScheduleGameStatus('STATUS_SUSPENDED')).toBe('DELAYED');
+  });
+
+  it('keeps live statuses and readable unknown ones', () => {
+    expect(resolveScheduleGameStatus('STATUS_IN_PROGRESS')).toBe('IN_PROGRESS');
+    expect(resolveScheduleGameStatus('STATUS_HALFTIME')).toBe('HALFTIME');
+  });
+
+  it('returns null when there is no status', () => {
+    expect(resolveScheduleGameStatus(undefined)).toBeNull();
+    expect(resolveScheduleGameStatus('')).toBeNull();
+    expect(resolveScheduleGameStatus('2ND HALF')).toBeNull();
+  });
+});
 
 describe('extractCompetitorRecord', () => {
   it('reads the singular `record` array of the team-schedule endpoint', () => {

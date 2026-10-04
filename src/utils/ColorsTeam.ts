@@ -1683,6 +1683,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#ffffff',
     backgroundColor: '#881c1c',
   },
+  'NCAAF-MCN': {
+    color: '#00529C',
+    backgroundColor: '#000000',
+  },
   'NCAAF-MD': {
     color: '#ffffff',
     backgroundColor: '#ce1126',
@@ -1934,6 +1938,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   'NCAAF-SAC': {
     color: '#cdb97d',
     backgroundColor: '#00573C',
+  },
+  'NCAAF-SAM': {
+    color: '#005485',
+    backgroundColor: '#bc0023',
   },
   'NCAAF-SC': {
     color: '#73000a',

@@ -1195,6 +1195,48 @@ describe('GameService', () => {
       expect(removeSpy).not.toHaveBeenCalled();
       removeSpy.mockRestore();
     });
+
+    it('should query only games without any score', async () => {
+      mockGameModel.exec.mockResolvedValue([]);
+
+      await (service as any).removeStaleUnresolvedGames(90);
+
+      expect(mockGameModel.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isActive: true,
+          homeTeamScore: null,
+          awayTeamScore: null,
+        }),
+      );
+    });
+
+    it('should not purge an old game whose status reads as decided', async () => {
+      // Regression: MLS-SEA-557514 (2019-10-19, final 4-3) was stored with
+      // gameStatus "FINAL AET". It must never be deleted as "unresolved".
+      const removeSpy = jest
+        .spyOn(service, 'remove')
+        .mockResolvedValue({} as any);
+      const consoleSpy = jest.spyOn(console, 'info').mockImplementation();
+
+      mockGameModel.exec.mockResolvedValue([
+        {
+          uniqueId: 'MLS-SEA-557514',
+          league: League.MLS,
+          gameStatus: 'FINAL AET',
+        },
+        { uniqueId: 'MLS-SEA-557515', league: League.MLS, gameStatus: 'final' },
+      ]);
+
+      await (service as any).removeStaleUnresolvedGames(90);
+
+      expect(removeSpy).not.toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Skipped 2 old game(s) carrying a score'),
+      );
+
+      removeSpy.mockRestore();
+      consoleSpy.mockRestore();
+    });
   });
 
   describe('purgeOldestMonthIfNeeded', () => {

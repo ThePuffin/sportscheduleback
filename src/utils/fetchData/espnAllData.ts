@@ -68,6 +68,56 @@ const getScore = (competitor) => {
  * Returns a bare `"W-L-T"` string: the trailing `", 109 PTS"` bonus-points
  * suffix that ESPN appends for hockey is stripped.
  */
+/**
+ * Normalizes an ESPN `STATUS_*` name into the game status stored in the DB.
+ *
+ * A plain equality whitelist is not enough: ESPN suffixes the final states with
+ * the way the game ended — `STATUS_FINAL_AET` (after extra time), `STATUS_FINAL_PEN`
+ * (shootout), `STATUS_FULL_TIME_2`, ... Those all fell through to the generic
+ * `STATUS_*` branch and were stored as `"FINAL AET"`, a status no terminal-state
+ * check recognized: `removeStaleUnresolvedGames()` then classified such a fully
+ * played game (e.g. MLS `557514`, final 4-3) as "unresolved" and deleted it.
+ *
+ * Mapping:
+ * - `FINAL` / `FULL_TIME*` -> `FINISHED`
+ * - `POSTPONED*` -> `POSTPONED`, `CANCELLED*` -> `CANCELLED`
+ * - `DELAYED*` / `SUSPENDED*` -> `DELAYED` (a temporary interruption, cf. `_resolveStatus`)
+ * - `IN_PROGRESS*` -> `IN_PROGRESS`
+ * - any other `STATUS_*` -> a readable value (`STATUS_HALFTIME` -> `"HALFTIME"`)
+ * - no status at all -> `null`
+ */
+export const resolveScheduleGameStatus = (status?: string): string | null => {
+  if (!status) return null;
+
+  const name = status.toUpperCase();
+  const withoutPrefix = name.startsWith('STATUS_')
+    ? name.slice('STATUS_'.length)
+    : name;
+
+  if (
+    withoutPrefix.startsWith('FINAL') ||
+    withoutPrefix.startsWith('FULL_TIME')
+  )
+    return 'FINISHED';
+  if (withoutPrefix.startsWith('POSTPONED')) return 'POSTPONED';
+  if (
+    withoutPrefix.startsWith('CANCELLED') ||
+    withoutPrefix.startsWith('CANCELED')
+  )
+    return 'CANCELLED';
+  if (
+    withoutPrefix.startsWith('DELAYED') ||
+    withoutPrefix.startsWith('SUSPENDED') ||
+    withoutPrefix.startsWith('INTERRUPTED')
+  )
+    return 'DELAYED';
+  if (withoutPrefix.startsWith('IN_PROGRESS')) return 'IN_PROGRESS';
+
+  if (name.startsWith('STATUS_')) return withoutPrefix.replace(/_/g, ' ');
+
+  return null;
+};
+
 export const extractCompetitorRecord = (competitor: any): string => {
   const entries = Array.isArray(competitor?.records)
     ? competitor.records
@@ -864,24 +914,9 @@ const getEachTeamSchedule = async (
           selectedTeam: homeAbbrev === abbrev,
           show: homeAbbrev === abbrev,
           startTimeUTC: new Date(date).toISOString(),
-          gameStatus: (function () {
-            const status = comp?.status?.type?.name || game?.status?.type?.name;
-            if (
-              status === 'STATUS_FINAL' ||
-              status === 'STATUS_FULL_TIME' ||
-              status === 'STATUS_POSTPONED' ||
-              status === 'STATUS_CANCELLED'
-            ) {
-              return status === 'STATUS_FINAL' || status === 'STATUS_FULL_TIME'
-                ? 'FINISHED'
-                : status.replace('STATUS_', '');
-            }
-            if (status === 'STATUS_IN_PROGRESS') return 'IN_PROGRESS';
-            if (status && status.startsWith('STATUS_')) {
-              return status.replace('STATUS_', '').replace(/_/g, ' ');
-            }
-            return null;
-          })(),
+          gameStatus: resolveScheduleGameStatus(
+            comp?.status?.type?.name || game?.status?.type?.name,
+          ),
           teamSelectedId: value,
           isActive,
           uniqueId: id ? `${value}-${id}` : `${value}-${gameDate}-${number}`,

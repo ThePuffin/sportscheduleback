@@ -21,3 +21,4 @@ This folder contains AI-friendly documentation for the main backend modules.
 - [auth/api-key.guard.ts](auth/api-key.guard.ts.md) — API key protection for admin routes
 - [cronJob/cronJob.service.ts](cronJob/cronJob.service.ts.md) — scheduled refresh jobs
 - [utils/utils.ts](utils/utils.ts.md) — league season helpers and refresh decision logic
+- [utils/gameStatus.ts](utils/gameStatus.ts.md) — shared definition of a terminal (decided) game status

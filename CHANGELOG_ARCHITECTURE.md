@@ -2,6 +2,79 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: a completed game was deleted as "unresolved" because of its `gameStatus`
+
+### Problem
+
+The backend logged, on every `fetchGamesScores()` cycle:
+
+```
+[fetchGamesScores] Removing unresolved game MLS-SEA-557514 (MLS) started more than 90 days ago without a final status...
+```
+
+…even though the match is finished and shows a score on ESPN (SEA 4-3 DAL, *final after extra time*,
+19/10/2019 — `STATUS_FINAL_AET`, `state: post`, `completed: true`).
+
+Two independent defects combined:
+
+1. **The import wrote a status no terminal-state check recognized.** The `gameStatus` IIFE of
+   `getEachTeamSchedule()` (the *scoreboard* path used by MLS/NWSL/Olympics) compared ESPN status
+   names by **equality** against `STATUS_FINAL`, `STATUS_FULL_TIME`, `STATUS_POSTPONED`,
+   `STATUS_CANCELLED`. ESPN suffixes the final states with how the game ended
+   (`STATUS_FINAL_AET`, `STATUS_FINAL_PEN`, `STATUS_FULL_TIME_2`, …), so every one of them fell
+   through to the generic `STATUS_*` branch and was stored as `"FINAL AET"` — a value outside the
+   `['FINISHED', 'FINAL', 'CANCELLED', 'POSTPONED']` exclusion list.
+2. **The 90-day purge deleted anything carrying such a status**, with no regard for the score. Its
+   purpose (cf. the "stale active PWHL game" entry below) is to drop *stuck* games whose result can
+   never be recovered — not real historical games whose result is known.
+
+The score cycle could not save it either: `fetchGamesForLiveScoreUpdate()` bounds its scan to the
+last `staleGameMaxAgeDays` (90), so a 2019 game is never re-scored, even though the source still
+serves it. The result was silent data loss of a legitimately scored match.
+
+### Changes
+
+- **`backend/src/utils/fetchData/espnAllData.ts`** — the inline IIFE is replaced by a new exported,
+  unit-tested **`resolveScheduleGameStatus(status)`** that maps an ESPN `STATUS_*` name by **family**
+  rather than by equality: `FINAL*` / `FULL_TIME*` → `FINISHED`, `POSTPONED*` → `POSTPONED`,
+  `CANCELLED*` / `CANCELED*` → `CANCELLED`, `DELAYED*` / `SUSPENDED*` / `INTERRUPTED*` → `DELAYED`
+  (consistent with `GameService._resolveStatus()`), `IN_PROGRESS*` → `IN_PROGRESS`, any other
+  `STATUS_*` → a readable value (`STATUS_HALFTIME` → `"HALFTIME"`), no status → `null`.
+  Case insensitive.
+- **`backend/src/utils/gameStatus.ts`** (new) — shared definition of a terminal status:
+  `TERMINAL_GAME_STATUSES` (for Mongo `$nin` filters) and `isTerminalGameStatus(status)` (anchored,
+  case-insensitive regex also accepting the suffixed/legacy variants `FINAL AET`, `FINAL PEN`,
+  `FULL TIME`, `CANCELED`). Replaces the two duplicated hardcoded lists so the score cycle and the
+  purge cannot drift apart.
+- **`backend/src/games/games.service.ts`**:
+  - `removeStaleUnresolvedGames()` now additionally requires `homeTeamScore: null` **and**
+    `awayTeamScore: null` — a game that already has a score is a real historical game, never a stuck
+    one — and re-checks each candidate with `isTerminalGameStatus()` in memory so a legacy record
+    stored as `"final"` or `"FINAL AET"` is spared too. Skipped games are logged
+    (`[fetchGamesScores] Skipped N old game(s) carrying a score or a decided status…`).
+  - `fetchGamesForLiveScoreUpdate()` and the purge both use `TERMINAL_GAME_STATUSES` instead of an
+    inline literal list.
+
+Both layers are intentional: fixing the import stops new records from being written with a bogus
+status, and hardening the purge protects the records already in the database (which keeps their
+`"FINAL AET"` values until they are re-imported).
+
+### Files
+
+- `backend/src/utils/gameStatus.ts` (new) + `backend/src/utils/gameStatus.spec.ts` (new)
+- `backend/src/utils/fetchData/espnAllData.ts` + `espnAllData.spec.ts`
+- `backend/src/games/games.service.ts` + `backend/src/games/tests/games.service.spec.ts`
+- `backend/docs/utils/gameStatus.ts.md` (new), `backend/docs/utils/fetchData/espnAllData.ts.md`,
+  `backend/docs/games/games.service.ts.md`, `backend/docs/README.md`
+
+### Known limitation (not addressed here)
+
+A game older than 90 days is still never re-scored by `fetchGamesForLiveScoreUpdate()` (the lower
+bound that fixed a heap-OOM restart loop). Records already stored with a non-normalized status are
+therefore *kept* rather than resolved; correcting them requires a bounded one-off backfill or a
+recovery pass that calls `getESPNGameScore()` (which resolves any ESPN event id, including 2019
+ones) before purging.
+
 ## Added: twice-daily team records refresh cron, restricted to in-season leagues
 
 ### Problem

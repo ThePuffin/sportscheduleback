@@ -16,6 +16,18 @@ Fetches teams and per-team schedules from ESPN APIs, normalizes them into game p
 - **University team colors** (`getTeamColors(uniqueId)` from `../Colors`): when ESPN returns no `color`/`alternateColor`, the colors of the same university abbreviation in another college league are used (`NCAAB-X` → `NCAAF-X` / `NCAAMH-X` …) instead of the generic `#ffffff` on `#000000` placeholder. Non-college leagues keep the default placeholder.
 - **Resilience**: 15s fetch timeout (`fetchWithTimeout`) + 1 retry (`fetchWithRetry`).
 - **Score helpers**: `getESPNScores()`, `getESPNGameScore()`, `getTeamsSchedule()`.
+- **Game status normalization (`resolveScheduleGameStatus(status)`)**: maps an ESPN `STATUS_*` name to
+  the value stored in `game.gameStatus`, by **family** and not by equality:
+  `FINAL*` / `FULL_TIME*` → `FINISHED` (so `STATUS_FINAL_AET`, `STATUS_FINAL_PEN`,
+  `STATUS_FINAL_OT`, `STATUS_FULL_TIME_2` are all final), `POSTPONED*` → `POSTPONED`,
+  `CANCELLED*`/`CANCELED*` → `CANCELLED`, `DELAYED*`/`SUSPENDED*`/`INTERRUPTED*` → `DELAYED`,
+  `IN_PROGRESS*` → `IN_PROGRESS`, any other `STATUS_*` → a readable value (`STATUS_HALFTIME` →
+  `"HALFTIME"`), no status → `null`. Case insensitive.
+  The previous equality whitelist only knew `STATUS_FINAL` / `STATUS_FULL_TIME` / `STATUS_POSTPONED`
+  / `STATUS_CANCELLED`; every suffixed final status fell through to the generic `STATUS_*` branch
+  and was stored as `"FINAL AET"`. No terminal-state check recognized that value, so
+  `GameService.removeStaleUnresolvedGames()` classified a fully played game (e.g. MLS
+  `MLS-SEA-557514`, final 4-3 after extra time) as "unresolved" and deleted it.
 - **Team records (`homeTeamRecord` / `awayTeamRecord`)**:
   - `extractCompetitorRecord(competitor)` — the single reader for both ESPN shapes: the singular `competitor.record` array (`displayValue`) returned by `teams/{id}/schedule`, and the plural `competitor.records` array (`summary`) returned by `scoreboard` / `summary`. Entry priority is `total` → `ytd` → first entry, because the NHL/season schedules only expose `ytd` while the post-season schedule and the scoreboard expose `total`. The previous `records.find(r => r.type === 'total')` lookup therefore returned `''` for the NHL scoreboard and for `getESPNGameScore()`. The trailing `", 109 PTS"` hockey suffix is stripped, so a bare `"W-L-T"` string is stored.
   - `getEachTeamSchedule()` writes a **cumulative** tally (record at the time of the game) on the team-schedule path — that path previously wrote no record at all, which is why past seasons had none.

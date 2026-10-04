@@ -215,6 +215,33 @@ tally at the moment the score was synced, whereas a game of the in-progress seas
 most recent record (via the `team.record` fallback in `_enrichGameWithTeamData()`). Finished seasons
 get their final tally from the schedule fetch instead.
 
+**End-of-cycle cleanup**, in order: `fixScoreIssue()` → `removeOldGamesWithoutScore()` (started > 72h
+ago with a null score) → `removeStaleUnresolvedGames()`.
+
+### `removeStaleUnresolvedGames(maxAgeDays = 90)`
+
+Purges **stuck** games: still `isActive: true`, started more than `maxAgeDays` ago
+(`staleGameMaxAgeDays`, default 90), whose `gameStatus` is not terminal, **and which have no score
+at all** (`homeTeamScore: null && awayTeamScore: null`). Without that last condition, a real
+historical game imported with a non-normalized `gameStatus` would be deleted even though its result
+was known. The terminal check is applied twice: in the Mongo `$nin: TERMINAL_GAME_STATUSES` filter,
+and again in memory through `isTerminalGameStatus()` so a legacy record carrying a differently
+cased or suffixed value (`"final"`, `"FINAL AET"`) is still spared. Skipped games are logged as
+`[fetchGamesScores] Skipped N old game(s) carrying a score or a decided status: they are not stuck
+games.`
+
+### `fetchGamesForLiveScoreUpdate(hours = 2)`
+
+Selects the games the cycle re-scores: `isActive: true`, started between `now - staleGameMaxAgeDays`
+and `now - hours`, with a non-terminal (or missing) `gameStatus`. The lower bound is deliberate: it
+bounds the scan to ~90 days of games so the cycle cannot grow without limit (unbounded scans had
+caused heap OOM → restarts → boot recovery → repeat), and it lets `removeStaleUnresolvedGames()`
+catch up between cycles.
+
+⚠️ Consequence: a game **older than 90 days is never re-scored** by this cycle, even when its result
+is still retrievable from the source. Such a game can only be resolved by the schedule/oldies import
+path, which is why the status normalization in `espnAllData.ts` matters for it.
+
 ### `fetchLiveScores(gameIds)`
 
 Fetches live score updates for a specific list of game IDs.
