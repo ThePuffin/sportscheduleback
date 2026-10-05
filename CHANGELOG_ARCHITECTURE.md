@@ -2,6 +2,84 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Removed: `game.show`, `game.color`, `game.backgroundColor`, and `team.value`
+
+### Problem
+
+A follow-up audit of the game/team payloads found four more write-only fields:
+
+- **`Game.show`** — written by the ESPN/NHL/PWHL fetchers as `homeTeam.abbrev === teamId` (the exact
+  expression already stored in `selectedTeam`) and by the day-placeholder in `games.service.ts`, but
+  never used in any query or response consumer (the frontend only read it from the deleted
+  `Cards.tsx`).
+- **`Game.color` / `Game.backgroundColor`** — copies of the team colors written by the fetchers and
+  the day placeholder; no backend logic ever read them (the API enrichment already computes
+  `homeTeamColor`/`awayTeamColor` from the team documents when needed).
+- **`Team.value`** — always written as `value: uniqueId` by the fetchers, so it duplicated
+  `uniqueId`; the fetchers read it back only to stamp `teamSelectedId`/game `uniqueId`, i.e. they
+  could read `uniqueId` directly.
+
+### Changes
+
+- **`backend/src/games/schemas/game.schema.ts`**, **`create-game.dto.ts`**, **`update-game.dto.ts`**,
+  **`backend/src/utils/interface/game.ts`** — removed `show`, `color`, `backgroundColor` from the
+  schema, DTOs and `GameFormatted`.
+- **`backend/src/games/games.service.ts`** — the day-placeholder game no longer sets `show`, `color`
+  or `backgroundColor`.
+- **`backend/src/teams/schemas/team.schema.ts`**, **`create-team.dto.ts`**, **`update-team.dto.ts`**,
+  **`backend/src/utils/interface/team.ts`** — removed `value` from the schema, DTOs and `TeamType`.
+- **`backend/src/utils/fetchData/espnAllData.ts`** — teams no longer expose `value`;
+  `getTeamsSchedule()`/`getEachTeamSchedule()` now take a `teamUniqueId` parameter (renamed from
+  `value`) used for `teamSelectedId`, the game `uniqueId`, records and logs; the fetcher no longer
+  writes `show`/`color`/`backgroundColor` on games and no longer passes `color`/`backgroundColor`
+  down the call chain.
+- **`backend/src/utils/fetchData/hockeyData.ts`** — same treatment for `getNHLTeamschedule()` /
+  `getPWHLTeamschedule()` (parameter renamed to `teamUniqueId`, `color`/`backgroundColor`
+  parameters dropped, game literals no longer write the removed fields).
+- **`backend/src/utils/interface/card.ts`** — deleted: its `PropsCards`/`PropsCard`/`TeamBodyProps`
+  interfaces were the leftover backend counterpart of the deleted frontend `Cards.tsx` and had no
+  importer (the live `CardsProps` used by `CardLarge` lives in `frontend/utils/types.tsx`).
+- **`backend/src/utils/fetchData/espnAllData.spec.ts`** — fixture team no longer carries `value`.
+
+**Impact:** none on behavior — `show` duplicated `selectedTeam`, `color`/`backgroundColor` had no
+reader, and `value === uniqueId` for every team the fetchers produce (so `teamSelectedId` and game
+`uniqueId` values are unchanged). Existing MongoDB documents keep their old keys; the fields simply
+become invisible to Mongoose once the schema drops them. No migration required.
+
+## Removed: unused fields `divisionName`, `conferenceName` (Team) and `venueTimezone`, `divisionName` (Game)
+
+### Problem
+
+An audit cross-referencing the Mongoose schemas against every real read in the codebase showed that
+these fields were **write-only**: the fetch layer stored them but no consumer ever read them.
+
+- `Team.divisionName` / `Team.conferenceName` — written by `espnAllData.ts` (parsed from ESPN
+  `standingSummary`) and `hockeyData.ts` (from the NHL/PWHL standings APIs), never read anywhere.
+- `Game.venueTimezone` — written by the ESPN/NHL/PWHL fetchers, never read by the backend or the
+  frontend (the frontend `GameFormatted` declared it but no component used it).
+- `Game.divisionName` — declared in the schema and DTOs but never even written by any fetcher.
+
+### Changes
+
+- **`backend/src/teams/schemas/team.schema.ts`**, **`create-team.dto.ts`**, **`update-team.dto.ts`** —
+  removed `conferenceName` and `divisionName`.
+- **`backend/src/games/schemas/game.schema.ts`**, **`create-game.dto.ts`**, **`update-game.dto.ts`** —
+  removed `venueTimezone` and `divisionName`.
+- **`backend/src/utils/interface/team.ts`** — removed both fields from `TeamType` (the `TeamNHL`
+  interface, which mirrors the external NHL API payload, keeps its own `conferenceName`/`divisionName`).
+- **`backend/src/utils/interface/game.ts`** — removed `venueTimezone?` from `GameFormatted`.
+- **`backend/src/utils/fetchData/espnAllData.ts`** — `getDivision()` only ever mattered for the team
+  record; it was renamed **`getTeamRecord()`** and simplified to return just `record` (the
+  `standingSummary` parsing for conference/division was dropped). The fetchers no longer write the
+  removed fields.
+- **`backend/src/utils/fetchData/hockeyData.ts`** — no longer writes the removed fields (NHL, PWHL
+  teams and schedules).
+- **`backend/src/games/games.service.ts`** — placeholder game no longer sets `venueTimezone`.
+
+**Impact:** none on behavior — no consumer existed. Existing MongoDB documents keep their old
+values; the fields simply become invisible to Mongoose (not projected) once the schema drops them.
+No migration required.
+
 ## Added: `game.dataChangedAt` — the instant the live data actually changed
 
 ### Problem

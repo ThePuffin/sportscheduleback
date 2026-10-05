@@ -9,9 +9,6 @@ export class Team {
   uniqueId: string;
 
   @Prop()
-  value: string;
-
-  @Prop()
   id: string;
 
   @Prop()
@@ -27,16 +24,10 @@ export class Team {
   teamCommonName: string;
 
   @Prop()
-  conferenceName: string;
-
-  @Prop()
   color: string;
 
   @Prop()
   backgroundColor: string;
-
-  @Prop()
-  divisionName: string;
 
   @Prop()
   league: string;

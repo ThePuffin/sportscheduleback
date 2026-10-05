@@ -286,7 +286,6 @@ describe('getTeamsSchedule (leagues with no ESPN schedule config)', () => {
   const team = {
     id: '1',
     abbrev: 'SEA',
-    value: 'PWHL-SEA',
     uniqueId: 'PWHL-SEA',
   };
 

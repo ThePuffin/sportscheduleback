@@ -5,9 +5,6 @@ export class CreateTeamDto {
   uniqueId: string;
 
   @ApiProperty()
-  value: string;
-
-  @ApiProperty()
   id: string;
 
   @ApiProperty()
@@ -20,16 +17,10 @@ export class CreateTeamDto {
   teamCommonName: string;
 
   @ApiProperty()
-  conferenceName: string;
-
-  @ApiProperty()
   color: string;
 
   @ApiProperty()
   backgroundColor: string;
-
-  @ApiProperty()
-  divisionName: string;
 
   @ApiProperty()
   league: string;

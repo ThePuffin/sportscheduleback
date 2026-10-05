@@ -41,9 +41,6 @@ export class CreateGameDto {
   awayTeamScore: number | null;
 
   @ApiProperty()
-  divisionName: string;
-
-  @ApiProperty()
   arenaName: string;
 
   @ApiProperty()
@@ -56,16 +53,10 @@ export class CreateGameDto {
   urlLive: string;
 
   @ApiProperty()
-  show: boolean;
-
-  @ApiProperty()
   selectedTeam: boolean;
 
   @ApiProperty()
   league: string;
-
-  @ApiProperty()
-  venueTimezone: string;
 
   @ApiProperty()
   isActive: boolean;
@@ -75,12 +66,6 @@ export class CreateGameDto {
 
   @ApiProperty()
   placeName: string;
-
-  @ApiProperty()
-  color: string;
-
-  @ApiProperty()
-  backgroundColor: string;
 
   @ApiProperty({ default: new Date() })
   updateDate: string;

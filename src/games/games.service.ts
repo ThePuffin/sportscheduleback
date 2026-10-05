@@ -1573,10 +1573,8 @@ export class GameService {
             placeName: '',
             gameDate: currentDate,
             teamSelectedId: teamSelectedId,
-            show: false,
             selectedTeam: false,
             league: '',
-            venueTimezone: '',
             isActive: true,
             startTimeUTC: '',
             updateDate: '',
@@ -1587,8 +1585,6 @@ export class GameService {
             homeTeamLogoDark: '',
             homeTeamRecord: '',
             awayTeamRecord: '',
-            color: undefined,
-            backgroundColor: undefined,
           });
         } else {
           gamesOfDay.push(...gameOfDay);

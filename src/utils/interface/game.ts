@@ -18,14 +18,10 @@ export interface GameFormatted {
   placeName: string;
   gameDate: string;
   teamSelectedId: string;
-  show: boolean;
   selectedTeam: boolean;
   league: string;
   updateDate?: Date;
-  venueTimezone?: string;
   isActive?: boolean;
-  color?: string;
-  backgroundColor?: string;
 }
 
 export interface GameESPN {

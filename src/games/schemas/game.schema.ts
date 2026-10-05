@@ -70,28 +70,13 @@ export class Game extends Document {
   placeName: string;
 
   @Prop()
-  venueTimezone: string;
-
-  @Prop()
   updateDate: string;
-
-  @Prop()
-  divisionName: string;
 
   @Prop()
   urlLive: string;
 
   @Prop()
-  show: boolean;
-
-  @Prop()
   selectedTeam: boolean;
-
-  @Prop()
-  color: string;
-
-  @Prop()
-  backgroundColor: string;
 
   @Prop()
   gameStatus: string;

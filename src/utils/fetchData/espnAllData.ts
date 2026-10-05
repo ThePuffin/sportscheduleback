@@ -447,12 +447,10 @@ const leaguesData = Object.fromEntries(
   }),
 );
 
-const getDivision = async (
+const getTeamRecord = async (
   leagueName: string,
   id: string,
 ): Promise<{
-  conferenceName: string;
-  divisionName: string;
   record?: { wins: number; losses: number; ties?: number; otLosses?: number };
 }> => {
   try {
@@ -460,7 +458,6 @@ const getDivision = async (
     const fetchedTeams = await fetchWithRetry(url);
     const fetchTeams = await fetchedTeams.json();
     const team = fetchTeams?.team || {};
-    const { standingSummary = '' } = team;
 
     let record;
     if (team.record?.items) {
@@ -474,36 +471,9 @@ const getDivision = async (
       }
     }
 
-    if (standingSummary === '') {
-      return { conferenceName: '', divisionName: '', record };
-    }
-    const cut = standingSummary.split(' ');
-    if (leagueName === League.NFL || leagueName === League.MLB) {
-      return {
-        conferenceName: cut[3] || '',
-        divisionName: cut[2] || '',
-        record,
-      };
-    } else if (leagueName === League.NBA) {
-      const divisionName = cut[2] || '';
-      const conference = {
-        Atlantic: 'East',
-        Central: 'East',
-        Northwest: 'West',
-        Pacific: 'West',
-      };
-      return {
-        conferenceName: conference[divisionName] || '',
-        divisionName,
-        record,
-      };
-    } else if (leagueName.includes('OLYMPICS')) {
-      return { conferenceName: standingSummary, divisionName: '', record };
-    } else {
-      return { conferenceName: '', divisionName: '', record };
-    }
+    return { record };
   } catch {
-    return { conferenceName: '', divisionName: '' };
+    return {};
   }
 };
 
@@ -682,15 +652,12 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
 
         return {
           uniqueId,
-          value: uniqueId,
           id: id,
           abbrev: teamID,
           label: capitalize(displayName),
           teamLogo,
           teamLogoDark,
           teamCommonName: capitalize(nickname || displayName),
-          conferenceName: '',
-          divisionName: '',
           league: normalizedLeagueName.toUpperCase(),
           color: colorTeam,
           backgroundColor: backgroundColorTeam,
@@ -701,12 +668,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
       });
 
     for (const team of activeTeams) {
-      const { conferenceName, divisionName, record } = await getDivision(
-        leagueName,
-        team.id,
-      );
-      team.conferenceName = conferenceName;
-      team.divisionName = divisionName;
+      const { record } = await getTeamRecord(leagueName, team.id);
       if (record) {
         (team as any).wins = record.wins;
         (team as any).losses = record.losses;
@@ -738,25 +700,21 @@ export const getTeamsSchedule = async (
   for (let start = 0; start < activeTeams.length; start += concurrencyLimit) {
     const batch = activeTeams.slice(start, start + concurrencyLimit);
     await Promise.all(
-      batch.map(
-        async ({ id, abbrev, value, uniqueId, color, backgroundColor }) => {
-          const leagueID = `${uniqueId}`;
-          allGames[leagueID] = await getEachTeamSchedule(
-            {
-              id,
-              abbrev,
-              value,
-              leagueName,
-              leagueLogos,
-              color,
-              backgroundColor,
-            },
-            forceUpdate,
-            season,
-            teamRecords,
-          );
-        },
-      ),
+      batch.map(async ({ id, abbrev, uniqueId }) => {
+        const leagueID = `${uniqueId}`;
+        allGames[leagueID] = await getEachTeamSchedule(
+          {
+            id,
+            abbrev,
+            teamUniqueId: uniqueId,
+            leagueName,
+            leagueLogos,
+          },
+          forceUpdate,
+          season,
+          teamRecords,
+        );
+      }),
     );
   }
 
@@ -770,7 +728,7 @@ export const getTeamsSchedule = async (
 };
 
 const getEachTeamSchedule = async (
-  { id, abbrev, value, leagueName, leagueLogos, color, backgroundColor },
+  { id, abbrev, teamUniqueId, leagueName, leagueLogos },
   forceUpdate = false,
   season?: number,
   teamRecords?: Map<string, string>,
@@ -784,11 +742,9 @@ const getEachTeamSchedule = async (
           {
             id,
             abbrev,
-            value,
+            teamUniqueId,
             leagueName: subLeague,
             leagueLogos,
-            color,
-            backgroundColor,
           },
           forceUpdate,
           season,
@@ -806,7 +762,7 @@ const getEachTeamSchedule = async (
     // catch below would swallow into an `undefined` return.
     if (!leaguesData[leagueName]) {
       console.error(
-        `No ESPN schedule config for league "${leagueName}" (team ${value}) — skipped.`,
+        `No ESPN schedule config for league "${leagueName}" (team ${teamUniqueId}) — skipped.`,
       );
       return [];
     }
@@ -849,11 +805,11 @@ const getEachTeamSchedule = async (
             }
           }
         } catch (error) {
-          console.info('no games found ' + leagueName, value, error);
+          console.info('no games found ' + leagueName, teamUniqueId, error);
         }
       }
       // Scoreboard path: read the tally before anything is filtered out.
-      collectTeamRecord(games, value, id, teamRecords);
+      collectTeamRecord(games, teamUniqueId, id, teamRecords);
     } else {
       try {
         const baseUrl = leaguesData[leagueName].fetchGames.replace('${id}', id);
@@ -885,7 +841,7 @@ const getEachTeamSchedule = async (
         // Harvest the tally of the latest played game BEFORE the cutoff below
         // throws those games away — it is the only place some leagues (college
         // hockey) expose it at all.
-        collectTeamRecord(games, value, id, teamRecords);
+        collectTeamRecord(games, teamUniqueId, id, teamRecords);
 
         const gamesFilter = season
           ? games
@@ -893,7 +849,7 @@ const getEachTeamSchedule = async (
 
         games = gamesFilter;
       } catch (error) {
-        console.info('no', value, error);
+        console.info('no', teamUniqueId, error);
         games = [];
       }
     }
@@ -923,9 +879,9 @@ const getEachTeamSchedule = async (
         const homeTeamScore = getScore(homeCompetitor);
         const awayTeamScore = getScore(awayCompetitor);
 
-        const venueTimezone = 'America/Los_Angeles';
+        const displayTimezone = 'America/Los_Angeles';
         const currentDate = new Date(
-          new Date(date).toLocaleString('en-US', { timeZone: venueTimezone }),
+          new Date(date).toLocaleString('en-US', { timeZone: displayTimezone }),
         );
 
         const gameDate = readableDate(new Date(currentDate));
@@ -970,8 +926,6 @@ const getEachTeamSchedule = async (
           awayTeamLogo,
           awayTeamLogoDark,
           awayTeamShort,
-          backgroundColor: backgroundColor ?? undefined,
-          color: color ?? undefined,
           gameDate: gameDate,
           homeTeam: capitalize(homeTeam.displayName),
           homeTeamId: `${leagueName}-${homeAbbrev}`,
@@ -994,15 +948,15 @@ const getEachTeamSchedule = async (
           league: normalizedLeagueName.toUpperCase(),
           placeName: capitalize(venue?.address?.city) ?? '',
           selectedTeam: homeAbbrev === abbrev,
-          show: homeAbbrev === abbrev,
           startTimeUTC: new Date(date).toISOString(),
           gameStatus: resolveScheduleGameStatus(
             comp?.status?.type?.name || game?.status?.type?.name,
           ),
-          teamSelectedId: value,
+          teamSelectedId: teamUniqueId,
           isActive,
-          uniqueId: id ? `${value}-${id}` : `${value}-${gameDate}-${number}`,
-          venueTimezone,
+          uniqueId: id
+            ? `${teamUniqueId}-${id}`
+            : `${teamUniqueId}-${gameDate}-${number}`,
           urlLive:
             links?.find(
               (l) => l.rel?.includes('boxscore') && l.rel?.includes('desktop'),
@@ -1023,7 +977,7 @@ const getEachTeamSchedule = async (
     gamesData = gamesData.filter((game) => game !== undefined && game !== null);
     return gamesData;
   } catch (error) {
-    console.error(`Error in getEachTeamSchedule for ${value}:`, error);
+    console.error(`Error in getEachTeamSchedule for ${teamUniqueId}:`, error);
     // Always hand back an array: the aggregate-league recursion spreads the
     // result (`[...allGames, ...games]`), and `getTeamsSchedule()` stores it,
     // so an `undefined` here propagates as a TypeError in both callers.

@@ -166,9 +166,7 @@ export class HockeyData {
           teamAbbrev,
           teamName,
           teamLogo,
-          divisionName,
           teamCommonName,
-          conferenceName,
         } = team;
         const teamID = teamAbbrev.default;
         const uniqueId = `${leagueName}-${teamID}`;
@@ -185,15 +183,12 @@ export class HockeyData {
 
         return {
           uniqueId,
-          value: uniqueId,
           id: teamID,
           abbrev: teamID,
           label: capitalize(teamName?.default),
           teamLogo: teamLogo,
           teamLogoDark: teamLogo,
           teamCommonName: capitalize(teamCommonName.default),
-          conferenceName,
-          divisionName,
           league: leagueName.toUpperCase(),
           color: colorTeam,
           backgroundColor: backgroundColorTeam,
@@ -223,7 +218,7 @@ export class HockeyData {
       const standings = await this.getPWHLStandings(seasonId);
 
       const activeTeams = allTeams.map((team: TeamPWHL) => {
-        const { code, name, team_logo_url, division_long_name } = team;
+        const { code, name, team_logo_url } = team;
         const teamID = code;
         const uniqueId = `${leagueName}-${teamID}`;
 
@@ -250,15 +245,12 @@ export class HockeyData {
 
         return {
           uniqueId,
-          value: uniqueId,
           id: teamID,
           abbrev: teamID,
           label: capitalize(name),
           teamLogo: team_logo_url,
           teamLogoDark: team_logo_url,
           teamCommonName: capitalize(name),
-          conferenceName: '',
-          divisionName: division_long_name,
           league: leagueName.toUpperCase(),
           color: colorTeam,
           backgroundColor: backgroundColorTeam,
@@ -361,26 +353,22 @@ export class HockeyData {
       activeTeams.map(async (team) => {
         try {
           if (league === League.NHL) {
-            const { id, value, color, backgroundColor } = team;
+            const { id, uniqueId } = team;
             const leagueID = `${league}-${id}`;
             allGames[leagueID] = await this.getNHLTeamschedule(
               id,
-              value,
+              uniqueId,
               leagueLogos,
-              color,
-              backgroundColor,
               season,
             );
           }
           if (league === League.PWHL) {
-            const { id, value, color, backgroundColor } = team;
+            const { id, uniqueId } = team;
             const leagueID = `${league}-${id}`;
             allGames[leagueID] = await this.getPWHLTeamschedule(
               id,
-              value,
+              uniqueId,
               leagueLogos,
-              color,
-              backgroundColor,
               forceUpdate,
               season,
             );
@@ -524,10 +512,8 @@ export class HockeyData {
 
   getPWHLTeamschedule = async (
     id: string,
-    value: string,
+    teamUniqueId: string,
     leagueLogos: { string },
-    color: string | undefined,
-    backgroundColor: string | undefined,
     forceUpdate = false,
     season?: number,
   ) => {
@@ -556,7 +542,6 @@ export class HockeyData {
           venue_name,
           date_played,
           GameDateISO8601,
-          timezone,
           home_goal_count,
           visiting_goal_count,
           venue_location,
@@ -596,8 +581,6 @@ export class HockeyData {
           awayTeamLogo: leagueLogos[visiting_team_code],
           awayTeamLogoDark: leagueLogos[visiting_team_code],
           awayTeamShort: visiting_team_code,
-          backgroundColor: backgroundColor || undefined,
-          color: color || undefined,
           gameDate: date_played,
           homeTeam: capitalize(homeTeamName),
           homeTeamId: `${leagueName}-${home_team_code}`,
@@ -610,12 +593,10 @@ export class HockeyData {
           league: leagueName,
           placeName: capitalize(venue_location),
           selectedTeam: home_team_code === id,
-          show: home_team_code === id,
           startTimeUTC: new Date(GameDateISO8601).toISOString(),
-          teamSelectedId: value,
+          teamSelectedId: teamUniqueId,
           isActive,
-          uniqueId: `${value}-${date_played}-${game.id}`,
-          venueTimezone: timezone,
+          uniqueId: `${teamUniqueId}-${date_played}-${game.id}`,
           urlLive: `https://www.thepwhl.com/en/stats/game-center/${game.id}`,
         };
       })
@@ -625,10 +606,8 @@ export class HockeyData {
 
   getNHLTeamschedule = async (
     id: string,
-    value: string,
+    teamUniqueId: string,
     leagueLogos: { string },
-    color: string | undefined,
-    backgroundColor: string | undefined,
     season?: number,
   ) => {
     const games: NHLGameAPI[] = await this.fetchGamesData(
@@ -646,7 +625,6 @@ export class HockeyData {
         homeTeam,
         venue,
         gameDate,
-        venueTimezone,
         startTimeUTC,
         gameCenterLink,
       } = game;
@@ -665,8 +643,6 @@ export class HockeyData {
         awayTeamLogo: leagueLogos[awayTeam.abbrev],
         awayTeamLogoDark: leagueLogos[awayTeam.abbrev],
         awayTeamShort: awayTeam.abbrev,
-        backgroundColor: backgroundColor || undefined,
-        color: color || undefined,
         gameDate: gameDate,
         homeTeam: capitalize(homeTeamName),
         homeTeamId: `${leagueName}-${homeTeam.abbrev}`,
@@ -681,12 +657,10 @@ export class HockeyData {
         league: leagueName,
         placeName: capitalize(homeTeam.placeName.default),
         selectedTeam: homeTeam.abbrev === id,
-        show: homeTeam.abbrev === id,
         startTimeUTC: new Date(startTimeUTC).toISOString(),
-        teamSelectedId: value,
+        teamSelectedId: teamUniqueId,
         isActive,
-        uniqueId: `${value}-${gameDate}-1`,
-        venueTimezone: venueTimezone,
+        uniqueId: `${teamUniqueId}-${gameDate}-1`,
         urlLive: `https://www.nhl.com/${gameCenterLink}`,
       };
     });
