@@ -2,6 +2,28 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: PWHL current-group records read the standings of the wrong season
+
+### Problem
+
+`getPWHLScores()` splits dates in two: past groups use the local schedule replay, the group covering
+today keeps the old behaviour — records from the official standings feed. But the standings call
+passed **no** `season_id`, so `getPWHLStandings()` fell back to `resolveCurrentRegularSeason()`,
+which only knows regular seasons. During a pre-season (today: 2026-27 pre-season) that resolution
+finds no regular season covering today and no ended one to keep — it returns the closest upcoming
+regular season, whose standings feed answers for a season that has not started: **every
+`homeTeamRecord` / `awayTeamRecord` of the current group came back empty**.
+
+### Solution
+
+- **`backend/src/utils/fetchData/hockeyData.ts`** — the current-group branch now passes the
+  covering season's `season_id` to `getPWHLStandings()` explicitly (single covering season only;
+  several overlapping seasons still fall back to the default resolution), so a current pre-season
+  or playoff group reads its own standings.
+- **Tests** (`hockeyData.spec.ts`): fixed three stale `mockFeed()` calls missing the `seasons`
+  argument, and corrected the past-group expectation — a finished season shows its **final** tally
+  on every game (like the ESPN leagues), not the `asOf` slice.
+
 ## Removed: `game.show`, `game.color`, `game.backgroundColor`, and `team.value`
 
 ### Problem
@@ -301,19 +323,19 @@ record replay, totalling them into a single plausible-looking but wrong record. 
 
 ### Side findings, not fixed here
 
-- `applyPWHLHistoricalRecords()` skips playoff games via a `game_type` guard, but `game_type` is an
-  **empty string in both** the regular-season and the playoffs feeds, so that guard never fires. The
-  tally stays correct because the replay is always fed a regular-season schedule; the comment and the
-  documentation now say so instead of claiming playoffs are filtered out.
-- `selectedTeam` / `show` are set to `home === id` in all three fetchers (`espnAllData`,
-  `hockeyData` ×2). Taken alone that reads like a bug — the flags are `false` when the queried team
-  plays away — but since every match is stored **twice**, exactly one of the two documents has the
-  home team as its `teamSelectedId`, so `filterGames({ selectedTeam: true })` is in practice a
-  de-duplication filter that keeps one row per match. Changing it to "home **or** away" would make the
-  flag true on both copies and return each match twice. Left untouched.
+- `applyPWHLHistoricalRecords()` carries a `game_type` guard meant to skip playoff games, but
+  `game_type` is an **empty string in every feed**, so that guard never fires. The three tallies stay
+  apart because each is replayed from its **own** `season_id` — the group selection does the
+  filtering, not that guard. The comment and the documentation now say so.
+- `selectedTeam` is set to `home === id` in all three fetchers (`espnAllData`, `hockeyData` ×2).
+  Taken alone that reads like a bug — the flag is `false` when the queried team plays away — but since
+  every match is stored **twice**, exactly one of the two documents has the home team as its
+  `teamSelectedId`, so `filterGames({ selectedTeam: true })` is in practice a de-duplication filter
+  that keeps one row per match. Changing it to "home **or** away" would make the flag true on both
+  copies and return each match twice. Left untouched.
 
-Verified live: `getPWHLScores('2025-02-15')` → 1 match, `MTL 19-8-3` vs `NY 12-13-5`;
-`getPWHLScores('2025-05-07')` (playoffs) → `TOR 15-9-6` vs `MIN 15-11-4`.
+Verified live: `getPWHLScores('2025-02-15')` → `MTL 19-8-3` vs `NY 12-13-5` (regular season);
+`getPWHLScores('2025-05-07')` → `TOR 1-2-1` vs `MIN 6-1-1` (playoffs, its own tally).
 
 ## Fixed: a match was counted twice in the form dots (double-stored documents)
 

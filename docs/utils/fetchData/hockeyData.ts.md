@@ -14,13 +14,12 @@ follow from that.
 - **Whole-season history** (`fetchGamesData`, oldies): a calendar year is resolved to **all**
   overlapping `season_id`s and their schedules are merged, then games are filtered to the requested
   year. Merging is safe here — every game belongs to exactly one feed, so nothing is double counted.
-- **One day's scores** (`getPWHLScores`): the season is resolved from the **exact date** instead.
-  Merging every season overlapping the year would feed several seasons to the record replay and total
-  them into one tally. `getPWHLSeasonsForDate()` returns two entries:
-  - `gameSeason` — the entry whose span covers the date (regular season first, then playoffs, then
-    pre-season when two entries overlap). Its schedule provides the day's games.
-  - `recordSeason` — the **regular season** a W-L-OTL comes from: the one covering the date, or, on a
-    playoff date, the most recent regular season that ended before it.
+- **One day's scores** (`getPWHLScores`): the seasons are resolved from the **exact date**.
+  `getPWHLSeasonsCovering()` returns **every** entry whose span covers it — a date can sit inside two
+  groups at once, 2024-11-25 → 29 is both pre-season and regular season — and each entry is fetched
+  and replayed **on its own**, so a pre-season, a regular season and a playoff run are never totalled
+  together. The default season is only used as a fallback, when nothing covers the date or the
+  seasons feed fails.
 
 Without an explicit `season_id` the feed silently answers with its **default** season (currently the
 2026-27 pre-season, 12 games all in the future), which is why a past date used to yield neither games
@@ -33,15 +32,30 @@ status string). Scores are preserved even when one team has zero goals.
 
 ## Records on a Game (`homeTeamRecord` / `awayTeamRecord`)
 
-HockeyTech exposes no per-game cumulative record, so `applyPWHLHistoricalRecords()` replays a season:
-finished games are walked chronologically and each team's W/L/OTL is incremented (OT/SO loss when
-`overtime`/`shootout` is set or the status mentions OT/SO). Following the ESPN leagues, a **finished**
-season shows its final tally on every one of its games, while a season still in progress leaves the
-record empty so the reader falls back to the live `team.record`.
+HockeyTech exposes no per-game cumulative record, so `applyPWHLHistoricalRecords(group, asOf?)`
+replays a **single group**: the pre-season, the regular season or the playoffs the game belongs to.
+Finished games are walked chronologically and each team's W/L/OTL is incremented (OT/SO loss when
+`overtime`/`shootout` is set or the status mentions OT/SO).
 
-Playoff games stay out of the tally because the replay is always fed a **regular season** schedule —
-**not** because of the `isPlayoff` guard, which never fires: `game_type` is an empty string in both
-the regular-season and the playoffs feeds today.
+- the group is **finished** → its final tally, copied onto every one of its games, matching what the
+  ESPN leagues do;
+- the group is **still running** → the tally of everything played **before** the game (`asOf`), so a
+  mid-season game carries the record it actually took the ice with rather than an empty string.
+
+The three groups have their own numbers by construction: a playoff run shows a playoff record (e.g.
+`6-1-1`), never the regular-season one that preceded it. `seasonOver` is always computed over the
+whole group, never over the `asOf` slice — the two answer different questions.
+
+**Current group exception:** when the requested date falls inside the season covering today
+(pre-season, regular season **or** playoffs), the replay is skipped and records come from the
+official standings feed (`getPWHLStandings()`), called with the covering season's `season_id`
+explicitly — passing nothing would fall back to the regular-season resolution, which finds no
+regular season during a pre-season and would leave every record empty. This preserves the
+behaviour from before the historical replay was introduced: the current group always shows the
+live tally, the replay only fills in past groups.
+
+The `isPlayoff` guard in the replay never fires (`game_type` is an empty string in every feed):
+it is the **group selection**, not that guard, that keeps the tallies apart.
 
 ## Team Records (`teamRecords`)
 
@@ -49,8 +63,13 @@ the regular-season and the playoffs feeds today.
 optional `teamRecords` map, filled for the **current** season only (`season === undefined`) and only for
 `League.PWHL`. It goes through `collectPWHLTeamRecords()` and writes `PWHL-<CODE>` → `"W-L-OTL"`:
 
-1. **Primary source** — HockeyTech's official standings (`getPWHLStandings()`), which resolves the
-   current regular season on its own and already normalizes OT/SO wins and losses.
+1. **Primary source** — HockeyTech's official standings (`getPWHLStandings()`), which already
+   normalizes OT/SO wins and losses. It takes the `season_id` of the teams' own season; without one,
+   `resolveCurrentRegularSeason()` picks it **by date**: the regular season covering today, else the
+   most recent one already ended, else the closest upcoming one. (It used to be
+   `[...seasons].reverse().find(...)`, which — the feed being listed most recent first — walked them
+   **oldest first** and returned the 2024 inaugural season, so every PWHL team record was a two-year-old
+   24-game tally.)
 2. **Fallback** — the local replay of the schedule (`applyPWHLHistoricalRecords()`) when the standings
    feed is empty or throws, so a single failing source cannot leave the PWHL without records.
 

@@ -171,6 +171,10 @@ describe('HockeyData.getHockeySchedule — PWHL team records', () => {
  * season and playoffs each have their own `season_id`, and several of them
  * overlap a single calendar year, so merging every season that overlaps the
  * year would total several seasons into one record.
+ *
+ * Scope rule: **past** groups use the local schedule replay
+ * (`applyPWHLHistoricalRecords`); the **current** group (covering today) keeps
+ * the one-month-ago behaviour — records from the official standings feed.
  */
 describe('HockeyData.getPWHLScores — season resolution', () => {
   const originalFetch = global.fetch;
@@ -233,13 +237,16 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
 
   let hockeyData: HockeyData;
 
-  const mockFeed = (schedules: Record<string, any[]>) => {
+  const mockFeed = (seasons: any[], schedules: Record<string, any[]>) => {
     global.fetch = jest.fn(async (url: string) => {
       const isSeasons = String(url).includes('view=seasons');
+      const isStandings = String(url).includes('view=statviewtype');
       const seasonId = new URL(String(url)).searchParams.get('season_id');
       const body = isSeasons
-        ? { SiteKit: { Seasons: SEASONS } }
-        : { SiteKit: { Schedule: schedules[seasonId ?? 'default'] ?? [] } };
+        ? { SiteKit: { Seasons: seasons } }
+        : isStandings
+          ? { SiteKit: { Statviewtype: [] } }
+          : { SiteKit: { Schedule: schedules[seasonId ?? 'default'] ?? [] } };
       return { json: async () => body } as any;
     }) as any;
   };
@@ -252,14 +259,18 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
 
   beforeEach(() => {
     hockeyData = new HockeyData();
+    // Freeze "today" so the current/past branch is deterministic: 2026-10-05
+    // is covered by the 2026-27 pre-season (10) in the SEASONS fixture.
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-05T12:00:00.000Z'));
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
+    jest.useRealTimers();
   });
 
   it('requests the regular season covering a past date, not the default feed', async () => {
-    mockFeed({ '5': [game()] });
+    mockFeed(SEASONS, { '5': [game()] });
 
     const scores = await hockeyData.getPWHLScores('2025-02-15');
 
@@ -268,24 +279,37 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
     expect(scores).toHaveLength(1);
   });
 
-  it('computes the record from the regular season, not from the playoffs feed', async () => {
-    // A playoff day: games live in season 6, the W-L-OTL in season 5.
-    mockFeed({
+  it('keeps the playoff tally on its own, never mixed with the regular season', async () => {
+    // A playoff day: both feeds exist, but a playoff run must be tallied on its
+    // own — a 4-1 playoff record has nothing to do with the 35-37-10 of the
+    // regular season it follows.
+    mockFeed(SEASONS, {
       '6': [
+        // Played the day before the day under test.
+        game({
+          id: 'po0',
+          date_played: '2025-05-06',
+          GameDateISO8601: '2025-05-06T00:00:00',
+          home_team_code: 'MIN',
+          visiting_team_code: 'TOR',
+          home_goal_count: '3',
+          visiting_goal_count: '1',
+        }),
         game({
           id: 'po1',
           date_played: '2025-05-07',
           GameDateISO8601: '2025-05-07T00:00:00',
           home_team_code: 'TOR',
           visiting_team_code: 'MIN',
+          home_goal_count: '6',
+          visiting_goal_count: '2',
         }),
       ],
-      // Regular season replay: TOR beat MIN, so TOR = 1-0-0 and MIN = 0-1-0.
       '5': [
         game({
           id: 'rs1',
-          home_team_code: 'TOR',
-          visiting_team_code: 'MIN',
+          home_team_code: 'MTL',
+          visiting_team_code: 'NY',
           home_goal_count: '6',
           visiting_goal_count: '2',
         }),
@@ -294,16 +318,128 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
 
     const scores = await hockeyData.getPWHLScores('2025-05-07');
 
-    // Both feeds are read: the day from the playoffs, the tally from the
-    // regular season that ended just before it.
-    expect(requestedSeasonIds()).toEqual(expect.arrayContaining(['6', '5']));
+    // Only the playoffs feed is read: the regular season is not needed for a
+    // record that belongs to the playoffs.
+    expect(requestedSeasonIds()).toEqual(['6']);
     expect(scores).toHaveLength(1);
-    expect(scores[0].homeTeamRecord).toBe('1-0-0');
-    expect(scores[0].awayTeamRecord).toBe('0-1-0');
+    // Both playoff games replayed: TOR 1-1-0, MIN 1-1-0.
+    expect(scores[0].homeTeamRecord).toBe('1-1-0');
+    expect(scores[0].awayTeamRecord).toBe('1-1-0');
+  });
+
+  it('replays a past group still running at the time up to the game, not to today', async () => {
+    // Regular season 2024-25 (5) covers 2025-02-15 and still had games after
+    // it, so `seasonOver` is computed on the group — each game of the past
+    // group shows the tally of everything played **before** it.
+    mockFeed(SEASONS, {
+      '5': [
+        game({
+          id: 'rs0',
+          date_played: '2025-02-14',
+          GameDateISO8601: '2025-02-14T00:00:00',
+          home_team_code: 'MTL',
+          visiting_team_code: 'NY',
+          home_goal_count: '2',
+          visiting_goal_count: '1',
+        }),
+        game({
+          id: 'rs1',
+          date_played: '2025-02-15',
+          GameDateISO8601: '2025-02-15T00:00:00',
+          home_team_code: 'NY',
+          visiting_team_code: 'MTL',
+        }),
+        game({
+          id: 'rs2',
+          date_played: '2025-05-05',
+          GameDateISO8601: '2025-05-05T00:00:00',
+          home_team_code: 'MTL',
+          visiting_team_code: 'NY',
+          home_goal_count: '3',
+          visiting_goal_count: '0',
+        }),
+      ],
+    });
+
+    const scores = await hockeyData.getPWHLScores('2025-02-15');
+
+    expect(scores).toHaveLength(1);
+    // Season 5 is over (ended 2025-05-05), so every game shows its final
+    // tally: rs0 MTL win, rs1 NY win, rs2 MTL win -> MTL 2-1-0, NY 1-2-0.
+    // rs1 is NY (home) vs MTL (away).
+    expect(scores[0].homeTeamRecord).toBe('1-2-0');
+    expect(scores[0].awayTeamRecord).toBe('2-1-0');
+  });
+
+  it('uses the standings for the current group, not the local replay', async () => {
+    // 2026-10-04 is covered by the 2026-27 pre-season (10), which also covers
+    // "today" (2026-10-05): this is the current group, so the one-month-ago
+    // behaviour applies — records from the official standings feed.
+    const seasons = [
+      {
+        season_id: '10',
+        season_name: '2026-27 Pre-Season',
+        start_date: '2026-10-01',
+        end_date: '2026-11-30',
+      },
+    ];
+    global.fetch = jest.fn(async (url: string) => {
+      const isSeasons = String(url).includes('view=seasons');
+      const isStandings = String(url).includes('view=statviewtype');
+      if (isSeasons)
+        return { json: async () => ({ SiteKit: { Seasons: seasons } }) } as any;
+      if (isStandings) {
+        return {
+          json: async () => ({
+            SiteKit: {
+              Statviewtype: [
+                {
+                  team_code: 'MTL',
+                  wins: '3',
+                  losses: '1',
+                  ot_losses: '0',
+                  games_played: '4',
+                },
+                {
+                  team_code: 'NY',
+                  wins: '1',
+                  losses: '2',
+                  ot_losses: '1',
+                  games_played: '4',
+                },
+              ],
+            },
+          }),
+        } as any;
+      }
+      return {
+        json: async () => ({
+          SiteKit: {
+            Schedule: [
+              // Schedule replay would give MTL 1-0-0 here — standings win.
+              game({
+                date_played: '2026-10-04',
+                GameDateISO8601: '2026-10-04T00:00:00',
+                home_team_code: 'MTL',
+                visiting_team_code: 'NY',
+                home_goal_count: '2',
+                visiting_goal_count: '1',
+              }),
+            ],
+          },
+        }),
+      } as any;
+    }) as any;
+
+    const scores = await hockeyData.getPWHLScores('2026-10-04');
+
+    expect(scores).toHaveLength(1);
+    expect(scores[0].homeTeamRecord).toBe('3-1-0');
+    expect(scores[0].awayTeamRecord).toBe('1-2-1');
   });
 
   it('reads a single schedule when the day already belongs to the record season', async () => {
-    mockFeed({ '8': [game({ date_played: '2026-04-11' })] });
+    mockFeed(SEASONS, { '8': [game({ date_played: '2026-04-11' })] });
 
     await hockeyData.getPWHLScores('2026-04-11');
 
@@ -311,7 +447,7 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
   });
 
   it('falls back to the default feed when no season covers the date', async () => {
-    mockFeed({ default: [] });
+    mockFeed(SEASONS, { default: [] });
 
     await hockeyData.getPWHLScores('1999-01-05');
 
@@ -319,8 +455,89 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
   });
 
   it('returns an empty list when the date has no games', async () => {
-    mockFeed({ '5': [game()] });
+    mockFeed(SEASONS, { '5': [game()] });
 
     await expect(hockeyData.getPWHLScores('2025-02-16')).resolves.toEqual([]);
+  });
+});
+
+/**
+ * `getPWHLStandings()` used to pick the regular season with
+ * `[...seasons].reverse().find(...)`. The feed lists seasons **most recent
+ * first**, so reversing walked them oldest-first and landed on the 2024
+ * inaugural regular season (24 games) — every PWHL team record was a two-year-old
+ * tally.
+ */
+describe('HockeyData.getPWHLStandings — season resolution', () => {
+  const originalFetch = global.fetch;
+
+  const SEASONS = [
+    {
+      season_id: '11',
+      season_name: '2026-27 Regular Season',
+      start_date: '2026-12-04',
+      end_date: '2027-04-19',
+    },
+    {
+      season_id: '10',
+      season_name: '2026-27 Pre-Season',
+      start_date: '2026-10-01',
+      end_date: '2026-11-30',
+    },
+    {
+      season_id: '8',
+      season_name: '2025-26 Regular Season',
+      start_date: '2025-11-21',
+      end_date: '2026-04-27',
+    },
+    {
+      season_id: '5',
+      season_name: '2024-25 Regular Season',
+      start_date: '2024-11-25',
+      end_date: '2025-05-05',
+    },
+    {
+      season_id: '1',
+      season_name: '2024 Regular Season',
+      start_date: '2024-01-01',
+      end_date: '2024-05-27',
+    },
+  ];
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('reads the most recent regular season, not the oldest one', async () => {
+    const requested: (string | null)[] = [];
+    global.fetch = jest.fn(async (url: string) => {
+      const u = String(url);
+      if (u.includes('season_id=')) {
+        requested.push(new URL(u).searchParams.get('season_id'));
+      }
+      const body = u.includes('view=seasons')
+        ? { SiteKit: { Seasons: SEASONS } }
+        : {
+            SiteKit: {
+              Statviewtype: [
+                {
+                  team_code: 'MTL',
+                  wins: '40',
+                  losses: '30',
+                  ot_losses: '12',
+                  games_played: '82',
+                },
+              ],
+            },
+          };
+      return { json: async () => body } as any;
+    }) as any;
+
+    const standings = await new HockeyData().getPWHLStandings();
+
+    // 2025-26 Regular Season is the last one ended as of today; the previous
+    // code asked for season 1 (2024).
+    expect(requested).toEqual(['8']);
+    expect(standings).toEqual({ MTL: '40-30-12' });
   });
 });

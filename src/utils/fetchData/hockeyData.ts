@@ -60,47 +60,27 @@ export class HockeyData {
   }
 
   /**
-   * Resolve, for one exact date, the season holding its games and the season
-   * the record must be replayed from.
+   * Every season whose date span covers `date` — pre-season, regular season and
+   * playoffs each have their own `season_id`, and two of them can overlap (the
+   * 2024-25 pre-season runs until 2024-11-29 while the regular season already
+   * starts on the 25th). Returning **all** of them lets each game be replayed
+   * against its own group, so a tally never mixes a pre-season with a regular
+   * season or a playoff run.
    *
-   * - `gameSeason` — the entry whose date span covers the date (regular season
-   *   first, then playoffs, then pre-season when two entries overlap).
-   * - `recordSeason` — the regular season a team's W-L-OTL comes from: the one
-   *   covering the date, or, for a playoff date, the most recent regular season
-   *   that ended before it. Pre-season dates therefore show the last completed
-   *   tally rather than the upcoming season's (still empty) one.
+   * Empty when the seasons feed is unreachable or matches nothing; callers then
+   * fall back to the feed's default season.
    */
-  private async getPWHLSeasonsForDate(
-    date: string,
-  ): Promise<{ gameSeason?: PWHLSeason; recordSeason?: PWHLSeason }> {
+  private async getPWHLSeasonsCovering(date: string): Promise<PWHLSeason[]> {
     try {
       const seasons = await this.getPWHLSeasons();
-      if (!Array.isArray(seasons) || seasons.length === 0) return {};
-
-      const isRegular = (s: PWHLSeason) =>
-        /regular season/i.test(s.season_name);
-      const covers = (s: PWHLSeason) =>
-        s.start_date <= date && s.end_date >= date;
-      const rank = (s: PWHLSeason) =>
-        isRegular(s) ? 0 : /playoff/i.test(s.season_name) ? 1 : 2;
-
-      const covering = seasons.filter(covers);
-      const gameSeason = [...covering].sort((a, b) => rank(a) - rank(b))[0];
-
-      const regulars = seasons.filter(isRegular);
-      const recordSeason =
-        regulars.find(covers) ??
-        regulars
-          .filter((s) => s.end_date <= date)
-          .sort((a, b) => b.end_date.localeCompare(a.end_date))[0];
-
-      return { gameSeason, recordSeason };
+      if (!Array.isArray(seasons) || seasons.length === 0) return [];
+      return seasons.filter((s) => s.start_date <= date && s.end_date >= date);
     } catch (error) {
       console.error(
         'Error resolving PWHL seasons for date:',
         error instanceof Error ? error.message : String(error),
       );
-      return {};
+      return [];
     }
   }
 
@@ -162,12 +142,7 @@ export class HockeyData {
       });
 
       const activeTeams = allTeams.map((team: TeamNHL) => {
-        const {
-          teamAbbrev,
-          teamName,
-          teamLogo,
-          teamCommonName,
-        } = team;
+        const { teamAbbrev, teamName, teamLogo, teamCommonName } = team;
         const teamID = teamAbbrev.default;
         const uniqueId = `${leagueName}-${teamID}`;
 
@@ -435,24 +410,49 @@ export class HockeyData {
     }
   };
 
+  /**
+   * The regular season a "current" record belongs to, chosen **by date**.
+   *
+   * The feed lists seasons most recent first, so the previous
+   * `[...seasons].reverse().find(...)` walked them **oldest first** and returned
+   * the 2024 inaugural regular season (24 games) instead of the current one —
+   * which is why every PWHL team record read like a two-year-old tally.
+   *
+   * Preference: the regular season covering today (live standings), else the
+   * most recent one already ended (an off-season keeps the last completed
+   * tally), else the closest upcoming one.
+   */
+  private resolveCurrentRegularSeason(
+    seasons: PWHLSeason[],
+  ): PWHLSeason | undefined {
+    const regulars = seasons.filter((s) =>
+      /regular season/i.test(s.season_name),
+    );
+    if (regulars.length === 0) return undefined;
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const covering = regulars.find(
+      (s) => s.start_date <= today && s.end_date >= today,
+    );
+    if (covering) return covering;
+
+    const ended = regulars
+      .filter((s) => s.end_date < today)
+      .sort((a, b) => b.end_date.localeCompare(a.end_date));
+    if (ended.length > 0) return ended[0];
+
+    const upcoming = regulars
+      .filter((s) => s.start_date > today)
+      .sort((a, b) => a.start_date.localeCompare(b.start_date));
+    return upcoming[0];
+  }
+
   getPWHLStandings = async (seasonId?: string) => {
     try {
       if (!seasonId) {
-        const seasonsResponse = await fetch(
-          `${pwhlAPI}index.php?feed=modulekit&view=seasons&key=446521baf8c38984&client_code=pwhl&fmt=json`,
-        );
-        const seasonsJson = await seasonsResponse.json();
-        const seasons = seasonsJson?.SiteKit?.Seasons;
-        if (Array.isArray(seasons) && seasons.length > 0) {
-          const regularSeason = [...seasons]
-            .reverse()
-            .find((s) => s.season_name.includes('Regular Season'));
-          if (regularSeason) {
-            seasonId = regularSeason.season_id;
-          } else {
-            seasonId = seasons.at(-1).season_id;
-          }
-        }
+        const seasons = await this.getPWHLSeasons();
+        seasonId = this.resolveCurrentRegularSeason(seasons)?.season_id;
       }
 
       if (!seasonId) return {};
@@ -694,7 +694,25 @@ export class HockeyData {
    * filters anything; the season choice, not that guard, is what keeps
    * playoff games out of the tally.
    */
-  private applyPWHLHistoricalRecords(allGames: PWHLGameAPI[]): {
+  /**
+   * Replays a schedule into each team's `W-L-OTL`.
+   *
+   * `asOf` restricts the tally to games that started **before** it, so a group
+   * still running can still describe an individual game: the record it began
+   * with, rather than nothing. Without `asOf` the whole group is tallied — the
+   * number a finished season shows on every one of its games.
+   *
+   * `seasonOver` is always computed over the whole group, never on the `asOf`
+   * slice, because it answers a different question: "is this group done?".
+   *
+   * Callers must pass a schedule belonging to a **single group** (pre-season,
+   * regular season or playoffs — each has its own `season_id`): HockeyTech gives
+   * no per-game record, and the three groups must never be totalled together.
+   */
+  private applyPWHLHistoricalRecords(
+    allGames: PWHLGameAPI[],
+    asOf?: string,
+  ): {
     finals: Map<string, string>;
     seasonOver: boolean;
   } {
@@ -705,6 +723,7 @@ export class HockeyData {
         new Date(b.GameDateISO8601).getTime(),
     );
     const now = Date.now();
+    const asOfTime = asOf ? new Date(asOf).getTime() : NaN;
     const seasonOver = sorted.every((g) => {
       const start = g?.GameDateISO8601
         ? new Date(g.GameDateISO8601).getTime()
@@ -734,6 +753,13 @@ export class HockeyData {
         String(g.game_type) !== '' &&
         String(g.game_type) !== '1';
       if (!isFinished || isPlayoff) continue;
+      if (Number.isFinite(asOfTime)) {
+        const startedAt = g?.GameDateISO8601
+          ? new Date(g.GameDateISO8601).getTime()
+          : NaN;
+        // The record a team *brings* to a game: everything already played.
+        if (Number.isFinite(startedAt) && startedAt >= asOfTime) continue;
+      }
 
       const homeGoals = Number(g.home_goal_count);
       const awayGoals = Number(g.visiting_goal_count);
@@ -766,32 +792,131 @@ export class HockeyData {
    * and `applyPWHLHistoricalRecords` finds no finished game, which left both
    * `seasonOver` false and `finals` empty — hence no record on any past date.
    *
-   * Records come from the **regular season alone**: pre-season, playoffs and
-   * regular season have distinct `season_id`s and several of them overlap a
-   * single calendar year, so merging every season that overlaps the year would
-   * total several seasons into one (plausible-looking but wrong) tally.
+   * Past groups use the **local schedule replay** (`applyPWHLHistoricalRecords`,
+   * one tally **per group** — pre-season, regular season and playoffs have
+   * distinct `season_id`s and several of them overlap a single calendar year,
+   * so merging every season that overlaps the year would total several seasons
+   * into one plausible-looking but wrong tally).
+   *
+   * The **current** group (the season covering today) keeps the old behaviour:
+   * records come from the official standings feed (`getPWHLStandings()`).
    */
   getPWHLScores = async (date: string) => {
     try {
-      const { gameSeason, recordSeason } =
-        await this.getPWHLSeasonsForDate(date);
+      const seasons = await this.getPWHLSeasons().catch(() => []);
+      const covering = Array.isArray(seasons)
+        ? seasons.filter((s) => s.start_date <= date && s.end_date >= date)
+        : [];
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const coveringToday = Array.isArray(seasons)
+        ? seasons.filter(
+            (s) => s.start_date <= todayStr && s.end_date >= todayStr,
+          )
+        : [];
 
-      // Games of the requested day, from the season that actually covers it.
-      // When no season covers the date (or the seasons feed failed) this falls
-      // back to the default season rather than losing the whole day.
-      const dayGames = await this.getPWHLSchedule(gameSeason?.season_id);
-      const gamesOfDay = dayGames.filter((game) => game.date_played === date);
+      // Current season (pre-season, regular season or playoffs covering today):
+      // keep the behaviour from a month ago — records come from the official
+      // standings feed. Past groups use the local schedule replay instead.
+      let isCurrent = false;
+      if (coveringToday.length > 0) {
+        isCurrent = covering.some((c) =>
+          coveringToday.some((t) => t.season_id === c.season_id),
+        );
+      } else {
+        const curReg = this.resolveCurrentRegularSeason(seasons ?? []);
+        if (curReg) {
+          isCurrent = covering.some((c) => c.season_id === curReg.season_id);
+        }
+      }
 
-      // The tally is replayed from the regular season — the same schedule when
-      // the day already belongs to it, one extra request otherwise.
-      const recordGames =
-        recordSeason && recordSeason.season_id !== gameSeason?.season_id
-          ? await this.getPWHLSchedule(recordSeason.season_id)
-          : dayGames;
-      const { finals, seasonOver } =
-        this.applyPWHLHistoricalRecords(recordGames);
+      if (isCurrent) {
+        // The one-month-ago behaviour: records from the official standings
+        // feed. Pass the covering season explicitly so a current pre-season
+        // or playoff group reads its own standings instead of falling back
+        // to the regular-season resolution (which finds nothing during a
+        // pre-season and would leave every record empty).
+        const currentSeasonId =
+          covering.length === 1 ? covering[0].season_id : undefined;
+        const standings = await this.getPWHLStandings(currentSeasonId);
+        const groups: (PWHLSeason | undefined)[] =
+          covering.length > 0 ? covering : [undefined];
+        const day: PWHLGameAPI[] = [];
+        for (const season of groups) {
+          const groupGames = await this.getPWHLSchedule(season?.season_id);
+          for (const game of groupGames) {
+            if (game.date_played === date) day.push(game);
+          }
+        }
+        return day.map((game) => {
+          let gameStatus = game.game_status;
+          if (
+            gameStatus === 'In Progress' &&
+            (game as any).game_clock &&
+            (game as any).period
+          ) {
+            gameStatus = `${(game as any).game_clock} - ${(game as any).period}`;
+          }
+          return {
+            homeTeamScore: Number(game.home_goal_count),
+            awayTeamScore: Number(game.visiting_goal_count),
+            homeTeamShort: game.home_team_code,
+            awayTeamShort: game.visiting_team_code,
+            homeTeamId: `${League.PWHL}-${game.home_team_code}`,
+            awayTeamId: `${League.PWHL}-${game.visiting_team_code}`,
+            isFinal: game.final === '1',
+            homeTeamRecord: standings[game.home_team_code] || '',
+            awayTeamRecord: standings[game.visiting_team_code] || '',
+            status: game.game_status,
+            gameStatus: gameStatus,
+            gameClock: (game as any).game_clock,
+            gamePeriod: (game as any).period,
+            startTimeUTC: new Date(game.GameDateISO8601).toISOString(),
+            uniqueId: game.id,
+            gameDate: date,
+            league: League.PWHL,
+            seriesSummary: game?.game_number ? `Game ${game.game_number}` : '',
+            seriesStatus: game?.game_number ? `Game ${game.game_number}` : '',
+          };
+        });
+      }
 
-      return gamesOfDay.map((game) => {
+      // Past group(s): local tally only — replay each covering season
+      // separately so a tally never mixes pre-season, regular season and
+      // playoffs. When no season covers the date (or the seasons feed
+      // failed) this falls back to the feed's default season rather than
+      // losing the whole day.
+      const groups: (PWHLSeason | undefined)[] =
+        covering.length > 0 ? covering : [undefined];
+
+      const day: { game: PWHLGameAPI; tally: Map<string, string> }[] = [];
+
+      for (const season of groups) {
+        const groupGames = await this.getPWHLSchedule(season?.season_id);
+        const { finals, seasonOver } =
+          this.applyPWHLHistoricalRecords(groupGames);
+
+        for (const game of groupGames) {
+          if (game.date_played !== date) continue;
+
+          const kickoff = new Date(game.GameDateISO8601);
+          // A finished group shows its final tally on every one of its games,
+          // exactly like the ESPN leagues. While the group is still running it
+          // is replayed only up to this game, so a mid-season game carries the
+          // record it actually took the ice with instead of nothing.
+          const tally = seasonOver
+            ? finals
+            : this.applyPWHLHistoricalRecords(
+                groupGames,
+                Number.isNaN(kickoff.getTime())
+                  ? undefined
+                  : kickoff.toISOString(),
+              ).finals;
+
+          day.push({ game, tally });
+        }
+      }
+
+      return day.map(({ game, tally }) => {
         let gameStatus = game.game_status;
         if (
           gameStatus === 'In Progress' &&
@@ -800,17 +925,8 @@ export class HockeyData {
         ) {
           gameStatus = `${(game as any).game_clock} - ${(game as any).period}`;
         }
-        // Same rule as the ESPN leagues (`applySeasonFinalRecords`): a
-        // finished season shows that year's final tally on every game;
-        // a season in progress leaves records empty so readers fall
-        // back to the live `team.record` (most recent tally, kept via
-        // `syncGameWithScore()` -> `_nextRecord()`).
-        const homeRecord = seasonOver
-          ? finals.get(game.home_team_code) || ''
-          : '';
-        const awayRecord = seasonOver
-          ? finals.get(game.visiting_team_code) || ''
-          : '';
+        const homeRecord = tally.get(game.home_team_code) || '';
+        const awayRecord = tally.get(game.visiting_team_code) || '';
         return {
           homeTeamScore: Number(game.home_goal_count),
           awayTeamScore: Number(game.visiting_goal_count),
