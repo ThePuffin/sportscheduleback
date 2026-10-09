@@ -2,6 +2,43 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Changed: inserting games when the DB is full now forces a rate-limited one-shot purge and retries once
+
+### Problem
+
+`executeWithCapacityGuard()` already wrapped `create()` / `update()`, but on a MongoDB "no space
+left" error it only called `handleNoSpaceError()` (which purged) and then **re-threw** — it never
+retried. Worse, the purge it triggered went through the throttled path in practice: a "no space"
+error means the DB is full *right now*, yet the retry that would have used the freed space did not
+exist. The result: during an insert / oldies run that hit a full disk, the failing `create()` threw
+and the match (and, in a loop, the rest of the batch) was lost until a human intervened.
+
+### Solution
+
+- `backend/src/games/games.service.ts` — `executeWithCapacityGuard()` now **retries the operation
+  once** after a successful purge before re-throwing. `handleNoSpaceError()` forces the purge via
+  `purgeOldestMonthIfNeeded(force = true)` (bypasses the 1-hour `CHECK_INTERVAL_MS` guard and the
+  60s disk-usage cache so the decision uses a fresh measurement); because a no-space error is
+  authoritative, if that forced check still reports `action: 'none'` it falls back to a direct
+  `purgeOldestMonth()`. It returns `true` only when at least one month was actually deleted, and
+  that boolean drives the single retry. If the retry still fails, the original error is re-thrown.
+  No manual `POST /games/capacity/check` is needed — the failed insert triggers the purge itself.
+- **Rate-limited to protect the data (anti-wipe safeguard).** A forced purge bypasses the hourly
+  guard, so a new `FORCED_PURGE_MIN_INTERVAL_MS` (60s) floor caps forced purges to **one per
+  minute**. `lastForcedPurgeAt` records the last forced purge; a no-space error arriving within the
+  1-minute window skips the purge and re-throws the error instead of deleting another month. This
+  prevents a tight insert loop whose disk stays full from purging a month on every failed write and
+  deleting the whole history within seconds. Between purges the caller fails loudly rather than
+  cascading deletions.
+- `backend/src/games/tests/games.service.spec.ts` — 5 new tests under
+  `describe('create: capacity guard (no-space retry)')`: purges + retries and succeeds; does not
+  retry when the error is not a no-space error; forces the purge (`purgeOldestMonthIfNeeded(true)`)
+  and falls back to a direct purge when the forced check reports `none`; re-throws when nothing can
+  be purged; and **does not purge again within `FORCED_PURGE_MIN_INTERVAL_MS`** (the second no-space
+  error inside the 1-minute window does not trigger a second purge).
+- Docs: `backend/docs/games/games.service.ts.md` — `create()` section documents the no-space retry
+  and the 1-minute forced-purge floor.
+
 ## Removed: `backend/src/utils/Teams.tsx` pending-teams file and its logic
 
 ### Problem

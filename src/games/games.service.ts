@@ -96,9 +96,18 @@ export class GameService {
   // Capacity-based purge configuration
   private readonly DISK_USAGE_THRESHOLD = 0.97; // 97%
   private readonly CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  // Minimum spacing between two *forced* (no-space) purges. A forced purge
+  // bypasses the 1-hour CHECK_INTERVAL_MS guard, so without this floor a tight
+  // insert loop (getLeagueGames / getOldiesGames call create() repeatedly)
+  // whose disk stays full could purge a month on every failed write and delete
+  // large amounts of history within seconds. One forced purge per minute is the
+  // safe ceiling: it still frees space promptly, but never in an unbounded burst.
+  private readonly FORCED_PURGE_MIN_INTERVAL_MS = 60 * 1000; // 1 minute
   private readonly DISK_USAGE_CACHE_TTL_MS = 60 * 1000; // 60 seconds cache for disk usage stats
   private readonly CLUSTER_TOTAL_MB = 512; // Total cluster storage in MB (adjust to your Atlas plan)
   private lastDiskCheck = 0;
+  // Timestamp (ms) of the last forced (no-space) purge, for FORCED_PURGE_MIN_INTERVAL_MS.
+  private lastForcedPurgeAt = 0;
 
   // In-memory cache for disk usage to avoid spamming dbStats on every call
   private diskUsageCache: {
@@ -3616,37 +3625,89 @@ export class GameService {
   }
 
   /**
-   * Handles a "no space" error by purging the oldest month of games.
-   * Returns true if the error was a no-space error and purge was triggered.
+   * Handles a "no space" error by forcing a one-shot purge of the oldest month.
+   *
+   * Uses `purgeOldestMonthIfNeeded(force = true)` so the decision is based on a
+   * fresh measurement (`force` bypasses the 1-hour `CHECK_INTERVAL_MS` guard and
+   * invalidates the 60s disk-usage cache). Because a "no space left" error is
+   * authoritative — the database is full *right now* — if the forced check still
+   * reports `action: 'none'` (measurement lag, or a storage quota that differs
+   * from the `dbStats` estimate), it falls back to a direct single-month purge so
+   * space is actually freed before the caller retries.
+   *
+   * Rate-limited: a forced purge happens at most once per
+   * `FORCED_PURGE_MIN_INTERVAL_MS` (1 minute). Without this floor, a tight insert
+   * loop whose disk stays full would purge a month on every failed write and could
+   * delete large amounts of history in seconds. Between purges the error is
+   * re-thrown so the caller fails loudly instead of silently cascading deletions.
+   *
+   * Returns true only when at least one month was actually purged, i.e. when it
+   * is worth retrying the failed operation.
    */
   private async handleNoSpaceError(error: unknown): Promise<boolean> {
     if (!this.isNoSpaceError(error)) return false;
 
+    const now = Date.now();
+    if (now - this.lastForcedPurgeAt < this.FORCED_PURGE_MIN_INTERVAL_MS) {
+      const waitSec = Math.ceil(
+        (this.FORCED_PURGE_MIN_INTERVAL_MS - (now - this.lastForcedPurgeAt)) /
+          1000,
+      );
+      console.warn(
+        `[Capacity Manager] No space left error detected, but a forced purge ran ${Math.floor((now - this.lastForcedPurgeAt) / 1000)}s ago — waiting ${waitSec}s before purging again (to avoid deleting too much data too fast). Re-throwing the error.`,
+      );
+      return false;
+    }
+    this.lastForcedPurgeAt = now;
+
     console.warn(
-      '[Capacity Manager] No space left error detected — triggering automatic purge of oldest month...',
+      '[Capacity Manager] No space left error detected — forcing a one-shot purge of the oldest month...',
     );
     try {
-      const result = await this.purgeOldestMonth();
+      let result = await this.purgeOldestMonthIfNeeded(true);
+
+      // A no-space error is authoritative: the DB is full. If the fresh
+      // measurement still reports usage below the threshold, fall back to a
+      // direct single-month purge so space is actually freed before the retry.
+      if (result.action === 'none') {
+        console.warn(
+          '[Capacity Manager] Forced check reported no purge needed despite a no-space error — purging the oldest month directly.',
+        );
+        const direct = await this.purgeOldestMonth();
+        result = {
+          action: direct.action,
+          diskUsage: result.diskUsage,
+          purgedYear: direct.purgedYear,
+          purgedMonth: direct.purgedMonth,
+          deletedCount: direct.deletedCount,
+          remainingYears: direct.remainingYears,
+        };
+      }
+
       if (result.action === 'purged') {
         console.info(
-          `[Capacity Manager] Auto-purge completed: deleted ${result.deletedCount} games from ${result.purgedYear}-${result.purgedMonth?.toString().padStart(2, '0')}.`,
+          `[Capacity Manager] Purge completed: deleted ${result.deletedCount} games from ${result.purgedYear}-${result.purgedMonth?.toString().padStart(2, '0')}.`,
         );
-      } else {
-        console.warn('[Capacity Manager] Auto-purge: no games to purge.');
+        return true;
       }
+
+      console.warn('[Capacity Manager] Purge: no games could be deleted.');
+      return false;
     } catch (purgeErr) {
       console.error(
         '[Capacity Manager] Auto-purge failed:',
         purgeErr instanceof Error ? purgeErr.message : String(purgeErr),
       );
+      return false;
     }
-    return true;
   }
 
   /**
    * Wraps an async operation with automatic capacity management.
    * If the operation fails with a "no space left" error from MongoDB,
-   * triggers the oldest-month purge and re-throws the original error.
+   * forces a one-shot purge of the oldest month and retries the operation
+   * once so the failed insert/update can succeed on the freed space. If the
+   * retry still fails (or nothing could be purged), the error is re-thrown.
    */
   private async executeWithCapacityGuard<T>(
     operation: () => Promise<T>,
@@ -3655,11 +3716,19 @@ export class GameService {
     try {
       return await operation();
     } catch (error) {
-      const wasNoSpace = await this.handleNoSpaceError(error);
-      if (wasNoSpace) {
-        console.warn(
-          `[Capacity Manager] ${context} failed due to no-space — purge triggered, re-throwing error.`,
+      const purged = await this.handleNoSpaceError(error);
+      if (purged) {
+        console.info(
+          `[Capacity Manager] ${context} failed due to no-space — oldest month purged, retrying once.`,
         );
+        try {
+          return await operation();
+        } catch (retryError) {
+          console.warn(
+            `[Capacity Manager] ${context} still failed after purge — re-throwing error.`,
+          );
+          throw retryError;
+        }
       }
       throw error;
     }

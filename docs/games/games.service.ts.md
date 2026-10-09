@@ -33,6 +33,23 @@ already-stored teams display the correct colors without waiting for a re-fetch.
 
 Creates or updates a game document while preserving important live fields such as status and clock.
 
+**Capacity guard (no-space retry):** the whole body is wrapped in `executeWithCapacityGuard()`.
+If MongoDB rejects the write with a "no space left" / disk-full error (`isNoSpaceError()` — error
+codes `68`/`14` or matching message patterns), the guard forces a **one-shot purge of the oldest
+month** (`handleNoSpaceError()` → `purgeOldestMonthIfNeeded(force = true)`, which bypasses the
+1-hour guard and the 60s disk-usage cache) and then **retries the write once** on the freed space.
+Because a no-space error is authoritative, if the forced measurement still reports `action: 'none'`
+it falls back to a direct `purgeOldestMonth()`. If nothing can be purged or the retry still fails,
+the original error is re-thrown. This is the "insert matches but the DB is full" path: the purge is
+triggered automatically by the failed insert, no manual step required.
+
+**Anti-wipe rate limit:** a forced purge bypasses the 1-hour guard, so it is additionally floored to
+**at most one per minute** (`FORCED_PURGE_MIN_INTERVAL_MS` = 60s, tracked via `lastForcedPurgeAt`).
+A no-space error arriving inside that 1-minute window **skips the purge and re-throws** instead of
+deleting another month. This prevents a tight insert loop (`getLeagueGames` / `getOldiesGames` call
+`create()` repeatedly) whose disk stays full from purging a month on every failed write and wiping
+the whole history within seconds.
+
 ### `getLeagueGames(params)`
 
 Refreshes a specific league’s game data. It:
@@ -396,4 +413,5 @@ Calculates MongoDB disk usage via `dbStats` command with `$collStats` fallback.
 - **Disk monitoring**: Automatic every hour (cron job)
 - **Manual trigger**: `POST /games/capacity/check` (requires API key) — check + purge the oldest month if needed
 - **Read-only status**: `GET /games/capacity/status` (requires API key) — same diagnostics as the check, but **without performing any deletion**; returns `diskUsage`, per-year breakdown (`years[]`), `teamCount`, `gameCount`, `threshold`, and `actionNeeded`.
+- **Auto-purge on full-DB writes**: `create()` / `update()` go through `executeWithCapacityGuard()`. A MongoDB \"no space left\" error (code `68`/`14`) triggers a forced one-shot purge of the oldest month followed by a single retry of the write. This path is **rate-limited to one forced purge per minute** (`FORCED_PURGE_MIN_INTERVAL_MS` = 60s): between purges the no-space error is re-thrown so a stuck-full disk cannot cascade a month-by-month wipe.
 - **Performance**: `getDiskUsage()` results are cached in-memory for 60 seconds to reduce load on the MongoDB cluster.
