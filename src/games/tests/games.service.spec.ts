@@ -750,6 +750,7 @@ describe('GameService', () => {
 
     it('should only list years where games were actually added (added > 0)', async () => {
       const currentYear = new Date().getFullYear();
+      const oldestYear = currentYear - service.maxYearBeforeDelete + 1;
 
       // Simulate: first year adds games, second year adds nothing
       let callCount = 0;
@@ -765,11 +766,11 @@ describe('GameService', () => {
 
       const result = await service.getOldiesGames(undefined, League.NHL);
 
-      // Only the first year (currentYear - 1) should appear in the message since it had added > 0
-      expect(result.yearsWithAdditions).toContain(currentYear - 1);
-      expect(result.message).toContain(String(currentYear - 1));
+      // Only the first year (the oldest allowed) should appear in the message since it had added > 0
+      expect(result.yearsWithAdditions).toContain(oldestYear);
+      expect(result.message).toContain(String(oldestYear));
       // The second year should NOT appear
-      expect(result.message).not.toContain(String(currentYear - 2));
+      expect(result.message).not.toContain(String(oldestYear + 1));
     });
 
     it('should still allow forcing the current year explicitly via year param', async () => {

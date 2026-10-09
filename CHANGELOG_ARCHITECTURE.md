@@ -2,6 +2,25 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Changed: `getOldiesGames` now iterates years from oldest to most recent
+
+### Problem
+
+When called without a `year` param, `getOldiesGames()` built its `years` list from
+`currentYear - 1` down to the oldest allowed year (most recent → oldest). The desired order is the
+opposite: start with the oldest season and move toward the most recent one.
+
+### Changes
+
+- **`backend/src/games/games.service.ts`** — `getOldiesGames()`: the default loop now runs
+  `for (let y = minYear + 1; y <= currentYear - 1; y++)`, so seasons are fetched oldest → most
+  recent. The set of years is unchanged (still excludes the in-progress current year); only the
+  iteration order flips.
+- **`backend/src/games/tests/games.service.spec.ts`** — the "only list years where games were
+  actually added" test now expects the **oldest** year (`currentYear - maxYearBeforeDelete + 1`) to be
+  processed first, instead of `currentYear - 1`.
+- **`backend/docs/games/games.service.ts.md`** — documented the oldest → most recent order.
+
 ## Changed: inserting games when the DB is full now forces a rate-limited one-shot purge and retries once
 
 ### Problem
