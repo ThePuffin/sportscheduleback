@@ -438,7 +438,7 @@ const leaguesData = Object.fromEntries(
       key,
       {
         leagueName: key,
-        fetchTeam: teamBase,
+        fetchTeam: `${teamBase}?limit=1000`,
         fetchGames: `${teamBase}/\${id}/schedule`,
         fetchDetails: `${teamBase}/`,
         fetchStandings: `${base}/standings`,
@@ -447,11 +447,47 @@ const leaguesData = Object.fromEntries(
   }),
 );
 
+/**
+ * Division-1 parent group ids per college league, as exposed by ESPN's
+ * per-team detail endpoint (`groups: { id, parent: { id }, isConference }`).
+ * A team is Division 1 when its group sits under one of these parents.
+ * Football covers both FBS (80) and FCS (81), which are both D1.
+ * `isConference` is intentionally NOT part of the test: ESPN sets it to
+ * `false` for legitimate D1 teams (e.g. every NCCABB team, LSU included)
+ * and for independent D1 programs, so only the parent id is reliable.
+ * Women's college hockey (NCAAWH) is intentionally absent: ESPN exposes no
+ * such marker there, so it is kept as-is.
+ */
+export const D1_PARENT_IDS: Record<string, string[]> = {
+  [CollegeLeague.NCAAF]: ['80', '81'],
+  [CollegeLeague.NCAAB]: ['50'],
+  [CollegeLeague.WNCAAB]: ['50'],
+  [CollegeLeague.NCCABB]: ['27'],
+  [CollegeLeague.NCAAMH]: ['51'],
+};
+
+/**
+ * Whether an ESPN team-detail `groups` object marks a Division 1 team.
+ * Returns `true` when there is no `groups` info (transient fetch failure):
+ * a team must never be dropped on a network error, only on positive proof
+ * that it plays outside D1.
+ */
+export const isD1Groups = (
+  leagueName: string,
+  groups?: { id: string; parent?: { id: string }; isConference?: boolean },
+): boolean => {
+  const d1Parents = D1_PARENT_IDS[leagueName];
+  if (!d1Parents) return true;
+  if (!groups) return true;
+  return !!(groups.parent?.id && d1Parents.includes(groups.parent.id));
+};
+
 const getTeamRecord = async (
   leagueName: string,
   id: string,
 ): Promise<{
   record?: { wins: number; losses: number; ties?: number; otLosses?: number };
+  groups?: { id: string; parent?: { id: string }; isConference?: boolean };
 }> => {
   try {
     const url = leaguesData[leagueName].fetchDetails + id;
@@ -471,7 +507,7 @@ const getTeamRecord = async (
       }
     }
 
-    return { record };
+    return { record, groups: team.groups };
   } catch {
     return {};
   }
@@ -566,7 +602,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
       const currentYear = new Date().getFullYear();
       try {
         const { sport, league } = leagueConfigs[leagueName];
-        const url = `${espnAPI}${sport}/${league}/scoreboard?dates=${currentYear}`;
+        const url = `${espnAPI}${sport}/${league}/scoreboard?dates=${currentYear}&limit=1000`;
         const res = await fetchWithRetry(url);
         const data = await res.json();
         const events = data.events || [];
@@ -667,8 +703,14 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
         };
       });
 
+    // College leagues: keep Division 1 teams only. `getTeamRecord()` hits the
+    // per-team detail endpoint, which exposes `groups`; a team is dropped only
+    // on positive proof it plays outside D1 (see `isD1Groups()`). NCAAWH is
+    // excluded (ESPN exposes no D1 marker there) and non-college leagues are
+    // unaffected.
+    const filteredTeams: TeamType[] = [];
     for (const team of activeTeams) {
-      const { record } = await getTeamRecord(leagueName, team.id);
+      const { record, groups } = await getTeamRecord(leagueName, team.id);
       if (record) {
         (team as any).wins = record.wins;
         (team as any).losses = record.losses;
@@ -677,9 +719,16 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
           (team as any).otLosses = record.otLosses;
         }
       }
+      if (isD1Groups(leagueName, groups)) {
+        filteredTeams.push(team);
+      } else {
+        console.info(
+          `[Teams] ${leagueName}: skipping non-D1 team ${team.uniqueId} (group ${groups?.id}, parent ${groups?.parent?.id}).`,
+        );
+      }
     }
 
-    return activeTeams;
+    return filteredTeams;
   } catch (error) {
     console.error('Error fetching data =>', error);
     return [];

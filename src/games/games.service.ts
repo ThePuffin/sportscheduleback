@@ -983,6 +983,7 @@ export class GameService {
         }
       }
 
+      await this._deleteGamesOfPurgedTeams(normalizedLeague);
       await this._deleteUnlinkedTeams(normalizedLeague);
       return games;
     } catch (err) {
@@ -1547,7 +1548,7 @@ export class GameService {
       minDate = new Date(startDate);
     if (endDate && new Date(endDate) > maxDate) maxDate = new Date(endDate);
 
-    for (let date = minDate; date <= maxDate; ) {
+    for (let date = minDate; date <= maxDate;) {
       const currentDate = readableDate(date);
       const gamesOfDay = [];
       uniqueTeamSelectedIds.forEach((teamSelectedId) => {
@@ -3079,6 +3080,38 @@ export class GameService {
       .sort({ gameDate: -1, startTimeUTC: 1 })
       .lean()
       .exec();
+  }
+
+  /**
+   * Deletes the games that reference teams purged as non-D1 by the last
+   * `TeamService.getTeams()` run (see `takeLastPurgedNonD1Ids()`).
+   *
+   * A game is deleted when one of its team references (`teamSelectedId`,
+   * `homeTeamId`, `awayTeamId`) matches a purged id. This removes BOTH the
+   * non-D1 team's own rows AND the D1-side twin of a D1-vs-D2 match (both
+   * describe the same non-D1 fixture), keeping the D1 record clean.
+   * Historical teams are never purged upstream, so no guard is needed here.
+   */
+  private async _deleteGamesOfPurgedTeams(league: string): Promise<void> {
+    const normalizedLeague = league.toUpperCase().trim();
+    // Drain only this league's purged ids: the queue can hold several leagues
+    // (a full `POST /teams/refresh` purges them all) and each league's refresh
+    // must cascade its own purge — a global drain would be consumed here with
+    // a `league` filter that never matches the other leagues' ids.
+    const purgedIds = this.teamService.takeLastPurgedNonD1Ids(normalizedLeague);
+    if (purgedIds.length === 0) return;
+
+    const result = await this.gameModel.deleteMany({
+      league: normalizedLeague,
+      $or: [
+        { teamSelectedId: { $in: purgedIds } },
+        { homeTeamId: { $in: purgedIds } },
+        { awayTeamId: { $in: purgedIds } },
+      ],
+    });
+    console.info(
+      `[purgeNonD1] ${normalizedLeague}: deleted ${result.deletedCount ?? 0} game(s) referencing ${purgedIds.length} purged non-D1 team(s).`,
+    );
   }
 
   private async _deleteUnlinkedTeams(league: string): Promise<void> {

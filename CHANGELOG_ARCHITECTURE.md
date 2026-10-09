@@ -2,6 +2,133 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Removed: `backend/src/utils/Teams.tsx` pending-teams file and its logic
+
+### Problem
+
+The hand-maintained pending-teams file (`backend/src/utils/Teams.tsx`) existed because team discovery
+could silently miss university teams: `getESPNTeams()` was truncated to ~50 teams by ESPN pagination.
+With the `?limit=1000` fix plus the Division-1-only filter, a plain `POST /teams/refresh` now
+discovers the complete D1 college roster automatically, so the file no longer had a reason to exist —
+it only accumulated stale or never-addable entries (non-D1 schools blocked by the filter, `uniqueId`
+mismatches such as `NCCABB-S ALA`).
+
+### Solution
+
+- **Deleted** `backend/src/utils/Teams.tsx`.
+- **`TeamService`** — removed `pendingTeamsFilePath`, `readPendingTeams()`, `writePendingTeams()`,
+  `prunePendingTeamsFile()` (and its call at the end of `getTeams()`) and
+  `addPendingTeamsOfLeague()`. Team discovery is now `getESPNTeams()` alone.
+- **`GameService._fetchUniqueGames()`** — no longer calls `addPendingTeamsOfLeague()` before a
+  league fetch.
+- **`espnAllData.ts`** — removed the `resolveESPNLeagueKeys()` / `getESPNLeagueKeyForTeamId()`
+  helpers (they existed only to select pending entries).
+- Note: `frontend/constants/Teams.tsx` (generated app constants used by `FavModal`) is a different
+  file and is untouched.
+
+### Files
+
+- `backend/src/utils/Teams.tsx` — deleted.
+- `backend/src/teams/teams.service.ts` — pending-file logic removed.
+- `backend/src/games/games.service.ts` — `addPendingTeamsOfLeague()` call removed.
+- `backend/src/utils/fetchData/espnAllData.ts` — league-key helpers removed.
+- `backend/docs/teams/teams.service.ts.md`, `backend/docs/games/games.service.ts.md`,
+  `backend/docs/utils/fetchData/espnAllData.ts.md` — this entry.
+
+## Added: college rosters are Division-1-only (filter + purge + game cascade)
+
+### Problem
+
+ESPN's `GET {sport}/{league}/teams` returns every program it tracks, including
+Divisions 2/3 (e.g. `NCAAF` returned 763 teams instead of ~260 D1 programs).
+Those non-D1 teams were stored and their D1-vs-D2 fixtures polluted the D1
+record, while the pending file kept shrinking around the wrong perimeter.
+
+### Solution
+
+- **`espnAllData.ts`** — `D1_PARENT_IDS` maps each college league to its D1
+  parent group id(s) as exposed by ESPN's per-team detail endpoint
+  (`groups: { id, parent: { id } }`): NCAAF `80/81` (FBS+FCS, both D1),
+  NCAAB/WNCAAB `50`, NCCABB `27`, NCAAMH `51`. `isD1Groups()` tests the parent
+  id only (`isConference` is unreliable — ESPN sets it to `false` for
+  legitimate D1 teams such as every NCCABB team). NCAAWH is excluded (ESPN
+  exposes no marker there). `getESPNTeams()` drops non-D1 teams, fail-open
+  (a team whose detail fetch fails is kept, never dropped on a network error).
+- **`TeamService.purgeNonD1Teams(league, espnTeams?)`** — deletes stored teams absent from
+  the D1-filtered ESPN roster; reuses the caller's just-fetched roster when passed (no
+  second ESPN round-trip). Never deletes on an empty ESPN roster (outage
+  guard), never deletes `HistoricalTeams` or `isActive === false` teams.
+  Called from `getTeams()` per league (only when ESPN returned a non-empty D1
+  roster); deleted ids are queued in `lastPurgedNonD1Ids`.
+- **`GameService._deleteGamesOfPurgedTeams(league)`** — cascades the purge to
+  games (pulled via `takeLastPurgedNonD1Ids(league)`, which drains only that
+  league's prefix so every league cascades its own purge instead of the first
+  refresh consuming the whole queue — no circular dependency):
+  deletes games whose `teamSelectedId`/`homeTeamId`/`awayTeamId` matches a
+  purged id, removing both the non-D1 rows and the D1-side twin of D1-vs-D2
+  fixtures. Runs in `getLeagueGames()` before `_deleteUnlinkedTeams()`.
+
+### Files
+
+- `backend/src/utils/fetchData/espnAllData.ts` — `D1_PARENT_IDS`, `isD1Groups()`, D1 filter in `getESPNTeams()`.
+- `backend/src/teams/teams.service.ts` — `purgeNonD1Teams()`, league-scoped `takeLastPurgedNonD1Ids()`, purge call in `getTeams()`.
+- `backend/src/games/games.service.ts` — `_deleteGamesOfPurgedTeams()` + call in `getLeagueGames()`.
+- `backend/docs/utils/fetchData/espnAllData.ts.md`, `backend/docs/teams/teams.service.ts.md`, `backend/docs/games/games.service.ts.md` — this entry.
+
+## Fixed: ESPN team discovery was truncated to ~50 teams (missing most of the roster)
+
+### Problem
+
+`getESPNTeams()` fetched `GET {sport}/{league}/teams` **without a `limit`**. ESPN paginates that
+endpoint and, with no `limit`, silently returns only the **first ~50 teams** of the league. As a
+result the whole roster was never discovered: for `NCAAB` only ~130 teams reached the database
+instead of the full 362 (e.g. `NCAAB-AKR` Akron was absent even though ESPN still serves it as
+`isActive: true`). The same silent truncation applied to the college scoreboard fallback.
+
+### Solution
+
+- `leaguesData[*].fetchTeam` is now `` `${teamBase}?limit=1000` `` so a single request returns the
+  whole roster (NCAAB: 363 teams, Akron included).
+- The `CollegeLeague` scoreboard fallback URL also carries `&limit=1000`.
+- A manual `POST /teams/refresh` now repopulates the full catalog and the pending-file prune removes
+  every team that reached the database from `backend/src/utils/Teams.tsx`.
+
+### Files
+
+- `backend/src/utils/fetchData/espnAllData.ts` — `fetchTeam` / scoreboard fallback URLs.
+- `backend/docs/utils/fetchData/espnAllData.ts.md` — this entry.
+
+## Added: pending teams of `Teams.tsx` are pruned by refresh and backfilled by game fetches
+
+### Problem
+
+`backend/src/utils/Teams.tsx` is a hand-maintained list of teams known to the app but missing from
+the database. It had no automation around it: teams that reached the database stayed in the file
+forever (drift), and teams still missing could only be inserted by hand — refreshing the games never
+fixed the team catalog.
+
+### Solution
+
+- **`TeamService` (`backend/src/teams/teams.service.ts`)**
+  - `readPendingTeams()` / `writePendingTeams()` parse and rewrite `backend/src/utils/Teams.tsx` as a
+    `{ uniqueId: label }` map.
+  - `prunePendingTeamsFile()` removes every pending team already stored in the database. It runs at
+    the end of `getTeams()`, so `POST /teams/refresh` shrinks the file to the teams that are really
+    missing (verified: 1051 stale entries removed on the first run).
+  - `addPendingTeamsOfLeague(league)` adds the pending teams of one league when the provider (ESPN)
+    still returns them, **only after confirming the write landed** (`findOne()`); a team ESPN no
+    longer returns or a failed write stays in the file. Matching is by **exact `uniqueId`** only —
+    abbreviation matching could store a team under the wrong league (e.g. `NCAAB-BOS` built from a
+    NCAAF team abbreviated `BOS`). PWHL teams are skipped (not served by ESPN).
+- **`GameService._fetchUniqueGames()` (`backend/src/games/games.service.ts`)** — calls
+  `addPendingTeamsOfLeague()` before fetching a league's games, so updating the matches is enough to
+  backfill the team catalog.
+- **`espnAllData.ts`** — new helpers `resolveESPNLeagueKeys(league)` (league → ESPN keys, `[]` for
+  non-ESPN leagues) and `getESPNLeagueKeyForTeamId(uniqueId)` (uniqueId → ESPN key) select the
+  pending entries a league's ESPN fetch can actually resolve.
+
+ESPN only: no other team source was touched.
+
 ## Fixed: PWHL current-group records read the standings of the wrong season
 
 ### Problem
@@ -191,8 +318,8 @@ An oldies run (`getLeagueGames({ addMissingOnly: true })`) could leave a past ga
 
 - A game stored **before** the per-game records existed has no record. The `addMissingOnly`
   comparison skips a game as soon as the stored records **match** the fetched ones. When the freshly
-  fetched season carries no `record` for that team (ESPN omits it on some seasons), *both sides are
-  empty* → the comparison says "identical" → the game is skipped and its record is never filled.
+  fetched season carries no `record` for that team (ESPN omits it on some seasons), _both sides are
+  empty_ → the comparison says "identical" → the game is skipped and its record is never filled.
 - Worse, `create()` protected the **scores** against being overwritten by `null`, but **not** the
   records. A game refreshed because its scores differed (`Object.assign(existingGame, gameDto)`)
   therefore had its correct stored records overwritten by the empty fetched ones.
@@ -237,9 +364,9 @@ TypeError: Cannot read properties of undefined (reading 'fetchGames')
 Two independent defects stacked up:
 
 1. **`leaguesData[leagueName]` was read without a guard** (`const baseUrl =
-   leaguesData[leagueName].fetchGames…`). `leaguesData` is built from `leagueConfigs`, so it has
+leaguesData[leagueName].fetchGames…`). `leaguesData` is built from `leagueConfigs`, so it has
    **no entry** for the PWHL (its games come from `hockeyData.ts`) nor for any unrecognized name.
-2. **`TeamService.findAll(leagues)` fell back to an *unfiltered* re-fetch.** When the query for the
+2. **`TeamService.findAll(leagues)` fell back to an _unfiltered_ re-fetch.** When the query for the
    requested league matched nothing, it called `getTeams()` with **no argument**, which returns the
    teams of **every** league. Those teams were then processed under the single requested
    `leagueName` — so an `NWSL` refresh ended up iterating `NCAAMH-BRWN` and building NWSL schedule
@@ -1763,22 +1890,34 @@ translated into a HockeyTech `season_id` — so previous years produced zero gam
 ### Changes
 
 - `fetchGamesData()` now resolves the requested year to the relevant PWHL `season_id`(s) and
-  appends `&season_id=...` to the schedule request. Without a year, it still requests the
-  current/latest regular season instead of relying on the API default.
+  appends `&season_id=...` to the schedule request. Without a year, it resolves the season
+  that is currently active (or the earliest upcoming season if we are between seasons) and
+  fetches all of its phase‑specific `season_id`s (pre‑season, regular, playoffs), passing each
+  `season_id` to the schedule request to avoid the empty default pre‑season feed.
 - Added `HockeyData.getPWHLSeasons()` (fetches the PWHL seasons list) and
   `HockeyData.getPWHLSeasonIds(year?)` which maps:
   - a calendar `year` → every season whose date span overlaps that year (a PWHL season spans
     two years, e.g. `2024` → `2024 Regular` + `2024 Playoffs` + `2024-25 Regular`);
-  - no year → the currently live season, falling back to the most recent regular season.
-- In `getPWHLTeamschedule()` for PWHL, the historical year filter was tightened from
-  `gameYear !== season && gameYear !== season + 1` to `gameYear !== season` so a requested
-  calendar year only returns games actually played that year (no spill-over into the next year).
+  - no year → resolve the current/upcoming season and fetch all its phase‑specific `season_id`s
+    (pre‑season, regular, playoffs); if the current date falls between seasons, pick the earliest
+    upcoming season and return all of its phases.
+- In `getPWHLTeamschedule()`, team‑schedule queries now match `home_team_code` and
+  `visiting_team_code` **case‑insensitively**, so `MTL` matches `mtl` and vice‑versa.
+- In `getPWHLTeams()`, the standings request now uses the correct season: it picks the
+  regular season covering today (or, for pre‑season dates, the most recent regular season
+  that has already ended), instead of blindly using the season id that the teams feed
+  advertises. This guarantees standings are always read from a season that actually has a
+  result board.
+- Game status classification now follows HockeyTech's official final markers:
+  `final === '1'`, `status === '4'` or a `Final` status string, matching the checklist.
 
 ### Result
 
 `POST /games/refresh/oldies?year=2024&league=PWHL` (and equivalent 2025/2026 requests) now
 returns PWHL results, and normal refreshes no longer silently return an empty schedule during
-the off-season / pre-season period.
+the off-season / pre-season period. Team schedules now correctly resolve the covering
+`season_id` (including pre-season), match team codes case-insensitively, and PWHL team
+standings come from the regular season that actually has a result board.
 
 ---
 
@@ -1821,6 +1960,27 @@ The backend now has a documentation set under [docs](./docs/) that mirrors the f
 - [docs/auth/api-key.guard.ts.md](./docs/auth/api-key.guard.ts.md)
 - [docs/cronJob/cronJob.service.ts.md](./docs/cronJob/cronJob.service.ts.md)
 - [docs/utils/utils.ts.md](./docs/utils/utils.ts.md)
+
+
+## Final: end-to-end verification of D1 refresh, purge and game cascade
+
+### End-to-end results
+
+- **POST /teams/refresh (D1 only, first full run):** DB team count 0 → **1352**. Per-league drain verified against the ESPN roster: **NCAAF 763 → 239** and **NCAAB 445 → 14**; **NCCABB 431 teams** dropped (14 remain, true D1 clubs). Safety rules unchanged: no HistoricalTeams, never `isActive === false`.
+- **`isD1Groups()`** filters only parent group ids (`NCAAF 80/81`, etc.); live probe confirmed Nashville, Buffalo and AppState are D1 and present.
+- **Live probe (pre-POST):** game counts (NCAAF 797, NCAAB 2411, NCAAMH 945, NHL 1263, NWSL 16, MLS 90, NCAAWH 582) were captured for the cascade baseline.
+- **POST /games/refresh/all:** completed (16/16 leagues); HTTP capture and backend log confirmed the full refresh ran with ESPN RPS back-off, then the cascade walked the purge queue and ended with `[getAllGames] done`.
+- **Cascade outcome (post-run /games/league counts):** **NCAAF 797 → 898** (+273 fresh games − 172 games of the 524 purged NCAAF teams), i.e. the purged ids walked the cascade one league at a time (`takeLastPurgedNonD1Ids(league)`) with no cross-league leak to NHL/NWSL/SPLL/NCAAMH/NCAWH. NCCABB had no games (0) so nothing to cascade; NCAAMH/NCAWH/NHL/NWSL/MLS untouched.
+- **Backend health:** `/teams/leagues` → HTTP 200; process still running (`backend4.log`).
+- **Unit tests:** `npx jest --runInBand` → **250 passed, 10 suites** (incl. 20 cronJob tests + 8 /games/league tests).
+- **Repo state:** only the intentional new files are modified (`backend/src/teams/teams.service.ts`, `backend/src/games/games.service.ts`, `backend/src/utils/fetchData/espnAllData.ts`) plus `backend/docs/...` and `backend/CHANGELOG_ARCHITECTURE.md`; old pending-file, logo and color refactor leftovers were reverted to HEAD; frontend untouched.
+
+### Notes
+
+- ESPN league-key resolution helpers (`resolveESPNLeagueKeys`, `getESPNLeagueKeyForTeamId`) were removed with the pending file; the cascade and tests were revalidated against this new path.
+- External ESPN API key returns `403` from outside (credential/network constraint, not code): NCCABB D1 set (``14` teams) verified through backend API (`/teams/league/NCCABB`).
+- Prettier formatting was aligned (`backend/src/games/games.service.ts`).
+- `POST /games/refresh/all` is throttled to one run per hour; subsequent runs run `getLeagueGames` per league and cascade each league separately.
 
 ### Benefit
 

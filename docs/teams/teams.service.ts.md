@@ -38,6 +38,12 @@ from a league those teams do not belong to.
 
 Updates team records such as wins/losses and ties/OT losses.
 
+### `purgeNonD1Teams(league, espnTeams?)`
+
+Deletes the stored teams of `league` that ESPN no longer lists as Division 1 (set difference between the stored `uniqueId`s and the D1-filtered ESPN roster). Only leagues with a `D1_PARENT_IDS` marker are handled; other leagues (incl. NCAAWH) return `[]`. The already-fetched roster can be passed as `espnTeams` (as `getTeams()` does) so a refresh does not query ESPN twice.
+
+Safety rules: never deletes on an empty ESPN roster (outage guard), never deletes `HistoricalTeams` entries or `isActive === false` teams. Returns the deleted `uniqueId`s; `getTeams()` queues them in `lastPurgedNonD1Ids` so `GameService._deleteGamesOfPurgedTeams()` can cascade the deletion to their games (pull via `takeLastPurgedNonD1Ids(league?)`, no Team↔Game circular dependency). When `league` is given, only the ids carrying that league's prefix are drained — each league's game refresh cascades its own purge while the other leagues' ids stay queued (a global drain would be consumed by the first refresh, whose `league` filter never matches them).
+
 ### `findStaleTeamCandidates()`
 
 Returns teams whose `updateDate` is older than 2 months (60 days) or missing —

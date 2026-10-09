@@ -5,7 +5,7 @@ import { Model } from 'mongoose';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { CollegeLeague, League } from '../utils/enum';
-import { getESPNTeams } from '../utils/fetchData/espnAllData';
+import { D1_PARENT_IDS, getESPNTeams } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
 import { HistoricalTeams } from '../utils/HistoricalTeams';
 import { TeamType } from '../utils/interface/team';
@@ -17,7 +17,36 @@ import { Team } from './schemas/team.schema';
 @Injectable()
 export class TeamService {
   private isFetchingTeams: { [league: string]: boolean } = {};
+  private lastPurgedNonD1Ids: string[] = [];
   constructor(@InjectModel(Team.name) public teamModel: Model<Team>) {}
+
+  /**
+   * Returns and clears the queued `uniqueId`s deleted by the last `getTeams()`
+   * run via `purgeNonD1Teams()`, so `GameService` can cascade the deletion to
+   * their games. Kept as pull (not push) to avoid a Team↔Game circular
+   * dependency: `GameModule` imports `TeamModule`, never the reverse.
+   *
+   * When `league` is given, only the ids of that league (`<LEAGUE>-…` prefix)
+   * are drained: each league's game refresh cascades its own purge, and the
+   * ids of the other leagues stay queued instead of being consumed by the
+   * first refresh (whose `league` filter would never match them).
+   */
+  takeLastPurgedNonD1Ids(league?: string): string[] {
+    if (!league) {
+      const ids = [...this.lastPurgedNonD1Ids];
+      this.lastPurgedNonD1Ids = [];
+      return ids;
+    }
+    const prefix = `${league.toUpperCase()}-`;
+    const taken: string[] = [];
+    const remaining: string[] = [];
+    for (const id of this.lastPurgedNonD1Ids) {
+      if (id.toUpperCase().startsWith(prefix)) taken.push(id);
+      else remaining.push(id);
+    }
+    this.lastPurgedNonD1Ids = remaining;
+    return taken;
+  }
 
   async create(
     teamDto: CreateTeamDto | UpdateTeamDto | TeamType,
@@ -121,6 +150,18 @@ export class TeamService {
           );
         }
         allActivesTeams.push(...savedTeams);
+
+        // Remove stored teams ESPN no longer lists as Division 1. Only runs
+        // when ESPN returned a non-empty D1 roster (empty = outage, nothing is
+        // deleted — see `purgeNonD1Teams`). The just-fetched roster is passed
+        // along so ESPN is not queried a second time; the deleted ids are
+        // queued so `GameService` can cascade the deletion to their games.
+        if (activeTeams.length > 0 && D1_PARENT_IDS[league]) {
+          const purged = await this.purgeNonD1Teams(league, activeTeams);
+          if (purged.length > 0) {
+            this.lastPurgedNonD1Ids.push(...purged);
+          }
+        }
       }
 
       // Generate files once after all teams have been imported
@@ -134,6 +175,62 @@ export class TeamService {
     } finally {
       this.isFetchingTeams[leagueKey] = false;
     }
+  }
+
+  /**
+   * Deletes the stored teams of `league` that ESPN no longer lists as
+   * Division 1 (see `D1_PARENT_IDS` in `espnAllData.ts`). Only leagues with a
+   * D1 marker are handled; other leagues (incl. NCAAWH, which exposes no
+   * marker) return an empty list.
+   *
+   * Safety rules:
+   * - never deletes when the ESPN fetch returns an empty list (outage guard);
+   * - never deletes `HistoricalTeams` entries or `isActive === false` teams;
+   * - returns the deleted `uniqueId`s so the caller can cascade the deletion
+   *   to the games collection (teams and games live in different modules, so
+   *   the game deletion itself happens in the caller, never here).
+   *
+   * `espnTeams` may pass the roster the caller just fetched, so a refresh does
+   * not hit ESPN twice for the same league.
+   */
+  async purgeNonD1Teams(
+    league: string,
+    espnTeams?: TeamType[],
+  ): Promise<string[]> {
+    if (!D1_PARENT_IDS[league]) return [];
+    const roster = espnTeams ?? (await getESPNTeams(league));
+    if (!roster?.length) {
+      console.info(
+        `[purgeNonD1] ${league}: ESPN returned no teams — purge skipped.`,
+      );
+      return [];
+    }
+
+    const d1Ids = new Set(
+      (roster || []).map((team) => team?.uniqueId).filter(Boolean),
+    );
+    const stored = await this.teamModel
+      .find({ league })
+      .select({ uniqueId: 1, isActive: 1, _id: 0 })
+      .lean()
+      .exec();
+    const toDelete = (stored || [])
+      .map((team: any) => team?.uniqueId)
+      .filter(
+        (uniqueId: string) =>
+          uniqueId &&
+          !d1Ids.has(uniqueId) &&
+          !HistoricalTeams[uniqueId] &&
+          (stored || []).find((team: any) => team?.uniqueId === uniqueId)
+            ?.isActive !== false,
+      );
+    if (toDelete.length === 0) return [];
+
+    const result = await this.deleteManyByIds(toDelete);
+    console.info(
+      `[purgeNonD1] ${league}: deleted ${result.deletedCount ?? 0} non-D1 team(s): ${toDelete.join(', ')}.`,
+    );
+    return toDelete;
   }
 
   async updateRecords(updates: { uniqueId: string; record: string }[]) {

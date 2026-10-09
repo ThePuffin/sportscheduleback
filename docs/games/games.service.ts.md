@@ -6,12 +6,17 @@ This is the core business logic module for games. It fetches schedules and score
 
 ## Key Features
 
-- **Game import and refresh** — pulls schedule data for leagues and stores it in MongoDB
+- **Game import and refresh** — pulls schedule data for leagues and stores it in MongoDB.
 - **Live score updates** — updates ongoing games with score and status data
 - **Data enrichment** — attaches team names, logos, records and colors
 - **Query helpers** — returns upcoming games, results, date-range data and hour-grouped schedules
 - **Maintenance logic** — removes duplicates, old games and invalid score records, and purges stale
-  active games whose final result can no longer be recovered.
+  active games whose final result can no longer be recovered. `_deleteGamesOfPurgedTeams()` also
+  deletes the games referencing teams purged as non-D1 by the last `TeamService.getTeams()` run
+  (pulled via `takeLastPurgedNonD1Ids(league)`, which drains only that league's ids): a game is
+  deleted when `teamSelectedId`, `homeTeamId` or
+  `awayTeamId` matches a purged id, removing both the non-D1 team's own rows and the D1-side twin
+  of a D1-vs-D2 fixture.
 
 ## Main Responsibilities
 
@@ -96,7 +101,7 @@ games that have a complete home **and** away team. It logs added / skipped count
 After the insert loop, the oldies path sweeps the stored season once more and writes the season
 tally onto every game whose `homeTeamRecord` / `awayTeamRecord` is still **empty**. It exists because
 the insert loop cannot reach every case on its own: a game stored before the per-game records existed
-whose freshly fetched season carries no `record` for that team is *skipped* by the comparison above
+whose freshly fetched season carries no `record` for that team is _skipped_ by the comparison above
 (both sides empty), so it would keep an empty record forever.
 
 - The tally per team is read from the fetched games, which `applySeasonFinalRecords()` has already

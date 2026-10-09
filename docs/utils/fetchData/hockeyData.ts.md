@@ -15,7 +15,7 @@ follow from that.
   overlapping `season_id`s and their schedules are merged, then games are filtered to the requested
   year. Merging is safe here — every game belongs to exactly one feed, so nothing is double counted.
 - **One day's scores** (`getPWHLScores`): the seasons are resolved from the **exact date**.
-  `getPWHLSeasonsCovering()` returns **every** entry whose span covers it — a date can sit inside two
+  `getPWHLSeasonsForDate()` returns **every** entry whose span covers it — a date can sit inside two
   groups at once, 2024-11-25 → 29 is both pre-season and regular season — and each entry is fetched
   and replayed **on its own**, so a pre-season, a regular season and a playoff run are never totalled
   together. The default season is only used as a fallback, when nothing covers the date or the
@@ -24,6 +24,8 @@ follow from that.
 Without an explicit `season_id` the feed silently answers with its **default** season (currently the
 2026-27 pre-season, 12 games all in the future), which is why a past date used to yield neither games
 nor records.
+
+When no explicit `season_id` is supplied, `getPWHLSeasonIds()` now resolves the **current season** (the one active on the current date, or the upcoming season if we are still between seasons) and returns all its phase‑specific `season_id`s (pre‑season, regular, playoffs). The resolved `season_id`s are then passed explicitly to the schedule request, so the API never falls back to its default feed. If the current date falls between seasons, the helper picks the earliest upcoming season and returns all of its phases.
 
 ## Score Mapping
 
@@ -66,12 +68,17 @@ optional `teamRecords` map, filled for the **current** season only (`season === 
 1. **Primary source** — HockeyTech's official standings (`getPWHLStandings()`), which already
    normalizes OT/SO wins and losses. It takes the `season_id` of the teams' own season; without one,
    `resolveCurrentRegularSeason()` picks it **by date**: the regular season covering today, else the
-   most recent one already ended, else the closest upcoming one. (It used to be
+   most recent one already ended. (It used to be
    `[...seasons].reverse().find(...)`, which — the feed being listed most recent first — walked them
    **oldest first** and returned the 2024 inaugural season, so every PWHL team record was a two-year-old
    24-game tally.)
 2. **Fallback** — the local replay of the schedule (`applyPWHLHistoricalRecords()`) when the standings
    feed is empty or throws, so a single failing source cannot leave the PWHL without records.
+
+3. **Team schedule matching** — when fetching a team's schedule, the API compares `home_team_code`
+   and `visiting_team_code` against the requested team code **case‑insensitively**, so `MTL`
+   matches `mtl` and vice‑versa. This prevents missing matches due to inconsistent casing in the
+   HockeyTech feed.
 
 This is what makes `GameService.refreshCurrentSeasonRecords()` (the twice-daily records cron) work for
 the PWHL: unlike the ESPN leagues, the HockeyTech schedule carries **no** per-game record, so the map
