@@ -1,6 +1,7 @@
 import {
   applySeasonFinalRecords,
   extractCompetitorRecord,
+  fetchJsonOrNull,
   getSeasonFinals,
   getTeamsSchedule,
   resolveScheduleGameStatus,
@@ -302,3 +303,108 @@ describe('getTeamsSchedule (leagues with no ESPN schedule config)', () => {
     }
   });
 });
+
+describe('fetchJsonOrNull', () => {
+  let fetchSpy;
+
+  const jsonResponse = { events: [{ id: '1', date: '2026-01-01T00:00:00Z' }] };
+
+  beforeEach(() => {
+    fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(() => Promise.resolve(new Response(null)));
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('returns parsed JSON for a 2xx response with a JSON content-type', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: (name) => (name === 'content-type' ? 'application/json; charset=UTF-8' : null) },
+      json: () => Promise.resolve(jsonResponse),
+    });
+
+    const result = await fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2');
+
+    expect(result).toBe(jsonResponse);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns null instead of throwing when the response is 4xx/5xx with an HTML body', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      headers: { get: (name) => (name === 'content-type' ? 'text/html' : null) },
+      text: () => Promise.resolve('<HTML><HEA</HTML>'),
+    });
+
+    const result = await fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=1');
+
+    expect(result).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries once on 429, then returns null when still rate limited', async () => {
+    const rateLimited = {
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: {
+        get: (name) =>
+          name === 'content-type' ? 'text/html' : name === 'retry-after' ? '1' : null,
+      },
+      text: () => Promise.resolve('<html>rate limited</html>'),
+    };
+    fetchSpy
+      .mockResolvedValueOnce(rateLimited)
+      .mockResolvedValueOnce(rateLimited);
+
+    const result = await fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2');
+
+    expect(result).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns parsed JSON on the retry when the 429 is lifted', async () => {
+    const rateLimited = {
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: {
+        get: (name) =>
+          name === 'content-type' ? 'text/html' : name === 'retry-after' ? '1' : null,
+      },
+      text: () => Promise.resolve('<html>rate limited</html>'),
+    };
+    fetchSpy
+      .mockResolvedValueOnce(rateLimited)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: { get: (name) => (name === 'content-type' ? 'application/json; charset=UTF-8' : null) },
+        json: () => Promise.resolve(jsonResponse),
+      });
+
+    const result = await fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2');
+
+    expect(result).toBe(jsonResponse);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws after exhausting retries on a network-level failure', async () => {
+    fetchSpy.mockRejectedValueOnce(new Error('network down'));
+    fetchSpy.mockRejectedValueOnce(new Error('network down'));
+
+    await expect(
+      fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2'),
+    ).rejects.toThrow('network down');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+});
+

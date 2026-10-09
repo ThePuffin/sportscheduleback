@@ -1471,6 +1471,9 @@ unbounded time and produce noisy errors.
 - The two `fetch` calls in `getEachTeamSchedule` (scoreboard + per-season-type
   schedule) now use `fetchWithRetry`.
 
+- `fetchJsonOrNull(url)` (exported) — wraps the fetch→JSON step with a **fail-open** guarantee: returns parsed JSON for a 2xx JSON response, retries once on `429` (honouring `Retry-After`), and otherwise logs a `[ESPN]` warning with a body preview and returns `null` instead of throwing `SyntaxError` on an HTML/body page. A single bad ESPN response (rate-limit, bot-block, or team-not-found) therefore no longer aborts the whole refresh.
+
+
 ## Added: Closest past/upcoming game dates endpoint (`games.service.ts`, `games.controller.ts`)
 
 New `GET /games/dates/closest` returns `{ previousDate, nextDate }` — the closest

@@ -16,7 +16,8 @@ Fetches teams and per-team schedules from ESPN APIs, normalizes them into game p
 - **University logo backfill** (`TeamService.backfillMissingUniversityLogos()`): runs ONLY at the end of `getTeams()` — i.e. manual `POST /teams/refresh?leagueParam=` or the monthly `updateTeams` cron, never on game fetches. Missing/empty logo keys are filled with the working `teamLogo` under BOTH scoped and plain keys.
 - **University team colors** (`getTeamColors(uniqueId)` from `../Colors`): when ESPN returns no `color`/`alternateColor`, the colors of the same university abbreviation in another college league are used (`NCAAB-X` → `NCAAF-X` / `NCAAMH-X` …) instead of the generic `#ffffff` on `#000000` placeholder. Non-college leagues keep the default placeholder.
 - **Leagues with no ESPN schedule config are skipped, not crashed on**: `getEachTeamSchedule()` bails out with `[]` (and a `No ESPN schedule config for league "<X>"` error log) when `leaguesData[leagueName]` is missing — `leaguesData` is derived from `leagueConfigs`, so it has no entry for the PWHL (served by `hockeyData.ts`) or for an unknown name. Its `catch` also returns `[]` instead of `undefined`, which both callers (`[...allGames, ...games]` in the aggregate-league recursion, and the `allGames[leagueID]` store) require.
-- **Resilience**: 15s fetch timeout (`fetchWithTimeout`) + 1 retry (`fetchWithRetry`).
+- **Resilience**: 15s fetch timeout (`fetchWithTimeout`) + 1 retry (`fetchWithRetry`) + graceful degradation via `fetchJsonOrNull()` (fails open on rate-limit / HTML responses, e.g. ESPN bot-block or team-not-found pages).
+- **Graceful degradation** (`fetchJsonOrNull()`): never parses JSON from a non-JSON body. Non-2xx or non-JSON responses (ESPN rate-limit / bot-block / team-not-found) log a `[ESPN]` warning with a body preview and return `null`, so the league still refreshes for the other teams instead of aborting the run. A `429` is retried once, honouring the `Retry-After` header.
 - **Score helpers**: `getESPNScores()`, `getESPNGameScore()`, `getTeamsSchedule()`.
 - **Game status normalization (`resolveScheduleGameStatus(status)`)**: maps an ESPN `STATUS_*` name to
   the value stored in `game.gameStatus`, by **family** and not by equality:
@@ -42,5 +43,5 @@ Fetches teams and per-team schedules from ESPN APIs, normalizes them into game p
 ## Data Flow
 
 1. `getTeamsSchedule(leagueName, ...)` fans out per team (concurrency 2) to `getEachTeamSchedule()`.
-2. `getEachTeamSchedule()` picks scoreboard vs team-schedule path, fetches, then maps events to normalized game objects (including a cumulative `homeTeamRecord` / `awayTeamRecord`).
+2. `getEachTeamSchedule()` picks scoreboard vs team-schedule path, fetches, then maps events to normalized game objects (including a cumulative `homeTeamRecord` / `awayTeamRecord`), using the exported `fetchJsonOrNull()` helper.
 3. `applySeasonFinalRecords()` normalizes those records across the whole league batch: final tally for a finished season, cleared for a season in progress.

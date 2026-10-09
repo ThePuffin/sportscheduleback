@@ -42,6 +42,45 @@ const fetchWithRetry = async (url: string, retries = 1) => {
   throw lastError;
 };
 
+// Fetches ESPN with the global timeout + one retry, then parses JSON only when
+// the response is a successful JSON payload. Fails open (returns null) for
+// non-2xx or non-JSON responses (e.g. ESPN HTML rate-limit / bot-block pages or
+// team-not-found redirects) so a single bad response can never abort the whole
+// refresh. A 429 is retried once, honouring the `Retry-After` header when
+// present, before falling back to the safe path.
+export const fetchJsonOrNull = async (url: string): Promise<any> => {
+  const res = await fetchWithRetry(url);
+  const ct = res.headers.get('content-type') || '';
+  if (res.ok && ct.includes('json')) {
+    return res.json();
+  }
+  if (res.status === 429) {
+    const retryAfter = res.headers.get('retry-after');
+    const ms =
+      retryAfter && !Number.isNaN(Number(retryAfter))
+        ? Number(retryAfter) * 1000
+        : 500;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(ms, 15000)));
+    const again = await fetchWithRetry(url);
+    if (again.ok && again.headers.get('content-type')?.includes('json')) {
+      return again.json();
+    }
+    const body = await again.text().catch(() => '');
+    const snippet = body.slice(0, 160).replace(/\s+/g, ' ');
+    console.warn(
+      `[ESPN] Skipping 429 for ${url} — body preview: ${snippet}`,
+    );
+    return null;
+  }
+  const body = await res.text().catch(() => '');
+  const snippet = body.slice(0, 160).replace(/\s+/g, ' ');
+  console.warn(
+    `[ESPN] Skipping ${res.status} ${res.statusText} ${ct ? 'non-JSON' : 'HTTP'} for ${url} — body preview: ${snippet}`,
+  );
+  return null;
+};
+
+
 const formatSeriesSummary = (summary?: string): string => {
   if (!summary) return '';
   if (summary.length > 30) return summary.substring(0, 27) + '...';
@@ -837,8 +876,11 @@ const getEachTeamSchedule = async (
             let hasMore = true;
             while (hasMore) {
               const url = `${espnAPI}${sport}/${league}/scoreboard?dates=${year}&limit=1000&page=${page}`;
-              const res = await fetchWithRetry(url);
-              const data = await res.json();
+              const data = await fetchJsonOrNull(url);
+              if (!data) {
+                hasMore = false;
+                break;
+              }
               const events = data.events || [];
               const eventsFiltered = events.filter((ev) =>
                 ev.competitions?.[0]?.competitors?.some(
@@ -869,10 +911,9 @@ const getEachTeamSchedule = async (
           try {
             const seasonParam = season ? `&season=${season}` : '';
             const link = `${baseUrl}?seasontype=${type}${seasonParam}`;
-            const fetchedGames = await fetchWithRetry(link);
-            const fetchGamesData = await fetchedGames.json();
+            const fetchGamesData = await fetchJsonOrNull(link);
 
-            if (fetchGamesData.events && fetchGamesData.events.length > 0) {
+            if (fetchGamesData && fetchGamesData.events && fetchGamesData.events.length > 0) {
               games = [...games, ...fetchGamesData.events];
             }
           } catch (err) {
