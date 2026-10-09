@@ -2,6 +2,36 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: oldies runs no longer purge a month on every league × year step
+
+### Problem
+
+During a `getOldiesGames()` recovery, the disk sat just above the threshold (e.g. 499MB / 512MB = 97.5% vs the 97% `DISK_USAGE_THRESHOLD`) and the logs showed the **same oldest month (`2016-11`) purged over and over** — once per step, across up to ~144 steps (16 leagues × 9 seasons):
+
+```
+[Oldies] progress: 37% — NHL 2024  → Capacity purge after NHL 2024: removed 7 games from 2016-11
+[Oldies] progress: 38% — NHL 2025  → Capacity purge after NHL 2025: removed 10 games from 2016-11
+[Oldies] progress: 39% — NWSL 2017 → Capacity purge after NWSL 2017: removed 3 games from 2016-11
+```
+
+Two compounding causes:
+- `forceCapacityCheck` defaults to `true`, so the per-step check bypasses the 1-hour `CHECK_INTERVAL_MS` guard **and** invalidates the 60s disk-usage cache → it re-measures and purges on **every** step.
+- Deleting a month does not immediately reclaim WiredTiger storage (`dataSize` stays ~450MB) while the oldies backfill keeps re-inserting early-season games whose `gameDate` falls in the oldest month — so usage never drops below the threshold and the next step purges again.
+
+The existing `FORCED_PURGE_MIN_INTERVAL_MS` (60s) anti-wipe floor only guarded the no-space path (`handleNoSpaceError`), not the oldies loop, so a long recovery could delete many months of history in a tight cascade.
+
+### Changes
+
+- **`backend/src/games/games.service.ts`**
+  - new field **`lastOldiesForcedPurgeAt`** tracking the last forced purge issued from inside `getOldiesGames()`.
+  - the per-step capacity check in the `getOldiesGames()` `finally` block now applies the **same `FORCED_PURGE_MIN_INTERVAL_MS` (60s) floor** before calling `purgeOldestMonthIfNeeded()`. Steps inside the cooldown log `[Oldies] Capacity purge throttled after <LEAGUE> <year>: a forced purge ran <n>s ago (next allowed in ~<n>s).` and skip the delete, so space is still freed promptly (about once a minute) without a month-per-step wipe. This floor is independent from the no-space path (`lastForcedPurgeAt`), which is unchanged.
+- **`backend/src/games/tests/games.service.spec.ts`** — new test `should throttle forced capacity purges to one per FORCED_PURGE_MIN_INTERVAL_MS across steps`: a multi-step run (no explicit year) triggers exactly **one** forced purge despite many league × year steps.
+- **`backend/docs/games/games.service.ts.md`** — documented the per-step purge rate limit under `getOldiesGames()`.
+
+### Note for operators
+
+If disk usage is stuck near the threshold, the real lever is capacity, not purge frequency: the oldies backfill legitimately re-adds historical months. Consider a larger cluster or lowering `maxYearBeforeDelete` so oldies does not re-populate the very months the purge keeps deleting.
+
 ## Changed: `getOldiesGames` now iterates years from oldest to most recent
 
 ### Problem

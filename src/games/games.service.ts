@@ -108,6 +108,13 @@ export class GameService {
   private lastDiskCheck = 0;
   // Timestamp (ms) of the last forced (no-space) purge, for FORCED_PURGE_MIN_INTERVAL_MS.
   private lastForcedPurgeAt = 0;
+  // Timestamp (ms) of the last forced purge triggered from inside a getOldiesGames
+  // run, for the per-step rate limit (see the oldies finally block). Deleting a
+  // month does not immediately reclaim WiredTiger storage and the oldies backfill
+  // keeps re-inserting early-season games into the oldest months, so a disk stuck
+  // just above the threshold would otherwise purge on every one of the up-to-144
+  // steps and wipe large amounts of history in a tight loop.
+  private lastOldiesForcedPurgeAt = 0;
 
   // In-memory cache for disk usage to avoid spamming dbStats on every call
   private diskUsageCache: {
@@ -4025,19 +4032,41 @@ export class GameService {
           // Capacity check after EVERY league x year step, forced by default:
           // without `force`, the 1-hour guard would skip every check after the
           // first one and the DB could reach 100% during a long oldies run.
-          try {
-            const purge =
-              await this.purgeOldestMonthIfNeeded(forceCapacityCheck);
-            if (purge.action === 'purged') {
-              console.info(
-                `[Oldies] Capacity purge after ${league} ${year}: removed ${purge.deletedCount} games from ${purge.purgedYear}-${String(purge.purgedMonth).padStart(2, '0')}.`,
+          //
+          // But a forced purge is rate-limited to at most one per
+          // FORCED_PURGE_MIN_INTERVAL_MS. A long oldies run has up to ~144 steps
+          // and, when the disk sits just above the threshold, deleting a month
+          // does not immediately reclaim WiredTiger storage (dataSize barely
+          // moves) while the backfill keeps re-inserting early-season games into
+          // the oldest months — so a forced check on every step would purge the
+          // same oldest month over and over and wipe history in a tight loop.
+          // Steps inside the cooldown still measure (cheap, cached) but skip the
+          // delete, so space is still freed promptly without cascading purges.
+          const now = Date.now();
+          const sinceOldiesPurge = now - this.lastOldiesForcedPurgeAt;
+          if (sinceOldiesPurge < this.FORCED_PURGE_MIN_INTERVAL_MS) {
+            const waitSec = Math.ceil(
+              (this.FORCED_PURGE_MIN_INTERVAL_MS - sinceOldiesPurge) / 1000,
+            );
+            console.info(
+              `[Oldies] Capacity purge throttled after ${league} ${year}: a forced purge ran ${Math.floor(sinceOldiesPurge / 1000)}s ago (next allowed in ~${waitSec}s).`,
+            );
+          } else {
+            this.lastOldiesForcedPurgeAt = now;
+            try {
+              const purge =
+                await this.purgeOldestMonthIfNeeded(forceCapacityCheck);
+              if (purge.action === 'purged') {
+                console.info(
+                  `[Oldies] Capacity purge after ${league} ${year}: removed ${purge.deletedCount} games from ${purge.purgedYear}-${String(purge.purgedMonth).padStart(2, '0')}.`,
+                );
+              }
+            } catch (error) {
+              console.error(
+                `[Oldies] Capacity check failed after ${league} ${year}:`,
+                error instanceof Error ? error.message : String(error),
               );
             }
-          } catch (error) {
-            console.error(
-              `[Oldies] Capacity check failed after ${league} ${year}:`,
-              error instanceof Error ? error.message : String(error),
-            );
           }
         }
       }

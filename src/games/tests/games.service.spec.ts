@@ -844,6 +844,32 @@ describe('GameService', () => {
       purgeSpy.mockRestore();
     });
 
+    it('should throttle forced capacity purges to one per FORCED_PURGE_MIN_INTERVAL_MS across steps', async () => {
+      const purgeSpy = jest
+        .spyOn(service, 'purgeOldestMonthIfNeeded')
+        .mockResolvedValue({
+          action: 'purged',
+          diskUsage: { usedMB: 499, totalMB: 512, percentage: 0.975 },
+          purgedYear: 2016,
+          purgedMonth: 11,
+          deletedCount: 7,
+          remainingYears: [2017],
+        });
+
+      // No explicit year -> loops over every finished season (several steps),
+      // all within the same wall-clock second, so the 1-minute floor applies
+      // after the very first step.
+      await service.getOldiesGames(undefined, League.NHL);
+
+      // Despite many league x year steps, the forced purge runs only once:
+      // the remaining steps are throttled so a stuck-full disk cannot wipe a
+      // month on every step.
+      expect(purgeSpy).toHaveBeenCalledTimes(1);
+      expect(purgeSpy).toHaveBeenCalledWith(true);
+
+      purgeSpy.mockRestore();
+    });
+
     it('should keep processing seasons when the capacity check throws', async () => {
       const purgeSpy = jest
         .spyOn(service, 'purgeOldestMonthIfNeeded')
