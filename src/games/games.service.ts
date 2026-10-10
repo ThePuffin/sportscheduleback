@@ -142,6 +142,29 @@ export class GameService {
     }, []);
   };
 
+  private expandOlympicTeamIds(teamSelectedIds: string[]): string[] {
+    const expandedIds = new Set<string>();
+    for (const teamSelectedId of teamSelectedIds) {
+      const match = teamSelectedId
+        .trim()
+        .toUpperCase()
+        .match(/^OLYMPICS-(?:HOCKEY|BASKETBALL)-(MEN|WOMEN)-(.+)$/);
+      if (!match) {
+        expandedIds.add(teamSelectedId.trim());
+        continue;
+      }
+
+      const [, gender, country] = match;
+      expandedIds.add(`OLYMPICS-HOCKEY-${gender}-${country}`);
+      expandedIds.add(`OLYMPICS-BASKETBALL-${gender}-${country}`);
+    }
+    return [...expandedIds];
+  }
+
+  private isOlympicTeamId(teamSelectedId: string): boolean {
+    return /^OLYMPICS-(?:HOCKEY|BASKETBALL)-(?:MEN|WOMEN)-/i.test(teamSelectedId);
+  }
+
   async getTeamsLogo(teams: TeamType[]): Promise<{ [key: string]: string }> {
     const logos: { [key: string]: string } = {};
     for (const { abbrev, teamLogo } of teams) {
@@ -1325,7 +1348,7 @@ export class GameService {
         .map((t) => t.trim())
         .filter((t) => t.length > 0);
       if (teams.length > 0) {
-        filter.teamSelectedId = { $in: teams };
+        filter.teamSelectedId = { $in: this.expandOlympicTeamIds(teams) };
       }
     }
 
@@ -1377,7 +1400,12 @@ export class GameService {
       (keys.length === 0 ||
         (keys.length === 1 && !games[keys[0]]?.[0]?.awayTeamShort))
     ) {
-      const league = teamSelectedId.split('-')[0];
+      const olympicMatch = teamSelectedId
+        .toUpperCase()
+        .match(/^OLYMPICS-(?:HOCKEY|BASKETBALL)-(MEN|WOMEN)-/);
+      const league = olympicMatch
+        ? `OLYMPICS-${olympicMatch[1]}`
+        : teamSelectedId.split('-')[0];
       if (league) {
         const otherGamesInLeague = await this.findByLeague(league, 10);
         const games = Object.keys(otherGamesInLeague).filter((gameDate) => {
@@ -1630,8 +1658,11 @@ export class GameService {
     if (teamSelectedIds && teamSelectedIds.length > 0) {
       const teamSelected = teamSelectedIds
         .split(',')
-        .map((item) => item.trim());
-      filter.teamSelectedId = { $in: teamSelected };
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+      filter.teamSelectedId = {
+        $in: this.expandOlympicTeamIds(teamSelected),
+      };
     }
 
     if (isHome) {
@@ -1664,7 +1695,9 @@ export class GameService {
         )
       : [];
     const gamesByDay = {};
-    const uniqueTeamSelectedIds = this.getTeams(teamSelectedIds, games);
+    const uniqueTeamSelectedIds = teamSelectedIds
+      ? this.expandOlympicTeamIds(teamSelectedIds.split(',').map((item) => item.trim()).filter(Boolean))
+      : this.getTeams(undefined, games);
 
     // Use actual query results to define boundaries if dates aren't provided
     const resultDates = games.map((game) => new Date(game.gameDate).getTime());
@@ -1692,7 +1725,12 @@ export class GameService {
             game.teamSelectedId === teamSelectedId &&
             game.isActive === true,
         );
-        if (!gameOfDay.length && !league && !clean) {
+        if (
+          !gameOfDay.length &&
+          !league &&
+          !clean &&
+          !this.isOlympicTeamId(teamSelectedId)
+        ) {
           gamesOfDay.push({
             _id: new mongoose.Types.ObjectId().toString(),
             uniqueId: teamSelectedId + currentDate,

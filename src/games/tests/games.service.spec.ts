@@ -2543,6 +2543,38 @@ describe('GameService', () => {
       expect(match.league).toEqual({ $in: ['PWHL', 'NHL'] });
       expect(match.teamSelectedId).toEqual({ $in: ['PWHL-OTT', 'MLS-TOR'] });
     });
+
+    it('expands an Olympic team selection to its hockey and basketball team ids', async () => {
+      mockGameModel.aggregate
+        .mockResolvedValueOnce([{ date: '2026-02-01' }])
+        .mockResolvedValueOnce([{ date: '2026-03-10' }]);
+
+      await service.getClosestDates({
+        teamSelectedIds: 'OLYMPICS-HOCKEY-MEN-FRA',
+      });
+
+      const match = mockGameModel.aggregate.mock.calls[0][0][0].$match;
+      expect(match.teamSelectedId).toEqual({
+        $in: ['OLYMPICS-HOCKEY-MEN-FRA', 'OLYMPICS-BASKETBALL-MEN-FRA'],
+      });
+    });
+
+    it('filters Olympic selections by country and gender without adding empty sport rows', async () => {
+      mockGameModel.exec.mockResolvedValue([]);
+      mockTeamService.findAll.mockResolvedValue([]);
+
+      const result = await service.filterGames({
+        startDate: '2026-02-01',
+        endDate: '2026-02-01',
+        teamSelectedIds: 'OLYMPICS-BASKETBALL-WOMEN-USA',
+      });
+
+      const filter = mockGameModel.find.mock.calls[0][0];
+      expect(filter.teamSelectedId).toEqual({
+        $in: ['OLYMPICS-HOCKEY-WOMEN-USA', 'OLYMPICS-BASKETBALL-WOMEN-USA'],
+      });
+      expect(Object.values(result).flat()).toEqual([]);
+    });
   });
 
   describe('read-only routes (no refresh-on-empty)', () => {

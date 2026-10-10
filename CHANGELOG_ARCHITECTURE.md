@@ -2,6 +2,18 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: Olympic team selections include hockey and basketball across screens
+
+Team ids in the Olympic aggregate leagues are sport-specific even when the country and gender
+are the same. `GameService` now expands a selected Olympic id to both hockey and basketball ids
+for upcoming/history game filters and closest-date lookups, retaining the country and gender but
+not filtering by sport. Empty upcoming lookups refresh the
+correct aggregate league (`OLYMPICS-MEN` or `OLYMPICS-WOMEN`) rather than the invalid `OLYMPICS`
+prefix. Regression tests cover both the date-range filter and closest-date query.
+
+Updated `src/games/games.service.ts`, `src/games/tests/games.service.spec.ts`, and
+`docs/games/games.service.ts.md`.
+
 ## Fixed: men's college hockey (NCAAMH) now keeps only the 64 true D1 programs
 
 ### Problem

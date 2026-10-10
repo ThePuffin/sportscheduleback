@@ -199,7 +199,7 @@ Returns all active games, enriched with team metadata.
 
 ### `filterGames({...})`
 
-Builds a filtered game view by league, date range, team selection, and home/away criteria. It also fills placeholder rows for UI display when needed.
+Builds a filtered game view by league, date range, team selection, and home/away criteria. It also fills placeholder rows for UI display when needed. When a selected team id belongs to an Olympic aggregate, its country/gender identity expands to both sport-specific ids (`OLYMPICS-HOCKEY-*` and `OLYMPICS-BASKETBALL-*`) before querying. The filter therefore keeps the Olympic gender and country but does not restrict the result by sport; empty Olympic sport aliases do not generate placeholder games.
 
 ### `getDateRange(leagues?)`
 
@@ -224,6 +224,7 @@ dedicated helpers so it is easy to follow:
    boundary onwards** (upcoming match).
 
 Both helpers are `private`; only `getClosestDates` is exposed.
+Olympic country selections are expanded to the matching hockey and basketball ids before the date lookup, so the history/next-game navigation uses the same team identity as `filterGames`.
 
 ### `findRecentFormGames(teamId, before?, limit = 5)`
 
@@ -262,6 +263,10 @@ Returns upcoming or completed games for a selected team. When no games are found
 team, the league refresh is only triggered if the league is actually in season (regular
 season or playoffs); off-season requests return the legitimately empty result without
 hitting third-party APIs — the cron jobs keep data fresh all year round instead.
+For Olympic team ids, both methods include the same country's hockey and basketball records
+for that gender. If an upcoming Olympic team request triggers a refresh, the service refreshes
+the aggregate league (`OLYMPICS-MEN` or `OLYMPICS-WOMEN`) rather than the incomplete `OLYMPICS`
+prefix.
 
 ### `findByLeague()` / `findByDate()` / `findByDateHour()` / `findByDateLeague()`
 
