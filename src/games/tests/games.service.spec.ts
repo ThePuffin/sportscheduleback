@@ -30,6 +30,7 @@ describe('GameService', () => {
   const mockTeamService = {
     countByLeague: jest.fn(),
     findAll: jest.fn(),
+    create: jest.fn().mockResolvedValue(undefined),
     deleteManyByIds: jest.fn(),
     purgeStaleTeamsWithoutGames: jest.fn(),
     updateRecord: jest.fn().mockResolvedValue(undefined),
@@ -136,6 +137,49 @@ describe('GameService', () => {
       );
 
       expect(colors).toEqual(DEFAULT_TEAM_COLORS);
+    });
+  });
+
+  describe('_persistMissingHistoricalGameTeams', () => {
+    it('stores unknown historical teams as inactive records with their ESPN ids', async () => {
+      mockTeamService.findAll.mockResolvedValue([{ uniqueId: 'NHL-BOS' }]);
+
+      const count = await (service as any)._persistMissingHistoricalGameTeams(
+        'NHL',
+        [
+          {
+            homeTeamId: 'NHL-ARI',
+            homeTeamESPNId: '12',
+            homeTeam: 'Arizona Coyotes',
+            homeTeamShort: 'ARI',
+            homeTeamLogo: 'https://example.test/ari.png',
+            awayTeamId: 'NHL-BOS',
+            awayTeamESPNId: '1',
+            awayTeam: 'Boston Bruins',
+            awayTeamShort: 'BOS',
+          },
+          {
+            homeTeamId: 'NHL-ARI',
+            homeTeamESPNId: '12',
+            homeTeam: 'Arizona Coyotes',
+            homeTeamShort: 'ARI',
+          },
+        ],
+      );
+
+      expect(count).toBe(1);
+      expect(mockTeamService.create).toHaveBeenCalledTimes(1);
+      expect(mockTeamService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          uniqueId: 'NHL-ARI',
+          id: '12',
+          abbrev: 'ARI',
+          label: 'Arizona Coyotes',
+          league: 'NHL',
+          isActive: false,
+        }),
+        true,
+      );
     });
   });
 
@@ -422,8 +466,13 @@ describe('GameService', () => {
     });
 
     it('should never persist any game', async () => {
-      jest.spyOn(utils, 'isCurrentSeason').mockResolvedValue(true);
+      jest
+        .spyOn(utils, 'isCurrentSeason')
+        .mockImplementation(async (league: string) => league === League.NHL);
       jest.spyOn(utils, 'isPlayoffsPeriod').mockResolvedValue(false);
+      const fetchSpy = jest
+        .spyOn(service as any, '_fetchUniqueGames')
+        .mockResolvedValue([{ uniqueId: 'NHL-BOS-NHL-TOR' }]);
       const createSpy = jest.spyOn(service, 'create');
       jest.spyOn(mockGameModel, 'deleteMany').mockReturnValue({
         exec: jest.fn().mockResolvedValue({ deletedCount: 0 }),
@@ -431,6 +480,7 @@ describe('GameService', () => {
 
       await service.refreshCurrentSeasonRecords();
 
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
       expect(createSpy).not.toHaveBeenCalled();
       expect(mockGameModel.deleteMany).not.toHaveBeenCalled();
     });

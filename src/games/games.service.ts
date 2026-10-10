@@ -18,6 +18,7 @@ import {
 import {
   getESPNGameScore,
   getESPNScores,
+  getOlympicSeasonTeams,
   getSeasonFinals,
   getTeamRecordFromSchedule,
   getTeamsSchedule,
@@ -355,6 +356,24 @@ export class GameService {
     teamRecords?: Map<string, string>,
   ) {
     const leagueTeams = await this.teamService.findAll([normalizedLeague]);
+    if (season && normalizedLeague.includes('OLYMPICS')) {
+      const existingIds = new Set(leagueTeams.map((team) => team.uniqueId));
+      const historicalTeams = await getOlympicSeasonTeams(
+        normalizedLeague,
+        season,
+      );
+      for (const team of historicalTeams) {
+        if (existingIds.has(team.uniqueId)) continue;
+        const historicalTeam = {
+          ...team,
+          isActive: false,
+          updateDate: new Date().toISOString(),
+        };
+        await this.teamService.create(historicalTeam, true);
+        leagueTeams.push(historicalTeam);
+        existingIds.add(team.uniqueId);
+      }
+    }
     const leagueLogos = await this.getTeamsLogo(leagueTeams);
 
     let gamesObj = {};
@@ -416,6 +435,60 @@ export class GameService {
     }
 
     return Array.from(uniqueGamesMap.values());
+  }
+
+  private async _persistMissingHistoricalGameTeams(
+    league: string,
+    games: any[],
+  ): Promise<number> {
+    const existingTeams = await this.teamService.findAll([league]);
+    const existingIds = new Set(existingTeams.map((team) => team.uniqueId));
+    const missingTeams = new Map<string, TeamType>();
+
+    for (const game of games) {
+      for (const side of ['home', 'away'] as const) {
+        const uniqueId = game?.[`${side}TeamId`];
+        const espnId = game?.[`${side}TeamESPNId`];
+        if (!uniqueId || existingIds.has(uniqueId) || !espnId) continue;
+
+        const historical = HistoricalTeams[uniqueId];
+        const teamColors = getTeamColors(uniqueId);
+        const abbrev =
+          game[`${side}TeamShort`] || historical?.abbrev || uniqueId;
+        missingTeams.set(uniqueId, {
+          uniqueId,
+          id: String(espnId),
+          abbrev,
+          label: game[`${side}Team`] || historical?.label || abbrev,
+          teamCommonName: game[`${side}Team`] || historical?.label || abbrev,
+          teamLogo: game[`${side}TeamLogo`] || historical?.teamLogo || '',
+          teamLogoDark:
+            game[`${side}TeamLogoDark`] ||
+            historical?.teamLogoDark ||
+            game[`${side}TeamLogo`] ||
+            historical?.teamLogo ||
+            '',
+          league,
+          color: historical?.color || teamColors.color,
+          backgroundColor:
+            historical?.backgroundColor || teamColors.backgroundColor,
+          isActive: false,
+          updateDate: new Date().toISOString(),
+        });
+      }
+    }
+
+    for (const team of missingTeams.values()) {
+      await this.teamService.create(team, true);
+      existingIds.add(team.uniqueId);
+    }
+
+    if (missingTeams.size > 0) {
+      console.info(
+        `[Oldies] ${league}: added ${missingTeams.size} missing historical team record(s).`,
+      );
+    }
+    return missingTeams.size;
   }
 
   /**
@@ -714,6 +787,12 @@ export class GameService {
         season,
         teamRecords,
       );
+      if (season && addMissingOnly && uniqueGames.length > 0) {
+        await this._persistMissingHistoricalGameTeams(
+          normalizedLeague,
+          uniqueGames,
+        );
+      }
 
       // Never write a stale tally over the current one while a season is in
       // progress: oldies (`season` given) are left alone on purpose, because

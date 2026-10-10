@@ -127,6 +127,7 @@ export class TeamService {
         let updateNumber = 0;
         for (const activeTeam of activeTeams) {
           activeTeam.updateDate = new Date().toISOString();
+          activeTeam.isActive = true;
           // if ESPN didn't give us a logo, try our manual mapping before saving
           if (!activeTeam.teamLogo) {
             const parts = activeTeam.uniqueId?.split('-') || [];

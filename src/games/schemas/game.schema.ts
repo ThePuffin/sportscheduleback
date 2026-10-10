@@ -22,7 +22,13 @@ export class Game extends Document {
   homeTeamId: string;
 
   @Prop()
+  homeTeamESPNId?: string;
+
+  @Prop()
   awayTeamId: string;
+
+  @Prop()
+  awayTeamESPNId?: string;
 
   @Prop({ index: true })
   teamSelectedId: string;

@@ -2,6 +2,7 @@ import {
   applySeasonFinalRecords,
   extractCompetitorRecord,
   fetchJsonOrNull,
+  getOlympicSeasonTeams,
   getSeasonFinals,
   getTeamsSchedule,
   resolveScheduleGameStatus,
@@ -304,6 +305,67 @@ describe('getTeamsSchedule (leagues with no ESPN schedule config)', () => {
   });
 });
 
+describe('getOlympicSeasonTeams', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('discovers separate hockey and basketball teams from that season scoreboard', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: {
+            get: (name) =>
+              name === 'content-type' ? 'application/json' : null,
+          },
+          json: async () => ({
+            events: [
+              {
+                competitions: [
+                  {
+                    competitors: [
+                      {
+                        team: {
+                          id: '2193',
+                          abbreviation: 'CAN',
+                          displayName: 'Canada',
+                          logos: [],
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+        }) as Response,
+    );
+
+    const teams = await getOlympicSeasonTeams('OLYMPICS-MEN', 2021);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(teams.map(({ uniqueId }) => uniqueId)).toEqual(
+      expect.arrayContaining([
+        'OLYMPICS-HOCKEY-MEN-CAN',
+        'OLYMPICS-BASKETBALL-MEN-CAN',
+      ]),
+    );
+    expect(teams).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: '2193',
+          abbrev: 'CAN',
+          league: 'OLYMPICS-MEN',
+          isActive: false,
+        }),
+      ]),
+    );
+  });
+});
+
 describe('fetchJsonOrNull', () => {
   let fetchSpy;
 
@@ -453,4 +515,3 @@ describe('fetchJsonOrNull', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
-

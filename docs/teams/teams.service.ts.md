@@ -7,6 +7,7 @@ This service manages the team catalog, including import from external providers,
 ## Key Features
 
 - **Team import** — fetches team lists from ESPN or PWHL sources
+- **Team activation** — teams returned by a current provider roster are saved with `isActive: true`; records created from historical games remain inactive until returned by a current roster
 - **Persistence** — stores teams in MongoDB using the `Team` model
 - **Record updates** — updates win/loss/tie information from fetched data
 - **Frontend constant generation** — writes team, league and color files used by the frontend

@@ -2,6 +2,14 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: oldies recovery discovers historical teams without exposing them as favorites
+
+- **`backend/src/utils/fetchData/espnAllData.ts`** — Olympic oldies scans the selected season's scoreboard for each sport in an aggregate league, discovering past participants even when absent from the current roster. Aggregate schedules route each team only to its own sport. Normalized ESPN games retain the source home/away team IDs.
+- **`backend/src/games/games.service.ts`** — oldies upserts missing teams referenced by imported games as `isActive: false`, including retired teams such as the Arizona Coyotes. Olympic scoreboard discoveries are also stored inactive before the schedule crawl. Existing team records are not overwritten.
+- **`backend/src/teams/teams.service.ts`** — provider teams in the current roster are explicitly marked active again.
+- **`backend/src/games/schemas/game.schema.ts`** — games can persist optional ESPN team IDs for later historical team recovery.
+- No new team-schema field is needed: the existing `isActive` field already excludes inactive teams from generated frontend team choices and favorites.
+
 ## Fixed: flood of `[ESPN] Skipping 403 Forbidden` during oldies recovery — ESPN Akamai bot-block is now retried, not dropped
 
 ### Problem

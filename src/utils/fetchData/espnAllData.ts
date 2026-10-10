@@ -818,6 +818,92 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
   }
 };
 
+/**
+ * Discovers every team that appeared in an Olympic scoreboard for a season.
+ * Olympic rosters change between editions, so the current team list is not a
+ * sufficient source for historical schedule recovery.
+ */
+export const getOlympicSeasonTeams = async (
+  leagueName: string,
+  season: number,
+): Promise<TeamType[]> => {
+  const sourceLeagues = aggregateLeagues[leagueName] || [leagueName];
+  const discovered = new Map<string, TeamType>();
+  const normalizedLeagueName =
+    getNormalizedLeagueName(leagueName).toUpperCase();
+
+  for (const sourceLeague of sourceLeagues) {
+    const config = leagueConfigs[sourceLeague];
+    if (!config) continue;
+
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+      const url = `${espnAPI}${config.sport}/${config.league}/scoreboard?dates=${season}&limit=1000&page=${page}`;
+      const data = await fetchJsonOrNull(url);
+      if (!data) break;
+
+      const events = data.events || [];
+      for (const event of events) {
+        for (const competitor of event.competitions?.[0]?.competitors || []) {
+          const team = competitor?.team;
+          if (!team?.id) continue;
+
+          const abbrev = team.abbreviation || team.id;
+          const uniqueId = `${sourceLeague}-${abbrev}`;
+          if (discovered.has(uniqueId)) continue;
+
+          const fallbackColors = getTeamColors(uniqueId);
+          let color = team.color ? `#${team.color}` : fallbackColors.color;
+          let backgroundColor = team.alternateColor
+            ? `#${team.alternateColor}`
+            : fallbackColors.backgroundColor;
+          if (color.toLowerCase() === backgroundColor.toLowerCase()) {
+            color = fallbackColors.color;
+            backgroundColor = fallbackColors.backgroundColor;
+          }
+          if (getLuminance(color) < getLuminance(backgroundColor)) {
+            [color, backgroundColor] = [backgroundColor, color];
+          }
+
+          const teamLogo =
+            team.logos?.[2]?.href ??
+            team.logos?.[0]?.href ??
+            UniversityLogos[abbrev] ??
+            '';
+          discovered.set(uniqueId, {
+            uniqueId,
+            id: String(team.id),
+            abbrev,
+            label: capitalize(team.displayName || team.name || abbrev),
+            teamLogo,
+            teamLogoDark:
+              team.logos?.find(
+                (logo) =>
+                  logo.rel?.includes('dark') &&
+                  logo.rel?.includes('scoreboard'),
+              )?.href ||
+              teamLogo ||
+              '',
+            teamCommonName: capitalize(
+              team.nickname || team.displayName || team.name || abbrev,
+            ),
+            league: normalizedLeagueName,
+            color,
+            backgroundColor,
+            isActive: false,
+          });
+        }
+      }
+
+      hasMore = events.length === 1000;
+      page++;
+    }
+  }
+
+  return [...discovered.values()];
+};
+
 export const getTeamsSchedule = async (
   activeTeams,
   leagueName,
@@ -878,6 +964,7 @@ const getEachTeamSchedule = async (
     if (aggregateLeagues[leagueName]) {
       let allGames = [];
       for (const subLeague of aggregateLeagues[leagueName]) {
+        if (!teamUniqueId.startsWith(`${subLeague}-`)) continue;
         const games = await getEachTeamSchedule(
           {
             id,
@@ -1065,12 +1152,14 @@ const getEachTeamSchedule = async (
           arenaName: capitalize(venue?.fullName) ?? '',
           awayTeam: capitalize(awayTeam.displayName),
           awayTeamId: `${leagueName}-${awayAbbrev}`,
+          awayTeamESPNId: String(awayTeam.id),
           awayTeamLogo,
           awayTeamLogoDark,
           awayTeamShort,
           gameDate: gameDate,
           homeTeam: capitalize(homeTeam.displayName),
           homeTeamId: `${leagueName}-${homeAbbrev}`,
+          homeTeamESPNId: String(homeTeam.id),
           homeTeamLogo,
           homeTeamLogoDark,
           homeTeamShort,

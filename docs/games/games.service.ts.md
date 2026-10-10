@@ -112,6 +112,7 @@ games that have a complete home **and** away team. It logs added / skipped count
   - If the `uniqueId` exists but the scores differ → treated as a stale/different result and **refreshed**.
   - If the scores match but the **team records** differ (typically a game stored before per-game records existed, i.e. `undefined` vs the fetched `"W-L-T"`) → **refreshed**, which backfills the record on the next oldies run. The comparison converges: once both sides carry the same value the game is skipped again.
   - Only complete, missing games are created.
+- **Historical team records**: before inserting oldies games, missing home/away teams are upserted as inactive team documents using the ESPN team IDs from the game payload. Olympic recovery additionally scans each sport's full season scoreboard first, so countries absent from the current roster are included; existing active records are never overwritten by historical discovery. A current provider roster reactivates a stored team.
 
 **Records backfill at the end of an oldies run (`_backfillSeasonRecords()`):**
 
