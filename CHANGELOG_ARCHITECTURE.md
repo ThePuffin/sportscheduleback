@@ -2,6 +2,80 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: dependency vulnerabilities (non-breaking `npm audit fix`) + mongoose driver type bump
+
+`npm audit fix` (no `--force`, so no breaking semver bumps of our own deps) removed the **1 critical** advisory and several highs: **79 → 63 vulnerabilities (4 low, 18 moderate, 41 high)**. The critical was `proxy-addr <2.0.8` (IP-spoofing via IPv4-mapped IPv6 trust subnet, CVSS 9.1), pulled in transitively through `@nestjs/platform-express` → `express`; it is now gone. Transitive `mongodb` (`6.14.2 → 6.20.0`) and `mongoose` (`8.9.5 → 8.24.5`) were also refreshed.
+
+The newer `mongodb` driver changed the `MongoClient` type, which no longer overlaps with Mongoose's `FlattenMaps<MongoClient>`. That broke one lean-query cast in `games.service.ts`:
+
+- **`backend/src/games/games.service.ts`** — the `.lean().exec()` result in the form/recent-games query is now cast via `as unknown as Array<Partial<Game>>` (previously `as Array<Partial<Game>>`). Type-only change, no runtime impact; `npx tsc --noEmit` is clean and `games.service.spec.ts` (93 tests) still passes.
+
+### Remaining advisories
+
+The remaining 63 are mostly in **devDependencies** (jest, ts-jest, `@typescript-eslint`, ts-loader, `@nestjs/cli`, brace-expansion…) that do not run in production. The two prod-relevant ones left are `@nestjs/platform-express` (fixed only in a breaking v12) and a couple of transitive highs whose non-breaking fix is not yet available — address them when upgrading NestJS to v12.
+
+### Test runner note
+
+`npm test` / `test:watch` / `test:cov` run through `backend/scripts/run-jest.js`, a wrapper that strips the Console Ninja loader from `NODE_OPTIONS`/`PATH` before spawning Jest (that hook dumped ~250 MB of output per run and crashed VS Code). Keep that file under version control.
+
+## Fixed: oldies recovery finished in ~1 second fetching nothing, because an unrelated refresh blocked every step
+
+### Problem
+
+`POST /games/refresh/oldies` reported a full, successful run while doing no work at all:
+
+```
+[Oldies] progress: 99% (142/144) — last: OLYMPICS-MEN 2025
+Skipping getLeagueGames for OLYMPICS-MEN because another manual refresh is in progress.
+[Oldies] progress: 100%, (144/144) — last: OLYMPICS-MEN 2025
+[Oldies] History data recovery completed!
+```
+
+Every one of the ~144 league × year steps hit the cross-league bail-out in `getLeagueGames()`
+and returned immediately. The cause is the shape of that guard: it is keyed on
+`manualRefreshInProgress`, and **one** foreign league holding the flag is enough to skip a step of
+**any** league — so a single unrelated refresh turned the whole run into a no-op that still ended
+with `completed — no new games were added (all years already up to date)`.
+
+Two ways the flag got stuck:
+- the **league rotation cron** (`refreshLeaguesOneByOne`) called `getLeagueGames({ league })`, i.e.
+  with `skipCascade` left at its default `true` — so an *automatic* refresh claimed the *manual*
+  lock for its whole duration;
+- **two overlapping `getOldiesGames()` runs** poisoned each other, since each step marks its own
+  league as a manual refresh.
+
+The `[Oldies] Capacity purge throttled ...` message that appears next to these logs is a red
+herring: it only skips the month **delete**, never the step's fetch.
+
+### Changes
+
+- **`backend/src/games/games.service.ts`**
+  - `getLeagueGames()` — new `ignoreOtherManualRefresh` option (default `false`). Oldies passes
+    `true` so its steps are never skipped by an unrelated refresh. Safe because the run walks the
+    leagues strictly one at a time and only *adds* missing games (`addMissingOnly: true`), so the
+    same-league `isFetchingGames[league]` guard already prevents the only real conflict.
+  - `getOldiesGames()` — new `isOldiesRunning` overlap guard: a second concurrent run logs
+    `[Oldies] Skipping: another history recovery is already in progress.` and returns without
+    touching a league, instead of both runs no-oping each other. The body moved to the private
+    `_runOldiesRecovery()`; the flag is released in a `finally` so a throwing run can never leave
+    it stuck and block every future recovery.
+- **`backend/src/cronJob/cronJob.service.ts`** — `refreshLeaguesOneByOne()` now passes
+  `skipCascade: false`: the rotation is automatic and must not hold the manual-refresh lock.
+- **`backend/src/games/tests/games.service.spec.ts`** — 4 new tests: the bypass flag is forwarded;
+  every step still runs while another league holds the manual lock; a second overlapping recovery
+  is refused; the overlap guard is released when the run throws.
+- **`backend/src/cronJob/tests/cronJob.service.spec.ts`** — rotation assertions now expect
+  `skipCascade: false`, plus a new test locking in that the cron does not claim the manual lock.
+- **`backend/docs/games/games.service.ts.md`** — documented the overlap guard, the bypass, and
+  clarified that the purge throttle skips the delete only.
+
+### Note for operators
+
+A recovery that truly fetched nothing is now visible in its own log line instead of being reported
+as "all years already up to date". If you still see `[Oldies] Skipping: another history recovery is
+already in progress.`, an earlier `POST /games/refresh/oldies` or `POST /games/refresh/allOldies` is
+still running — wait for it rather than starting another.
+
 ## Fixed: oldies runs no longer purge a month on every league × year step
 
 ### Problem

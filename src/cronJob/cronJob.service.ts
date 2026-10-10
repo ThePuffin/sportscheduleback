@@ -232,7 +232,7 @@ export class CronService implements OnModuleInit {
       console.info(
         `[Cron] League rotation: refreshing ${league} (${this.rotatingLeagueCursor}/${leagueValues.length})`,
       );
-      await this.gameService.getLeagueGames({ league });
+      await this.gameService.getLeagueGames({ league, skipCascade: false });
     } catch (err) {
       console.error(`[Cron] League rotation: error refreshing ${league}:`, err);
     } finally {
@@ -290,7 +290,7 @@ export class CronService implements OnModuleInit {
     this.isFetchingOldiesInProgress = true;
     try {
       const currentYear = new Date().getFullYear();
-      const maxYearsBeforeDelete = this.gameService.maxYearBeforeDelete; // 10
+      const maxYearsBeforeDelete = this.gameService.maxYearBeforeDelete; // 6
       const minYear = currentYear - maxYearsBeforeDelete;
       const maxOldieYear = currentYear - 1; // Prior year (exclude in-progress season)
 

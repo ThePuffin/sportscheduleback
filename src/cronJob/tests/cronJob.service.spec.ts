@@ -13,7 +13,7 @@ describe('CronService', () => {
   };
 
   const mockGameService = {
-    maxYearBeforeDelete: 10,
+    maxYearBeforeDelete: 6,
     getSeasonStatus: jest.fn(),
     getOldiesGames: jest.fn(),
     fetchGamesScores: jest.fn().mockResolvedValue([]),
@@ -301,15 +301,18 @@ describe('CronService', () => {
       await service.refreshLeaguesOneByOne();
 
       expect(mockGameService.getLeagueGames).toHaveBeenCalledTimes(3);
-      expect(mockGameService.getLeagueGames).toHaveBeenNthCalledWith(1, {
-        league: League.NHL,
-      });
-      expect(mockGameService.getLeagueGames).toHaveBeenNthCalledWith(2, {
-        league: League.NFL,
-      });
-      expect(mockGameService.getLeagueGames).toHaveBeenNthCalledWith(3, {
-        league: League.NBA,
-      });
+      expect(mockGameService.getLeagueGames).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ league: League.NHL, skipCascade: false }),
+      );
+      expect(mockGameService.getLeagueGames).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ league: League.NFL, skipCascade: false }),
+      );
+      expect(mockGameService.getLeagueGames).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({ league: League.NBA, skipCascade: false }),
+      );
 
       seasonSpy.mockRestore();
       playoffsSpy.mockRestore();
@@ -329,11 +332,33 @@ describe('CronService', () => {
 
       await service.refreshLeaguesOneByOne(); // NFL → stale → fetched
       expect(mockGameService.getLeagueGames).toHaveBeenCalledTimes(1);
-      expect(mockGameService.getLeagueGames).toHaveBeenCalledWith({
-        league: League.NFL,
-      });
+      expect(mockGameService.getLeagueGames).toHaveBeenCalledWith(
+        expect.objectContaining({ league: League.NFL, skipCascade: false }),
+      );
 
       needRefreshSpy.mockRestore();
+    });
+
+    it('does not claim the manual-refresh lock, so it cannot block an oldies recovery', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-09-13T08:00:00Z'));
+      const seasonSpy = jest
+        .spyOn(utils, 'isCurrentSeason')
+        .mockResolvedValue(true);
+      const playoffsSpy = jest
+        .spyOn(utils, 'isPlayoffsPeriod')
+        .mockResolvedValue(false);
+
+      await service.refreshLeaguesOneByOne();
+
+      // The rotation is an automatic refresh: marking its league as
+      // "manual refresh in progress" made every remaining oldies step bail out
+      // in a fraction of a second while reporting a successful completion.
+      const args = mockGameService.getLeagueGames.mock.calls[0][0];
+      expect(args.skipCascade).toBe(false);
+
+      seasonSpy.mockRestore();
+      playoffsSpy.mockRestore();
     });
 
     it('stops once the list is complete until the next day', async () => {
@@ -361,9 +386,9 @@ describe('CronService', () => {
       jest.setSystemTime(new Date('2026-09-14T08:00:00Z'));
       await service.refreshLeaguesOneByOne();
       expect(mockGameService.getLeagueGames).toHaveBeenCalledTimes(total + 1);
-      expect(mockGameService.getLeagueGames).toHaveBeenLastCalledWith({
-        league: League.NHL,
-      });
+      expect(mockGameService.getLeagueGames).toHaveBeenLastCalledWith(
+        expect.objectContaining({ league: League.NHL, skipCascade: false }),
+      );
 
       seasonSpy.mockRestore();
       playoffsSpy.mockRestore();
@@ -385,9 +410,9 @@ describe('CronService', () => {
 
       mockGameService.isScoreRecoveryRunning = false;
       await service.refreshLeaguesOneByOne();
-      expect(mockGameService.getLeagueGames).toHaveBeenCalledWith({
-        league: League.NHL,
-      });
+      expect(mockGameService.getLeagueGames).toHaveBeenCalledWith(
+        expect.objectContaining({ league: League.NHL, skipCascade: false }),
+      );
 
       seasonSpy.mockRestore();
       playoffsSpy.mockRestore();

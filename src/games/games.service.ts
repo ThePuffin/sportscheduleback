@@ -61,7 +61,7 @@ export class GameService {
     private readonly refreshTimestampService: RefreshTimestampService,
   ) {}
 
-  maxYearBeforeDelete = 10;
+  maxYearBeforeDelete = 6;
   // Purge games that are still active/resolved-less several months after their start
   // (e.g. a PWHL game stuck on 2026-05-11 whose final result can never be fetched).
   staleGameMaxAgeDays = 90;
@@ -102,7 +102,7 @@ export class GameService {
   // whose disk stays full could purge a month on every failed write and delete
   // large amounts of history within seconds. One forced purge per minute is the
   // safe ceiling: it still frees space promptly, but never in an unbounded burst.
-  private readonly FORCED_PURGE_MIN_INTERVAL_MS = 60 * 1000; // 1 minute
+  private readonly FORCED_PURGE_MIN_INTERVAL_MS = 30 * 1000; // 30 seconds
   private readonly DISK_USAGE_CACHE_TTL_MS = 60 * 1000; // 60 seconds cache for disk usage stats
   private readonly CLUSTER_TOTAL_MB = 512; // Total cluster storage in MB (adjust to your Atlas plan)
   private lastDiskCheck = 0;
@@ -115,6 +115,12 @@ export class GameService {
   // just above the threshold would otherwise purge on every one of the up-to-144
   // steps and wipe large amounts of history in a tight loop.
   private lastOldiesForcedPurgeAt = 0;
+  // Guards against two overlapping getOldiesGames() runs. A recovery is long (up
+  // to ~144 league × year steps) and two of them at once would double the
+  // third-party + Mongo load and — because every step marks its league as
+  // "manual refresh in progress" — silently no-op each other: each run would skip
+  // every step of the other and still report "completed".
+  private isOldiesRunning = false;
 
   // In-memory cache for disk usage to avoid spamming dbStats on every call
   private diskUsageCache: {
@@ -562,6 +568,15 @@ export class GameService {
       endDate,
       season,
       addMissingOnly = false,
+      // Lets the oldies recovery ignore the cross-league guard below. Oldies walks
+      // the leagues strictly one after the other and only *adds* missing games
+      // (`addMissingOnly: true`), so the same-league guard above
+      // (`isFetchingGames`) already prevents the only real conflict: two concurrent
+      // fetches for one and the same league. Without this bypass, a single unrelated
+      // manual refresh makes every remaining step of a 144-step recovery return
+      // immediately, and the run then claims "completed — no new games were added
+      // (all years already up to date)" while it fetched nothing at all.
+      ignoreOtherManualRefresh = false,
     } = params;
     const normalizedLeague = league.toUpperCase().trim();
     if (this.isFetchingGames[normalizedLeague]) {
@@ -581,7 +596,7 @@ export class GameService {
       const otherManualRefresh = Object.keys(this.manualRefreshInProgress).some(
         (k) => this.manualRefreshInProgress[k] && k !== normalizedLeague,
       );
-      if (otherManualRefresh) {
+      if (otherManualRefresh && !ignoreOtherManualRefresh) {
         console.info(
           `Skipping getLeagueGames for ${league} because another manual refresh is in progress.`,
         );
@@ -1389,7 +1404,7 @@ export class GameService {
         'uniqueId league homeTeamId awayTeamId homeTeamScore awayTeamScore gameStatus gamePeriod startTimeUTC teamSelectedId',
       )
       .lean()
-      .exec()) as Array<Partial<Game>>;
+      .exec()) as unknown as Array<Partial<Game>>;
 
     // Keep one row per match. `uniqueId` cannot be used as the key: it is prefixed
     // with the team the upstream feed was asked about, so the two documents of
@@ -3933,6 +3948,32 @@ export class GameService {
     leagueParam?: string,
     options: { forceCapacityCheck?: boolean } = {},
   ) {
+    // Two overlapping recoveries would silently no-op each other (each step marks
+    // its league as "manual refresh in progress", so the other run skips it) while
+    // both report success. Refuse the second one instead of faking a completion.
+    if (this.isOldiesRunning) {
+      console.warn(
+        '[Oldies] Skipping: another history recovery is already in progress.',
+      );
+      return {
+        message:
+          'History recovery skipped — another recovery is already in progress.',
+        yearsWithAdditions: [],
+      };
+    }
+    this.isOldiesRunning = true;
+    try {
+      return await this._runOldiesRecovery(yearStr, leagueParam, options);
+    } finally {
+      this.isOldiesRunning = false;
+    }
+  }
+
+  private async _runOldiesRecovery(
+    yearStr?: string,
+    leagueParam?: string,
+    options: { forceCapacityCheck?: boolean } = {},
+  ) {
     const { forceCapacityCheck = true } = options;
     const currentYear = new Date().getFullYear();
     const minYear = currentYear - this.maxYearBeforeDelete;
@@ -4011,6 +4052,7 @@ export class GameService {
             skipCascade: true, // true to avoid concurrent refresh conflicts
             season: year,
             addMissingOnly: true, // Oldies: do not overwrite, only add missing games.
+            ignoreOtherManualRefresh: true, // Oldies owns this run: never skip a step.
           });
           // Track years where at least one game was actually added
           if (

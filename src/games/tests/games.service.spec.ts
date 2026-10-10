@@ -894,6 +894,81 @@ describe('GameService', () => {
       purgeSpy.mockRestore();
       consoleErrorSpy.mockRestore();
     });
+
+    it('should pass ignoreOtherManualRefresh so an unrelated manual refresh cannot skip every step', async () => {
+      const currentYear = new Date().getFullYear();
+      await service.getOldiesGames(String(currentYear - 1), League.NHL);
+
+      expect(getLeagueGamesSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          league: League.NHL,
+          season: currentYear - 1,
+          addMissingOnly: true,
+          ignoreOtherManualRefresh: true,
+        }),
+      );
+    });
+
+    it('should still fetch every step when another league has a manual refresh in progress', async () => {
+      const currentYear = new Date().getFullYear();
+      // Simulate an unrelated league whose manual refresh never got released.
+      (service as any).manualRefreshInProgress[League.MLS] = true;
+
+      const result = await service.getOldiesGames(undefined, League.NHL);
+
+      // Every season is still fetched instead of being skipped in one second.
+      const expectedYears = [];
+      for (
+        let y = currentYear - 1;
+        y > currentYear - service.maxYearBeforeDelete;
+        y--
+      ) {
+        expectedYears.push(y);
+      }
+      expect(getLeagueGamesSpy).toHaveBeenCalledTimes(expectedYears.length);
+      expect(result.message).toContain('History recovery');
+
+      delete (service as any).manualRefreshInProgress[League.MLS];
+    });
+
+    it('should refuse a second overlapping recovery instead of no-oping both runs', async () => {
+      const currentYear = new Date().getFullYear();
+      const consoleWarnSpy = jest
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+
+      // A first recovery is already running (never released).
+      (service as any).isOldiesRunning = true;
+
+      const result = await service.getOldiesGames(
+        String(currentYear - 1),
+        League.NHL,
+      );
+
+      expect(result.message).toContain(
+        'another recovery is already in progress',
+      );
+      expect(result.yearsWithAdditions).toHaveLength(0);
+      expect(getLeagueGamesSpy).not.toHaveBeenCalled();
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        '[Oldies] Skipping: another history recovery is already in progress.',
+      );
+
+      (service as any).isOldiesRunning = false;
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should release the overlap guard even when the recovery throws', async () => {
+      const currentYear = new Date().getFullYear();
+      getLeagueGamesSpy.mockRejectedValue(new Error('ESPN down'));
+
+      await expect(
+        service.getOldiesGames(String(currentYear - 1), League.NHL),
+      ).resolves.toBeDefined();
+
+      // The guard must not stay stuck, otherwise no recovery could ever run again.
+      expect((service as any).isOldiesRunning).toBe(false);
+    });
   });
 
   describe('getLeagueGames addMissingOnly (oldies recovery)', () => {
