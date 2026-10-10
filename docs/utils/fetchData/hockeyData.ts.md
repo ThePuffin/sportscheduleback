@@ -80,12 +80,22 @@ optional `teamRecords` map, filled for the **current** season only (`season === 
    matches `mtl` and vice‑versa. This prevents missing matches due to inconsistent casing in the
    HockeyTech feed.
 
+4. **PWHL team-code aliases** — the feed is internally inconsistent about the Las Vegas team: the
+   `teamsbyseason` feed and the **pre-season** schedule use `VEG`, while the **regular-season**
+   schedule and its standings use `VGS` (and `LV` has appeared too). `normalizePWHLCode()` folds
+   every known alias onto the canonical `VGS` — the regular-season code, since that feed carries by
+   far the most games — at every read site (teams feed, standings, schedule
+   filter, `getPWHLTeamschedule()`, the record replay and `getPWHLScores()`), so the same team keeps
+   a single id (`PWHL-VGS`), logo, colour, favourite and record across all feeds.
+
 This is what makes `GameService.refreshCurrentSeasonRecords()` (the twice-daily records cron) work for
 the PWHL: unlike the ESPN leagues, the HockeyTech schedule carries **no** per-game record, so the map
 would otherwise stay empty and no `team.record` would ever be written. During **oldies** (`season`
 given) the map is deliberately left untouched so the historical record stays frozen.
 
 ## Team Colors
+
+`getHockeySchedule()` logs one fetched-game count per NHL/PWHL team and concludes with the number of team schedules processed and distinct games found.
 
 NHL and PWHL teams resolve their colors through `getTeamColors()` from `../Colors`:
 the stored `ColorsTeam` entry wins, otherwise the generic default placeholder

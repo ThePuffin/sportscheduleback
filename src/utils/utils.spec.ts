@@ -165,14 +165,15 @@ describe('Utility Functions', () => {
       it('should return the correct league config for OLYMPICS-MEN during Winter Olympics', () => {
         jest.setSystemTime(new Date('2026-02-15'));
         const config = getLeagueConfig(League['OLYMPICS-MEN']);
-        expect(config.league).toBe('olympics.men');
+        expect(config.sport).toBe('hockey');
+        expect(config.league).toBe('olympics-mens-ice-hockey');
       });
 
       it('should return the correct league config for OLYMPICS-WOMEN during Summer Olympics', () => {
         jest.setSystemTime(new Date('2028-07-01')); // July 2028, Summer Olympics
         const config = getLeagueConfig('OLYMPICS-WOMEN');
-        expect(config.sport).toBe('basket');
-        expect(config.league).toBe('olympics.women');
+        expect(config.sport).toBe('basketball');
+        expect(config.league).toBe('womens-olympics-basketball');
       });
 
       it("should return the default config for Olympics when it's not Olympics year", () => {
@@ -196,11 +197,11 @@ describe('Utility Functions', () => {
       it('should handle summer olympics at the start and end of the period', () => {
         jest.setSystemTime(new Date('2028-05-01'));
         const summerConfig = getLeagueConfig('OLYMPICS-WOMEN');
-        expect(summerConfig.sport).toBe('basket');
+        expect(summerConfig.sport).toBe('basketball');
 
         jest.setSystemTime(new Date('2028-09-30'));
         const config2 = getLeagueConfig('OLYMPICS-WOMEN');
-        expect(config2.sport).toBe('basket');
+        expect(config2.sport).toBe('basketball');
 
         jest.setSystemTime(new Date('2028-04-30'));
         const config3 = getLeagueConfig(League['OLYMPICS-WOMEN']);
@@ -215,6 +216,31 @@ describe('Utility Functions', () => {
         jest.setSystemTime(new Date('2026-01-01'));
         const config = getLeagueConfig('OLYMPICS-MEN');
         expect(config.sport).toBe('hockey');
+      });
+
+      it('returns ESPN scoreboard slugs that are valid (no 400) for every Olympic combination', () => {
+        // Regression: the Winter branch used `hockey` + `olympics.men` and the
+        // Summer branch used the typo `basket` + `olympics.men`, both of which
+        // ESPN answers with 400 Bad Request. The valid slugs are the same ones
+        // used by `leagueConfigs` in espnAllData.ts.
+        const cases: Array<[Date, 'OLYMPICS-MEN' | 'OLYMPICS-WOMEN']> = [
+          [new Date('2026-02-15'), 'OLYMPICS-MEN'], // Winter, men
+          [new Date('2026-02-15'), 'OLYMPICS-WOMEN'], // Winter, women
+          [new Date('2028-07-01'), 'OLYMPICS-MEN'], // Summer, men
+          [new Date('2028-07-01'), 'OLYMPICS-WOMEN'], // Summer, women
+        ];
+
+        for (const [date, league] of cases) {
+          jest.setSystemTime(date);
+          const config = getLeagueConfig(league);
+          const url = `https://site.api.espn.com/apis/site/v2/sports/${config.sport}/${config.league}/scoreboard`;
+          expect(url).toMatch(
+            /\/sports\/(hockey\/olympics-(mens|womens)-ice-hockey|basketball\/(mens|womens)-olympics-basketball)\/scoreboard$/,
+          );
+          // The old, broken spellings must never come back.
+          expect(config.sport).not.toBe('basket');
+          expect(config.league).not.toMatch(/^olympics\.(men|women)$/);
+        }
       });
     });
 

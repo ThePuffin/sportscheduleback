@@ -807,6 +807,7 @@ export class GameService {
       }
 
       const games = uniqueGames;
+      let savedGames = 0;
       // Only deactivate future games if we are not fetching an old season, and only the
       // ones that are absent from the freshly fetched season. This turns the previous
       // "deactivate everything, then rewrite" into a safe "replace" that cannot lose the
@@ -1070,6 +1071,7 @@ export class GameService {
 
           await this.create(game);
           added++;
+          savedGames++;
           logInsertProgress(idx + 1);
         }
 
@@ -1095,6 +1097,9 @@ export class GameService {
 
       await this._deleteGamesOfPurgedTeams(normalizedLeague);
       await this._deleteUnlinkedTeams(normalizedLeague);
+      console.info(
+        `[Games] ${normalizedLeague} refresh complete: ${uniqueGames.length} distinct game(s) fetched, ${savedGames} game document(s) saved/upserted.`,
+      );
       return games;
     } catch (err) {
       // Never let a failing third-party API (ESPN / PWHL) propagate to the

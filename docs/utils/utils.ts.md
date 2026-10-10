@@ -17,6 +17,15 @@ This utility module contains helper functions for league season detection, refre
 
 Returns league metadata such as sport, ESPN identifier and season period boundaries.
 
+For the Olympic aggregates (`OLYMPICS-MEN` / `OLYMPICS-WOMEN`) it also picks the sport by date —
+Winter (hockey) vs Summer (basketball) — and returns the **valid** ESPN scoreboard slug for that
+sport, the same ones used by `leagueConfigs` in `espnAllData.ts`: `olympics-mens-ice-hockey` /
+`olympics-womens-ice-hockey` and `mens-olympics-basketball` / `womens-olympics-basketball`. These
+`sport`/`league` values feed `fetchLeagueDates()`'s `scoreboard` request, so they must be endpoints
+ESPN answers with 200 (the earlier `basket` typo and the `olympics.men`/`olympics.women` slugs all
+returned 400). `isCurrentSeason`, `isPlayoffsPeriod` and `getCurrentSeasonYears` only read the
+`startSeason`/`endSeason`/`endPlayoffs` boundaries, not the slug.
+
 ### `isInThePeriod(start, end)`
 
 Checks whether the current date falls inside a given month-based period.

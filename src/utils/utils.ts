@@ -207,7 +207,6 @@ export const getLeagueConfig = (leagueName: string) => {
     const month = now.getMonth(); // 0-indexed: 0 = Jan, 1 = Feb...
 
     const isWomen = leagueName === League['OLYMPICS-WOMEN'];
-    const leagueId = isWomen ? 'olympics.women' : 'olympics.men';
 
     // --- Winter Olympics (Hockey) : 2026, 2030, 2034 ---
     // Calculation: 2026 % 4 = 2
@@ -217,7 +216,9 @@ export const getLeagueConfig = (leagueName: string) => {
         // Active from January to March to cover preparation + tournament
         return {
           sport: 'hockey',
-          league: leagueId,
+          league: isWomen
+            ? 'olympics-womens-ice-hockey'
+            : 'olympics-mens-ice-hockey',
           startSeason: '01',
           endSeason: '02',
           endPlayoffs: '03',
@@ -232,8 +233,10 @@ export const getLeagueConfig = (leagueName: string) => {
       if (month >= 4 && month <= 8) {
         // Active from May to September
         return {
-          sport: 'basket',
-          league: leagueId,
+          sport: 'basketball',
+          league: isWomen
+            ? 'womens-olympics-basketball'
+            : 'mens-olympics-basketball',
           startSeason: '05',
           endSeason: '07',
           endPlayoffs: '09',

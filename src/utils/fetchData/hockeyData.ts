@@ -14,6 +14,37 @@ const leagueName = League.NHL;
 const pwhlAPI = 'https://lscluster.hockeytech.com/feed/';
 
 /**
+ * Known PWHL team-code aliases -> canonical code.
+ *
+ * The HockeyTech feed is internally inconsistent about the Las Vegas team:
+ * the `teamsbyseason` feed and the **pre-season** schedule use `VEG`, while the
+ * **regular-season** schedule and its standings use `VGS` (and some feeds have
+ * used `LV`). Left untouched, the same team is emitted under several IDs
+ * (`PWHL-VEG`, `PWHL-VGS`, `PWHL-LV`), which breaks the team-name/colour lookup,
+ * the favourites list, the record tallies and every schedule match.
+ *
+ * `VGS` is the canonical code: it is the code used by the **regular season**
+ * (by far the largest set of games) and its standings feed, so it is the most
+ * representative reference for the team.
+ */
+const PWHL_CODE_ALIASES: Record<string, string> = {
+  VEG: 'VGS',
+  LV: 'VGS',
+};
+
+/**
+ * Fold a raw PWHL team code onto its canonical form so that every feed
+ * (teams, pre-season, regular season, standings) describes the same team.
+ * Codes without a known alias are returned unchanged (original casing is
+ * preserved for display, e.g. `MTL`, `mtl`).
+ */
+const normalizePWHLCode = (code: string): string => {
+  if (!code) return code;
+  const alias = PWHL_CODE_ALIASES[code.toUpperCase()];
+  return alias ?? code;
+};
+
+/**
  * A season entry of the HockeyTech feed.
  *
  * Pre-season, **regular season** and **playoffs each carry their own
@@ -256,7 +287,7 @@ export class HockeyData {
 
       const activeTeams = allTeams.map((team: TeamPWHL) => {
         const { code, name, team_logo_url } = team;
-        const teamID = code;
+        const teamID = normalizePWHLCode(code);
         const uniqueId = `${leagueName}-${teamID}`;
 
         const recordStr = standings[teamID];
@@ -392,22 +423,30 @@ export class HockeyData {
           if (league === League.NHL) {
             const { id, uniqueId } = team;
             const leagueID = `${league}-${id}`;
-            allGames[leagueID] = await this.getNHLTeamschedule(
+            const teamGames = await this.getNHLTeamschedule(
               id,
               uniqueId,
               leagueLogos,
               season,
             );
+            allGames[leagueID] = teamGames;
+            console.info(
+              `[Schedule] ${league} ${team.label || uniqueId}: ${teamGames.length} game(s) fetched.`,
+            );
           }
           if (league === League.PWHL) {
             const { id, uniqueId } = team;
             const leagueID = `${league}-${id}`;
-            allGames[leagueID] = await this.getPWHLTeamschedule(
+            const teamGames = await this.getPWHLTeamschedule(
               id,
               uniqueId,
               leagueLogos,
               forceUpdate,
               season,
+            );
+            allGames[leagueID] = teamGames;
+            console.info(
+              `[Schedule] ${league} ${team.label || uniqueId}: ${teamGames.length} game(s) fetched.`,
             );
           }
         } catch (error) {
@@ -420,13 +459,24 @@ export class HockeyData {
       }),
     );
 
+    const fetchedGames = Object.values(allGames).flat() as any[];
+    const distinctGames = new Set(
+      fetchedGames.map((game) =>
+        game?.startTimeUTC && game?.homeTeamId && game?.awayTeamId
+          ? `${game.startTimeUTC}|${game.homeTeamId}|${game.awayTeamId}`
+          : game?.uniqueId,
+      ),
+    );
+
     for (const team of Object.keys(allGames)) {
       if (allGames[team].length === 0) {
         delete allGames[team];
       }
     }
 
-    console.info('updated ', league);
+    console.info(
+      `[Schedule] ${league}: fetched schedules for ${activeTeams.length} team(s), ${distinctGames.size} distinct game(s) across those schedules.`,
+    );
     return allGames;
   };
 
@@ -460,10 +510,10 @@ export class HockeyData {
         );
         fetchGames = allFetchGames.filter(
           (game) =>
-            (game.home_team_code || '').toLowerCase() ===
-              (id || '').toLowerCase() ||
-            (game.visiting_team_code || '').toLowerCase() ===
-              (id || '').toLowerCase(),
+            normalizePWHLCode(game.home_team_code || '').toLowerCase() ===
+              normalizePWHLCode(id || '').toLowerCase() ||
+            normalizePWHLCode(game.visiting_team_code || '').toLowerCase() ===
+              normalizePWHLCode(id || '').toLowerCase(),
         );
         return (await fetchGames.games) || fetchGames;
       }
@@ -508,7 +558,7 @@ export class HockeyData {
       const records = {};
 
       standingsList.forEach((team) => {
-        const code = team.team_code || team.code;
+        const code = normalizePWHLCode(team.team_code || team.code);
         if (code) {
           let wins = Number.parseInt(team.wins, 10) || 0;
           const losses = Number.parseInt(team.losses, 10) || 0;
@@ -593,6 +643,12 @@ export class HockeyData {
         );
         const status = isFinished ? 'FINISHED' : null;
 
+        // Fold feed aliases (e.g. VGS in the regular season vs VEG in the
+        // pre-season / teams feed) onto the canonical code so the same Las
+        // Vegas team keeps a single id, logo, colour and record everywhere.
+        const homeCode = normalizePWHLCode(home_team_code);
+        const awayCode = normalizePWHLCode(visiting_team_code);
+
         if (season) {
           const gameYear = new Date(GameDateISO8601).getFullYear();
           // `season` is the requested calendar year: keep only games played that
@@ -617,22 +673,22 @@ export class HockeyData {
         return {
           arenaName: capitalize(arena) || '',
           awayTeam: capitalize(awayTeamName),
-          awayTeamId: `${leagueName}-${visiting_team_code}`,
-          awayTeamLogo: leagueLogos[visiting_team_code],
-          awayTeamLogoDark: leagueLogos[visiting_team_code],
-          awayTeamShort: visiting_team_code,
+          awayTeamId: `${leagueName}-${awayCode}`,
+          awayTeamLogo: leagueLogos[awayCode],
+          awayTeamLogoDark: leagueLogos[awayCode],
+          awayTeamShort: awayCode,
           gameDate: date_played,
           homeTeam: capitalize(homeTeamName),
-          homeTeamId: `${leagueName}-${home_team_code}`,
-          homeTeamLogo: leagueLogos[home_team_code],
-          homeTeamLogoDark: leagueLogos[home_team_code],
-          homeTeamShort: home_team_code,
+          homeTeamId: `${leagueName}-${homeCode}`,
+          homeTeamLogo: leagueLogos[homeCode],
+          homeTeamLogoDark: leagueLogos[homeCode],
+          homeTeamShort: homeCode,
           homeTeamScore: isFinished ? Number(home_goal_count) : null,
           awayTeamScore: isFinished ? Number(visiting_goal_count) : null,
           gameStatus: status,
           league: leagueName,
           placeName: capitalize(venue_location),
-          selectedTeam: home_team_code === id,
+          selectedTeam: homeCode === normalizePWHLCode(id),
           startTimeUTC: new Date(GameDateISO8601).toISOString(),
           teamSelectedId: teamUniqueId,
           isActive,
@@ -780,8 +836,8 @@ export class HockeyData {
       if (!Number.isFinite(homeGoals) || !Number.isFinite(awayGoals)) continue;
       if (homeGoals === awayGoals) continue;
 
-      const home = g.home_team_code;
-      const away = g.visiting_team_code;
+      const home = normalizePWHLCode(g.home_team_code);
+      const away = normalizePWHLCode(g.visiting_team_code);
       const winner = homeGoals > awayGoals ? home : away;
       const loser = homeGoals > awayGoals ? away : home;
       const wentExtra =
@@ -846,18 +902,18 @@ export class HockeyData {
         // back to the live `team.record` (most recent tally, kept via
         // `syncGameWithScore()` -> `_nextRecord()`).
         const homeRecord = seasonOver
-          ? finals.get(game.home_team_code) || ''
+          ? finals.get(normalizePWHLCode(game.home_team_code)) || ''
           : '';
         const awayRecord = seasonOver
-          ? finals.get(game.visiting_team_code) || ''
+          ? finals.get(normalizePWHLCode(game.visiting_team_code)) || ''
           : '';
         return {
           homeTeamScore: Number(game.home_goal_count),
           awayTeamScore: Number(game.visiting_goal_count),
-          homeTeamShort: game.home_team_code,
-          awayTeamShort: game.visiting_team_code,
-          homeTeamId: `${League.PWHL}-${game.home_team_code}`,
-          awayTeamId: `${League.PWHL}-${game.visiting_team_code}`,
+          homeTeamShort: normalizePWHLCode(game.home_team_code),
+          awayTeamShort: normalizePWHLCode(game.visiting_team_code),
+          homeTeamId: `${League.PWHL}-${normalizePWHLCode(game.home_team_code)}`,
+          awayTeamId: `${League.PWHL}-${normalizePWHLCode(game.visiting_team_code)}`,
           isFinal: game.final === '1',
           homeTeamRecord: homeRecord,
           awayTeamRecord: awayRecord,

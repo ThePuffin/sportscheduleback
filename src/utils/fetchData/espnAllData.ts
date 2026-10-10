@@ -505,11 +505,11 @@ const leagueConfigs = {
   },
   [OLYMPICS_BASKETBALL_MEN]: {
     sport: 'basketball',
-    league: 'olympics-mens-basketball',
+    league: 'mens-olympics-basketball',
   },
   [OLYMPICS_BASKETBALL_WOMEN]: {
     sport: 'basketball',
-    league: 'olympics-womens-basketball',
+    league: 'womens-olympics-basketball',
   },
 };
 
@@ -926,9 +926,9 @@ export const getTeamsSchedule = async (
     }
     const batch = activeTeams.slice(start, start + concurrencyLimit);
     await Promise.all(
-      batch.map(async ({ id, abbrev, uniqueId }) => {
+      batch.map(async ({ id, abbrev, uniqueId, label }) => {
         const leagueID = `${uniqueId}`;
-        allGames[leagueID] = await getEachTeamSchedule(
+        const teamGames = await getEachTeamSchedule(
           {
             id,
             abbrev,
@@ -940,6 +940,10 @@ export const getTeamsSchedule = async (
           season,
           teamRecords,
         );
+        allGames[leagueID] = teamGames;
+        console.info(
+          `[Schedule] ${leagueName} ${label || uniqueId}: ${teamGames.length} game(s) fetched.`,
+        );
       }),
     );
   }
@@ -949,7 +953,17 @@ export const getTeamsSchedule = async (
   // recent team record is used) while the season is still running.
   applySeasonFinalRecords(allGames);
 
-  console.info(`updated ${leagueName}`);
+  const fetchedGames = Object.values(allGames).flat() as any[];
+  const distinctGames = new Set(
+    fetchedGames.map((game) =>
+      game?.startTimeUTC && game?.homeTeamId && game?.awayTeamId
+        ? `${game.startTimeUTC}|${game.homeTeamId}|${game.awayTeamId}`
+        : game?.uniqueId,
+    ),
+  );
+  console.info(
+    `[Schedule] ${leagueName}: fetched schedules for ${activeTeams.length} team(s), ${distinctGames.size} distinct game(s) across those schedules.`,
+  );
   return allGames;
 };
 

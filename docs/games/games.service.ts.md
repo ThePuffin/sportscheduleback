@@ -60,6 +60,8 @@ Refreshes a specific league’s game data. It:
 4. Stores new or updated games in MongoDB.
 5. Removes stale or unlinked team data when necessary.
 
+Refresh logging reports the number of games fetched for each team, the league-wide distinct-game count, and a completion summary of game documents saved/upserted. The per-team schedule logs apply to all league providers, including ESPN and NHL/PWHL adapters.
+
 **Playoff missing-game grace period:**
 
 For a current-season refresh with a successful non-empty fetch, future active games

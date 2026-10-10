@@ -364,6 +364,46 @@ describe('getOlympicSeasonTeams', () => {
       ]),
     );
   });
+
+  it('uses the valid ESPN basketball slugs (mens-/womens-olympics-basketball)', async () => {
+    // Regression: the scoreboard slugs were `olympics-mens-basketball` /
+    // `olympics-womens-basketball`, which ESPN answers with 400 Bad Request
+    // ("Failed to get events endpoint"), so the whole oldies basketball crawl
+    // returned nothing. The valid slugs swap the word order.
+    // Return an empty scoreboard so the pagination loop ends after one call
+    // per sub-league; we only assert on the URLs that were requested.
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: { get: () => 'application/json' },
+          json: async () => ({ events: [] }),
+        }) as any,
+    );
+
+    await getOlympicSeasonTeams('OLYMPICS-MEN', 2024);
+    await getOlympicSeasonTeams('OLYMPICS-WOMEN', 2024);
+
+    const urls = fetchSpy.mock.calls.map(([u]) => String(u));
+    const basketballUrls = urls.filter((u) => u.includes('/basketball/'));
+    expect(basketballUrls.length).toBeGreaterThan(0);
+    for (const url of basketballUrls) {
+      // Every basketball scoreboard call must use a valid slug and never the
+      // old, word-order-reversed ones that ESPN rejects with 400.
+      expect(url).toMatch(
+        /\/basketball\/(mens|womens)-olympics-basketball\/scoreboard/,
+      );
+      expect(url).not.toMatch(/olympics-(mens|womens)-basketball/);
+    }
+    expect(urls.some((u) => u.includes('/basketball/mens-olympics-basketball/'))).toBe(
+      true,
+    );
+    expect(
+      urls.some((u) => u.includes('/basketball/womens-olympics-basketball/')),
+    ).toBe(true);
+  });
 });
 
 describe('fetchJsonOrNull', () => {

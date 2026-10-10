@@ -1968,7 +1968,7 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#2e3192',
   },
   'NCAAF-CHST': {
-    color: '#ffffff',
+    color: '#006700',
     backgroundColor: '#000000',
   },
   'NCAAF-CIN': {
@@ -2276,8 +2276,8 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#000000',
   },
   'NCAAF-LIU': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
+    color: '#ffbf00',
+    backgroundColor: '#50c9f7',
   },
   'NCAAF-LOU': {
     color: '#ffffff',
@@ -2760,7 +2760,7 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#840029',
   },
   'NCAAF-UNA': {
-    color: '#ffffff',
+    color: '#663399',
     backgroundColor: '#000000',
   },
   'NCAAF-UNC': {
@@ -2852,8 +2852,8 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#232d4b',
   },
   'NCAAF-UWF': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
+    color: '#03b186',
+    backgroundColor: '#087dc2',
   },
   'NCAAF-VAL': {
     color: '#794500',
@@ -2953,7 +2953,7 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   },
   'NCAAMH-AF': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#003594',
   },
   'NCAAMH-AH': {
     color: '#ffffff',
@@ -3029,11 +3029,11 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   },
   'NCAAMH-BU': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#cc0000',
   },
   'NCAAMH-CAN': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
+    color: '#dda50f',
+    backgroundColor: '#004a81',
   },
   'NCAAMH-CCMN': {
     color: '#ffffff',
@@ -3068,8 +3068,8 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#000000',
   },
   'NCAAMH-DEN': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
+    color: '#a8996e',
+    backgroundColor: '#98002e',
   },
   'NCAAMH-FAIR': {
     color: '#ebebeb',
@@ -3116,8 +3116,8 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#000000',
   },
   'NCAAMH-LIU': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
+    color: '#ffbf00',
+    backgroundColor: '#50c9f7',
   },
   'NCAAMH-LSS': {
     color: '#ffffff',
@@ -3324,8 +3324,8 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#000000',
   },
   'NCAAMH-UML': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
+    color: '#00529C',
+    backgroundColor: '#cf1f2f',
   },
   'NCAAMH-UND': {
     color: '#c2c3c0',
@@ -3401,7 +3401,7 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   },
   'NCAAWH-BU': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#cc0000',
   },
   'NCAAWH-CLAR': {
     color: '#ffffff',
@@ -3444,8 +3444,8 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#000000',
   },
   'NCAAWH-LIU': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
+    color: '#ffbf00',
+    backgroundColor: '#50c9f7',
   },
   'NCAAWH-ME': {
     color: '#127dbe',
@@ -5183,6 +5183,102 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#ede939',
     backgroundColor: '#000000',
   },
+  'OLYMPICS-BASKETBALL-MEN-AUS': {
+    color: '#dabf00',
+    backgroundColor: '#213a36',
+  },
+  'OLYMPICS-BASKETBALL-MEN-BRA': {
+    color: '#009C3B',
+    backgroundColor: '#002776',
+  },
+  'OLYMPICS-BASKETBALL-MEN-CAN': {
+    color: '#ed174b',
+    backgroundColor: '#c60000',
+  },
+  'OLYMPICS-BASKETBALL-MEN-ESP': {
+    color: '#F1BF00',
+    backgroundColor: '#AA151B',
+  },
+  'OLYMPICS-BASKETBALL-MEN-FRA': {
+    color: '#FF0800',
+    backgroundColor: '#052789',
+  },
+  'OLYMPICS-BASKETBALL-MEN-GER': {
+    color: '#DD0000',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-BASKETBALL-MEN-GRE': {
+    color: '#ffffff',
+    backgroundColor: '#295da8',
+  },
+  'OLYMPICS-BASKETBALL-MEN-JPN': {
+    color: '#BC002D',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-BASKETBALL-MEN-PUR': {
+    color: '#0537e4',
+    backgroundColor: '#C60000',
+  },
+  'OLYMPICS-BASKETBALL-MEN-SRB': {
+    color: '#C6363C',
+    backgroundColor: '#0C4076',
+  },
+  'OLYMPICS-BASKETBALL-MEN-SSD': {
+    color: '#1146b0',
+    backgroundColor: '#da131a',
+  },
+  'OLYMPICS-BASKETBALL-MEN-USA': {
+    color: '#3C3B6E',
+    backgroundColor: '#C60000',
+  },
+  'OLYMPICS-BASKETBALL-WOMEN-AUS': {
+    color: '#FFCD00',
+    backgroundColor: '#00843D',
+  },
+  'OLYMPICS-BASKETBALL-WOMEN-BEL': {
+    color: '#DE2918',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-BASKETBALL-WOMEN-CAN': {
+    color: '#FF0000',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-BASKETBALL-WOMEN-CHN': {
+    color: '#b6b6b6',
+    backgroundColor: '#ea2300',
+  },
+  'OLYMPICS-BASKETBALL-WOMEN-ESP': {
+    color: '#F1BF00',
+    backgroundColor: '#AA151B',
+  },
+  'OLYMPICS-BASKETBALL-WOMEN-FRA': {
+    color: '#FF0800',
+    backgroundColor: '#052789',
+  },
+  'OLYMPICS-BASKETBALL-WOMEN-GER': {
+    color: '#dd0000',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-BASKETBALL-WOMEN-JPN': {
+    color: '#BC002D',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-BASKETBALL-WOMEN-NGA': {
+    color: '#C60000',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-BASKETBALL-WOMEN-PUR': {
+    color: '#0537e4',
+    backgroundColor: '#C60000',
+  },
+  'OLYMPICS-BASKETBALL-WOMEN-SRB': {
+    color: '#C6363C',
+    backgroundColor: '#0C4076',
+  },
+  'OLYMPICS-BASKETBALL-WOMEN-USA': {
+    color: '#3C3B6E',
+    backgroundColor: '#C60000',
+  },
   'OLYMPICS-HOCKEY-MEN-CAN': {
     color: '#ffffff',
     backgroundColor: '#000000',
@@ -5316,6 +5412,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#0F4777',
   },
   'PWHL-VEG': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  'PWHL-VGS': {
     color: '#ffffff',
     backgroundColor: '#000000',
   },
@@ -5532,7 +5632,7 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#8e959a',
   },
   'WNCAAB-CBU': {
-    color: '#ffffff',
+    color: '#000080',
     backgroundColor: '#000000',
   },
   'WNCAAB-CCSU': {
@@ -6592,7 +6692,7 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     backgroundColor: '#000000',
   },
   'WNCAAB-UNA': {
-    color: '#ffffff',
+    color: '#663399',
     backgroundColor: '#000000',
   },
   'WNCAAB-UNC': {

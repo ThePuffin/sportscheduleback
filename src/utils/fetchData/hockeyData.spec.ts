@@ -12,6 +12,7 @@ describe('HockeyData.getHockeySchedule — PWHL team records', () => {
 
   let hockeyData: HockeyData;
   let getPWHLStandingsSpy: jest.SpyInstance;
+  let consoleInfoSpy: jest.SpyInstance;
   let consoleWarnSpy: jest.SpyInstance;
   let consoleErrorSpy: jest.SpyInstance;
 
@@ -21,6 +22,7 @@ describe('HockeyData.getHockeySchedule — PWHL team records', () => {
     getPWHLStandingsSpy = jest
       .spyOn(hockeyData, 'getPWHLStandings')
       .mockResolvedValue({ BOS: '12-8-4', NYR: '9-10-5' });
+    consoleInfoSpy = jest.spyOn(console, 'info').mockImplementation();
     consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
     global.fetch = jest.fn().mockRejectedValue(new Error('no network')) as any;
@@ -29,6 +31,7 @@ describe('HockeyData.getHockeySchedule — PWHL team records', () => {
   afterEach(() => {
     global.fetch = originalFetch;
     getPWHLStandingsSpy.mockRestore();
+    consoleInfoSpy.mockRestore();
     consoleWarnSpy.mockRestore();
     consoleErrorSpy.mockRestore();
   });
@@ -85,6 +88,36 @@ describe('HockeyData.getHockeySchedule — PWHL team records', () => {
 
     expect(getPWHLStandingsSpy).not.toHaveBeenCalled();
     expect(teamRecords.size).toBe(0);
+  });
+
+  it('logs each team schedule count and the distinct league total', async () => {
+    jest.spyOn(hockeyData, 'getPWHLTeamschedule').mockResolvedValue([
+      {
+        uniqueId: 'PWHL-BOS-2026-01-01-1',
+        startTimeUTC: '2026-01-01T20:00:00.000Z',
+        homeTeamId: 'PWHL-BOS',
+        awayTeamId: 'PWHL-NYR',
+      },
+    ] as any);
+
+    await hockeyData.getHockeySchedule(
+      [
+        {
+          id: 'BOS',
+          uniqueId: 'PWHL-BOS',
+          label: 'Boston Fleet',
+        },
+      ],
+      {},
+      League.PWHL,
+    );
+
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[Schedule] PWHL Boston Fleet: 1 game(s) fetched.',
+    );
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[Schedule] PWHL: fetched schedules for 1 team(s), 1 distinct game(s) across those schedules.',
+    );
   });
 
   it('falls back to the schedule replay when the standings feed is empty', async () => {
@@ -322,5 +355,122 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
     mockFeed({ '5': [game()] });
 
     await expect(hockeyData.getPWHLScores('2025-02-16')).resolves.toEqual([]);
+  });
+});
+
+/**
+ * PWHL Las Vegas code-normalization regression.
+ *
+ * The HockeyTech feed is internally inconsistent about the Las Vegas team:
+ * the `teamsbyseason` feed and the **pre-season** schedule use `VEG`, while the
+ * **regular-season** schedule and standings use `VGS` (and `LV` has appeared
+ * too). Every place that reads a team code must fold these aliases onto the
+ * canonical `VGS`, otherwise the same team is emitted under two different ids
+ * (`PWHL-VGS` vs `PWHL-VEG`) and breaks the name/colour lookup, favourites and
+ * record tallies. `VGS` is canonical because it is the regular-season code (the
+ * largest set of games).
+ */
+describe('HockeyData — PWHL Las Vegas code normalization', () => {
+  const originalFetch = global.fetch;
+
+  let hockeyData: HockeyData;
+
+  const mockFetchJson = (bodies: Record<string, any>) => {
+    global.fetch = jest.fn(async (url: string) => {
+      const u = String(url);
+      const body = u.includes('view=teamsbyseason')
+        ? bodies.teams
+        : u.includes('view=statviewtype')
+          ? bodies.standings
+          : u.includes('view=schedule')
+            ? bodies.schedule
+            : {};
+      return { json: async () => body } as any;
+    }) as any;
+  };
+
+  beforeEach(() => {
+    hockeyData = new HockeyData();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('folds the teams-feed code VEG/LV onto the canonical VGS', async () => {
+    mockFetchJson({
+      teams: {
+        SiteKit: {
+          Teamsbyseason: [
+            { code: 'VEG', name: 'PWHL Las Vegas', team_logo_url: 'lv.png' },
+            { code: 'LV', name: 'PWHL Las Vegas', team_logo_url: 'lv.png' },
+            { code: 'VGS', name: 'PWHL Las Vegas', team_logo_url: 'lv.png' },
+          ],
+        },
+      },
+      standings: {},
+    });
+
+    const teams = await hockeyData.getPWHLTeams();
+
+    // All three aliases resolve to the same canonical id.
+    expect(teams.map((t) => t.uniqueId)).toEqual([
+      'PWHL-VGS',
+      'PWHL-VGS',
+      'PWHL-VGS',
+    ]);
+    expect(teams.every((t) => t.abbrev === 'VGS')).toBe(true);
+  });
+
+  it('normalizes the schedule so a pre-season VEG game matches the VGS team', async () => {
+    mockFetchJson({
+      // Teams feed uses VGS (canonical) for Las Vegas.
+      teams: {
+        SiteKit: {
+          Teamsbyseason: [
+            { code: 'VGS', name: 'PWHL Las Vegas', team_logo_url: 'lv.png' },
+          ],
+        },
+      },
+      standings: {},
+      // Pre-season schedule uses VEG for the very same team.
+      schedule: {
+        SiteKit: {
+          Schedule: [
+            {
+              id: '500',
+              date_played: '2026-11-22',
+              GameDateISO8601: '2026-11-22T00:00:00',
+              home_team_name: 'Las Vegas',
+              home_team_nickname: 'PWHL',
+              home_team_city: 'Las Vegas',
+              home_team_code: 'VEG',
+              visiting_team_name: 'Minnesota',
+              visiting_team_nickname: 'Frost',
+              visiting_team_city: 'Minnesota',
+              visiting_team_code: 'MIN',
+              home_goal_count: '0',
+              visiting_goal_count: '0',
+              final: '0',
+              venue_name: 'Dollar Loan Center | Henderson',
+              venue_location: 'Henderson, NV',
+            },
+          ],
+        },
+      },
+    });
+
+    // Requesting the VGS team must still find the VEG-coded game.
+    const games = await hockeyData.getPWHLTeamschedule(
+      'VGS',
+      'PWHL-VGS',
+      { VGS: 'lv.png', MIN: 'min.png' } as any,
+      true,
+    );
+
+    expect(games).toHaveLength(1);
+    expect(games[0].homeTeamId).toBe('PWHL-VGS');
+    expect(games[0].homeTeamShort).toBe('VGS');
+    expect(games[0].homeTeamLogo).toBe('lv.png');
   });
 });

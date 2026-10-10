@@ -2,7 +2,100 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
-## Fixed: oldies recovery discovers historical teams without exposing them as favorites
+## Added: per-team game schedule and league refresh completion logs
+
+- **`backend/src/utils/fetchData/espnAllData.ts`** — all ESPN-backed league refreshes now log how many games were fetched for each team and a league summary of team schedules and distinct matches.
+- **`backend/src/utils/fetchData/hockeyData.ts`** — NHL and PWHL schedule refreshes emit the same per-team and league-level counts.
+- **`backend/src/games/games.service.ts`** — after saving games and cleanup, logs the final distinct fetched-game count and saved/upserted document count.
+- The separate `[fetchGamesScores] Skipping cascaded teams/leagues updates...` message is still expected during a manual refresh; it belongs to the concurrent score-recovery cycle, not the league schedule fetch.
+
+## Fixed: Olympic league-calendar slugs in `getLeagueConfig` returned ESPN 400
+
+### Problem
+
+`getLeagueConfig()` (`backend/src/utils/utils.ts`) returned broken ESPN identifiers for the Olympic
+aggregates, and those `sport`/`league` values feed `fetchLeagueDates()`'s `scoreboard` request:
+
+- **Winter** branch: `sport: 'hockey'` + `league: 'olympics.men'` → **400 Bad Request**.
+- **Summer** branch: `sport: 'basket'` (typo — ESPN expects `basketball`) + `league: 'olympics.men'`
+  → **400 Bad Request**.
+
+So `fetchLeagueDates()` never obtained a calendar for the Olympics and always fell back to the
+hard-coded month windows.
+
+**Root cause:** invalid ESPN slugs. The valid ones (verified live) are `olympics-mens-ice-hockey` /
+`olympics-womens-ice-hockey` (hockey) and `mens-olympics-basketball` / `womens-olympics-basketball`
+(basketball) — the same endpoints `leagueConfigs` uses.
+
+### Fix
+
+- **`backend/src/utils/utils.ts`** — `getLeagueConfig()` now returns a valid per-sport slug for each
+  Olympic branch (hockey vs basketball, men vs women) instead of the shared `olympics.men`/
+  `olympics.women`, and fixes the `basket` → `basketball` typo. Season boundaries
+  (`startSeason`/`endSeason`/`endPlayoffs`) are unchanged, so `isCurrentSeason`, `isPlayoffsPeriod`
+  and `getCurrentSeasonYears` keep working exactly as before.
+- **`backend/src/utils/utils.spec.ts`** — updated the assertions that expected the old broken values
+  and added a regression test asserting every Olympic combination produces a valid scoreboard URL.
+
+
+
+### Problem
+
+The oldies recovery for `OLYMPICS-MEN` / `OLYMPICS-WOMEN` logged:
+
+```
+[ESPN] Skipping 400 Bad Request non-JSON for
+.../basketball/olympics-mens-basketball/scoreboard?dates=2024&limit=1000&page=1
+— body preview: {"code":400,"message":"Failed to get events endpoint."}
+```
+
+so no Olympic basketball game was ever recovered (the crawl silently returned nothing).
+
+**Root cause:** the ESPN league slugs for Olympic basketball were spelled `olympics-mens-basketball` /
+`olympics-womens-basketball`. ESPN rejects that word order with a `400` regardless of query params —
+the valid slugs are `mens-olympics-basketball` / `womens-olympics-basketball` (the words are swapped).
+
+### Fix
+
+- **`backend/src/utils/fetchData/espnAllData.ts`** — corrected the two `leagueConfigs` entries used by
+  both the per-team scoreboard fetch and the `getOlympicSeasonTeams()` oldies discovery:
+  `olympics-mens-basketball` → `mens-olympics-basketball`, `olympics-womens-basketball` →
+  `womens-olympics-basketball`. (The Olympic hockey slugs were already correct and are unchanged.)
+- **`backend/src/utils/fetchData/espnAllData.spec.ts`** — added a regression test asserting every
+  basketball scoreboard request uses a valid `(mens|womens)-olympics-basketball` slug and never the
+  rejected `olympics-(mens|womens)-basketball` one.
+
+
+
+### Problem
+
+The same Las Vegas PWHL team appeared with two different abbreviations depending on the feed: `VEG`
+on a pre-season game and `VGS` on a regular-season game, so the team-name lookup, colors, favourites
+and record tally all disagreed for what is one and the same team.
+
+**Root cause:** the HockeyTech feed is internally inconsistent about the Las Vegas team — the
+`teamsbyseason` feed and the **pre-season** schedule use `VEG`, while the **regular-season** schedule
+and its standings use `VGS` (and `LV` has appeared too). Every consumer built `homeTeamId` /
+`homeTeamShort` directly from the raw `home_team_code` / `visiting_team_code`, so the alias leaked
+straight through into the team id.
+
+### Fix
+
+Canonical code is **`VGS`** (the regular-season reference, i.e. the feed with the most games).
+
+- **`backend/src/utils/fetchData/hockeyData.ts`** — added `normalizePWHLCode()` with a
+  `PWHL_CODE_ALIASES` map (`VEG → VGS`, `LV → VGS`) and applied it at every read site: the teams
+  feed, the standings feed, the per-team schedule filter, `getPWHLTeamschedule()`,
+  `applyPWHLHistoricalRecords()` and `getPWHLScores()`. All feeds now fold onto the canonical `VGS`.
+- **`backend/src/utils/ColorsTeam.ts`** and **`frontend/constants/ColorsTeam.tsx`** — Las Vegas
+  colors moved from `PWHL-VEG` to the canonical `PWHL-VGS`; the stray, never-referenced `PWHL-LV`
+  duplicate in the frontend was removed so `PWHL-VGS` is the single source of truth.
+- **`frontend/constants/Teams.tsx`** — the Las Vegas display name moved from `PWHL-VEG` to
+  `PWHL-VGS`.
+- **`backend/src/utils/fetchData/hockeyData.spec.ts`** — added a regression suite asserting the
+  teams feed and a pre-season `VEG` schedule both resolve to `PWHL-VGS`.
+
+
 
 - **`backend/src/utils/fetchData/espnAllData.ts`** — Olympic oldies scans the selected season's scoreboard for each sport in an aggregate league, discovering past participants even when absent from the current roster. Aggregate schedules route each team only to its own sport. Normalized ESPN games retain the source home/away team IDs.
 - **`backend/src/games/games.service.ts`** — oldies upserts missing teams referenced by imported games as `isActive: false`, including retired teams such as the Arizona Coyotes. Olympic scoreboard discoveries are also stored inactive before the schedule crawl. Existing team records are not overwritten.
