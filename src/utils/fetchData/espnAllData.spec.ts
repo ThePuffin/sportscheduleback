@@ -309,101 +309,147 @@ describe('fetchJsonOrNull', () => {
 
   const jsonResponse = { events: [{ id: '1', date: '2026-01-01T00:00:00Z' }] };
 
+  const jsonRes = {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    headers: {
+      get: (name) =>
+        name === 'content-type' ? 'application/json; charset=UTF-8' : null,
+    },
+    json: () => Promise.resolve(jsonResponse),
+  };
+
+  // A retryable block: ESPN's Akamai edge returns an HTML "Access Denied" page
+  // with either 403 (bot-block) or 429 (explicit rate-limit).
+  const blocked = (status, retryAfter = null) => ({
+    ok: false,
+    status,
+    statusText: status === 403 ? 'Forbidden' : 'Too Many Requests',
+    headers: {
+      get: (name) =>
+        name === 'content-type'
+          ? 'text/html'
+          : name === 'retry-after'
+            ? retryAfter
+            : null,
+    },
+    text: () => Promise.resolve('<HTML><HEAD><TITLE>Access Denied</TITLE>'),
+  });
+
+  // fetchJsonOrNull backs off with real setTimeout between retries. Drive fake
+  // timers so those waits fire instantly (flushing microtasks in between) until
+  // the promise settles, instead of sleeping for the actual backoff duration.
+  const settle = async (promise) => {
+    let done = false;
+    promise.then(
+      () => (done = true),
+      () => (done = true),
+    );
+    for (let i = 0; i < 200 && !done; i++) {
+      await jest.advanceTimersByTimeAsync(1000);
+    }
+    return promise;
+  };
+
   beforeEach(() => {
+    jest.useFakeTimers();
     fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockImplementation(() => Promise.resolve(new Response(null)));
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     fetchSpy.mockRestore();
+    jest.restoreAllMocks();
   });
 
   it('returns parsed JSON for a 2xx response with a JSON content-type', async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      headers: { get: (name) => (name === 'content-type' ? 'application/json; charset=UTF-8' : null) },
-      json: () => Promise.resolve(jsonResponse),
-    });
+    fetchSpy.mockResolvedValueOnce(jsonRes);
 
-    const result = await fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2');
+    const result = await settle(
+      fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2'),
+    );
 
     expect(result).toBe(jsonResponse);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('returns null instead of throwing when the response is 4xx/5xx with an HTML body', async () => {
-    fetchSpy.mockResolvedValueOnce({
-      ok: false,
-      status: 403,
-      statusText: 'Forbidden',
-      headers: { get: (name) => (name === 'content-type' ? 'text/html' : null) },
-      text: () => Promise.resolve('<HTML><HEA</HTML>'),
-    });
+  it('fails open (null) without retrying on a genuine non-retryable error (404)', async () => {
+    fetchSpy.mockResolvedValueOnce(blocked(404));
 
-    const result = await fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=1');
+    const result = await settle(
+      fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=1'),
+    );
 
     expect(result).toBeNull();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('retries once on 429, then returns null when still rate limited', async () => {
-    const rateLimited = {
-      ok: false,
-      status: 429,
-      statusText: 'Too Many Requests',
-      headers: {
-        get: (name) =>
-          name === 'content-type' ? 'text/html' : name === 'retry-after' ? '1' : null,
-      },
-      text: () => Promise.resolve('<html>rate limited</html>'),
-    };
-    fetchSpy
-      .mockResolvedValueOnce(rateLimited)
-      .mockResolvedValueOnce(rateLimited);
+  it('retries a transient 403 bot-block and returns JSON once it lifts', async () => {
+    fetchSpy.mockResolvedValueOnce(blocked(403)).mockResolvedValueOnce(jsonRes);
 
-    const result = await fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2');
-
-    expect(result).toBeNull();
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-  });
-
-  it('returns parsed JSON on the retry when the 429 is lifted', async () => {
-    const rateLimited = {
-      ok: false,
-      status: 429,
-      statusText: 'Too Many Requests',
-      headers: {
-        get: (name) =>
-          name === 'content-type' ? 'text/html' : name === 'retry-after' ? '1' : null,
-      },
-      text: () => Promise.resolve('<html>rate limited</html>'),
-    };
-    fetchSpy
-      .mockResolvedValueOnce(rateLimited)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        headers: { get: (name) => (name === 'content-type' ? 'application/json; charset=UTF-8' : null) },
-        json: () => Promise.resolve(jsonResponse),
-      });
-
-    const result = await fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2');
+    const result = await settle(
+      fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2'),
+    );
 
     expect(result).toBe(jsonResponse);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a transient 429 rate-limit and returns JSON once it lifts', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(blocked(429, '0'))
+      .mockResolvedValueOnce(jsonRes);
+
+    const result = await settle(
+      fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2'),
+    );
+
+    expect(result).toBe(jsonResponse);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up (null) after exhausting retries on a persistent 403', async () => {
+    fetchSpy.mockImplementation(() => Promise.resolve(blocked(403)));
+
+    const result = await settle(
+      fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2'),
+    );
+
+    expect(result).toBeNull();
+    // 1 initial call + ESPN_MAX_RETRIES (2) retries.
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('throttles the skip warning instead of logging one line per blocked URL', async () => {
+    fetchSpy.mockImplementation(() => Promise.resolve(blocked(403)));
+    const warnSpy = console.warn as jest.Mock;
+
+    for (let i = 0; i < 30; i++) {
+      await settle(
+        fetchJsonOrNull(`https://site.api.espn.com/teams/${i}/schedule?seasontype=2`),
+      );
+    }
+
+    // The module-level skip counter means we can't assert an exact number here,
+    // but any window of 30 consecutive skips contains at most one "first" log
+    // plus the multiples of 25 (at most two) — never one line per URL.
+    expect(warnSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(warnSpy.mock.calls.length).toBeLessThanOrEqual(3);
   });
 
   it('throws after exhausting retries on a network-level failure', async () => {
-    fetchSpy.mockRejectedValueOnce(new Error('network down'));
-    fetchSpy.mockRejectedValueOnce(new Error('network down'));
+    fetchSpy.mockImplementation(() => Promise.reject(new Error('network down')));
 
     await expect(
-      fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2'),
+      settle(
+        fetchJsonOrNull('https://site.api.espn.com/teams/302/schedule?seasontype=2'),
+      ),
     ).rejects.toThrow('network down');
+    // fetchWithRetry itself retries once (2 calls); the throw propagates.
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });

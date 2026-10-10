@@ -2,6 +2,51 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: flood of `[ESPN] Skipping 403 Forbidden` during oldies recovery — ESPN Akamai bot-block is now retried, not dropped
+
+### Problem
+
+The "Oldies" recovery (`POST /games/refresh/oldies?year=...&league=...`) logged a wall of identical
+errors and silently lost games, e.g.:
+
+```
+[Oldies] Fetching league WNCAAB for the year 2021...
+Data for WNCAAB is stale. Refreshing in background...
+[ESPN] Skipping 403 Forbidden non-JSON for .../womens-college-basketball/teams/2193/schedule?seasontype=2&season=2021 — body preview: <HTML>...Access Denied...
+[ESPN] Skipping 403 Forbidden non-JSON for .../teams/2197/schedule?seasontype=1&season=2021 — ...
+... (one line per team × 3 season types)
+```
+
+**Root cause:** ESPN sits behind **Akamai**. A single request returns `200` (verified), but a
+burst — and the oldies crawl fires **hundreds** of `teams/{id}/schedule` calls back-to-back
+(~350 D1 teams × 3 `seasontype` values × several years) — is answered with a transient
+**HTTP 403 "Access Denied" HTML page**. That 403 is functionally a **soft rate-limit / bot-block**,
+not a real "team not found". `fetchJsonOrNull()` only retried a `429`; it treated `403` as terminal,
+so it just logged a warning and returned `null`, **dropping that team's games for the whole run** and
+emitting one log line per blocked team (the flood).
+
+### Changes
+
+- **`backend/src/utils/fetchData/espnAllData.ts`**
+  - `fetchJsonOrNull()` — `403` is now retried exactly like `429`: both are considered transient and
+    retried up to `ESPN_MAX_RETRIES` (2) times with exponential backoff (`500ms`, `1000ms`), honouring
+    the `Retry-After` header when present and capping the wait at 15 s. A genuine non-retryable status
+    (e.g. `404`) still fails open immediately. This recovers the games instead of dropping them.
+  - The `[ESPN] Skipping …` warning is **throttled** (`ESPN_SKIP_LOG_EVERY = 25`): the first skip is
+    logged in full, then only every 25th, so a large blocked crawl no longer floods the console.
+  - `fetchWithTimeout()` now sends a browser-like `User-Agent` + `Accept`
+    (`ESPN_DEFAULT_HEADERS`) so Akamai does not classify the request as a bot.
+  - `getTeamsSchedule()` inserts a small pacing gap (`ESPN_TEAM_BATCH_DELAY_MS = 120`) between the
+    concurrency-2 team batches, keeping the request rate under Akamai's threshold to avoid tripping
+    the block in the first place.
+- **`backend/src/utils/fetchData/espnAllData.spec.ts`** — `fetchJsonOrNull` suite rewritten around the
+  new behaviour: retries transient 403/429 and returns JSON once lifted, fails open immediately on 404,
+  gives up (`null`) after exhausting retries on a persistent 403, throttles the skip warning, and still
+  throws on a network-level failure. Uses Jest fake timers (`advanceTimersByTimeAsync`) so the backoff
+  waits resolve instantly.
+- **`backend/docs/utils/fetchData/espnAllData.ts.md`** — documents the transient-403 handling, the
+  throttled skip warning, the browser-like default headers, and the crawl pacing.
+
 ## Fixed: dependency vulnerabilities (non-breaking `npm audit fix`) + mongoose driver type bump
 
 `npm audit fix` (no `--force`, so no breaking semver bumps of our own deps) removed the **1 critical** advisory and several highs: **79 → 63 vulnerabilities (4 low, 18 moderate, 41 high)**. The critical was `proxy-addr <2.0.8` (IP-spoofing via IPv4-mapped IPv6 trust subnet, CVSS 9.1), pulled in transitively through `@nestjs/platform-express` → `express`; it is now gone. Transitive `mongodb` (`6.14.2 → 6.20.0`) and `mongoose` (`8.9.5 → 8.24.5`) were also refreshed.

@@ -12,6 +12,20 @@ const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
 // refresh for an unbounded amount of time (undici's default is very long).
 const ESPN_FETCH_TIMEOUT_MS = 15000;
 
+// Small pacing gap between per-team batches in getTeamsSchedule(): without it
+// the oldies crawl fires hundreds of team-schedule requests back-to-back and
+// ESPN's Akamai edge starts answering with transient 403 "Access Denied" pages.
+const ESPN_TEAM_BATCH_DELAY_MS = 120;
+
+// A browser-like identity: ESPN's Akamai edge is known to answer some
+// headerless / bot-like requests with a 403 "Access Denied" HTML page. Sending a
+// normal User-Agent + Accept keeps us on the fast path.
+const ESPN_DEFAULT_HEADERS: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  Accept: 'application/json, text/plain, */*',
+};
+
 const fetchWithTimeout = (
   url: string,
   timeoutMs: number = ESPN_FETCH_TIMEOUT_MS,
@@ -19,7 +33,11 @@ const fetchWithTimeout = (
 ) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  const mergedOptions: RequestInit = { ...options, signal: controller.signal };
+  const mergedOptions: RequestInit = {
+    ...options,
+    headers: { ...ESPN_DEFAULT_HEADERS, ...(options.headers || {}) },
+    signal: controller.signal,
+  };
   return fetch(url, mergedOptions).finally(() => clearTimeout(timeout));
 };
 
@@ -44,39 +62,65 @@ const fetchWithRetry = async (url: string, retries = 1) => {
 
 // Fetches ESPN with the global timeout + one retry, then parses JSON only when
 // the response is a successful JSON payload. Fails open (returns null) for
-// non-2xx or non-JSON responses (e.g. ESPN HTML rate-limit / bot-block pages or
-// team-not-found redirects) so a single bad response can never abort the whole
-// refresh. A 429 is retried once, honouring the `Retry-After` header when
-// present, before falling back to the safe path.
+// non-2xx or non-JSON responses so a single bad response can never abort the
+// whole refresh.
+//
+// ESPN sits behind Akamai, which answers request bursts (the oldies crawl fires
+// hundreds of team-schedule calls back-to-back) with a transient HTTP 403
+// "Access Denied" HTML page — functionally a soft rate-limit / bot-block, NOT a
+// real "not found". We therefore treat 403 exactly like 429: back off and retry
+// a couple of times before giving up, so a momentary block no longer silently
+// drops a whole team's games.
+const ESPN_RETRYABLE_STATUSES = new Set([403, 429]);
+const ESPN_MAX_RETRIES = 2;
+
+// Throttle the "Skipping" warning so a big crawl that really is blocked logs the
+// first failure in full, then only every Nth one instead of one line per team.
+let espnSkipCount = 0;
+const ESPN_SKIP_LOG_EVERY = 25;
+
 export const fetchJsonOrNull = async (url: string): Promise<any> => {
-  const res = await fetchWithRetry(url);
-  const ct = res.headers.get('content-type') || '';
-  if (res.ok && ct.includes('json')) {
-    return res.json();
-  }
-  if (res.status === 429) {
+  let res = await fetchWithRetry(url);
+
+  for (let attempt = 0; attempt < ESPN_MAX_RETRIES; attempt++) {
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.includes('json')) {
+      return res.json();
+    }
+    if (!ESPN_RETRYABLE_STATUSES.has(res.status)) {
+      break;
+    }
+
+    // Rate-limited / bot-blocked: honour Retry-After when present, else a short
+    // exponential backoff. Cap the wait so a stubborn block can't stall the run.
     const retryAfter = res.headers.get('retry-after');
     const ms =
       retryAfter && !Number.isNaN(Number(retryAfter))
         ? Number(retryAfter) * 1000
-        : 500;
+        : 500 * (attempt + 1);
     await new Promise((resolve) => setTimeout(resolve, Math.min(ms, 15000)));
-    const again = await fetchWithRetry(url);
-    if (again.ok && again.headers.get('content-type')?.includes('json')) {
-      return again.json();
-    }
-    const body = await again.text().catch(() => '');
-    const snippet = body.slice(0, 160).replace(/\s+/g, ' ');
-    console.warn(
-      `[ESPN] Skipping 429 for ${url} — body preview: ${snippet}`,
-    );
-    return null;
+    res = await fetchWithRetry(url);
   }
+
+  const ct = res.headers.get('content-type') || '';
+  if (res.ok && ct.includes('json')) {
+    return res.json();
+  }
+
   const body = await res.text().catch(() => '');
   const snippet = body.slice(0, 160).replace(/\s+/g, ' ');
-  console.warn(
-    `[ESPN] Skipping ${res.status} ${res.statusText} ${ct ? 'non-JSON' : 'HTTP'} for ${url} — body preview: ${snippet}`,
-  );
+  espnSkipCount++;
+  if (
+    espnSkipCount === 1 ||
+    espnSkipCount % ESPN_SKIP_LOG_EVERY === 0
+  ) {
+    console.warn(
+      `[ESPN] Skipping ${res.status} ${res.statusText} ${ct ? 'non-JSON' : 'HTTP'} for ${url} — body preview: ${snippet}` +
+        (espnSkipCount > 1
+          ? ` (skip #${espnSkipCount}; further skips logged every ${ESPN_SKIP_LOG_EVERY})`
+          : ''),
+    );
+  }
   return null;
 };
 
@@ -786,6 +830,14 @@ export const getTeamsSchedule = async (
   const concurrencyLimit = 2;
 
   for (let start = 0; start < activeTeams.length; start += concurrencyLimit) {
+    // Pace the crawl: a short gap between batches keeps ESPN's Akamai edge from
+    // rate-limiting / bot-blocking us (transient 403 "Access Denied" pages) when
+    // the oldies recovery fires hundreds of team-schedule calls in a row.
+    if (start > 0 && ESPN_TEAM_BATCH_DELAY_MS > 0) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, ESPN_TEAM_BATCH_DELAY_MS),
+      );
+    }
     const batch = activeTeams.slice(start, start + concurrencyLimit);
     await Promise.all(
       batch.map(async ({ id, abbrev, uniqueId }) => {
