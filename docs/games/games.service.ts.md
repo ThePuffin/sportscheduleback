@@ -9,6 +9,7 @@ This is the core business logic module for games. It fetches schedules and score
 - **Game import and refresh** — pulls schedule data for leagues and stores it in MongoDB.
 - **Live score updates** — updates ongoing games with score and status data
 - **Data enrichment** — attaches team names, logos, records and colors
+- **Olympic logo enrichment** — derives a missing country flag from the Olympic team code at response time, including for legacy game records whose stored logo is empty
 - **Query helpers** — returns upcoming games, results, date-range data and hour-grouped schedules
 - **Maintenance logic** — removes duplicates, old games and invalid score records, and purges stale
   active games whose final result can no longer be recovered. `_deleteGamesOfPurgedTeams()` also

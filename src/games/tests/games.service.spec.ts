@@ -348,6 +348,56 @@ describe('GameService', () => {
     });
   });
 
+  describe('_enrichGameWithTeamData Olympic logos', () => {
+    it('uses gender-independent country flags for missing team and game logos', () => {
+      const enriched = (service as any)._enrichGameWithTeamData(
+        {
+          homeTeamId: 'OLYMPICS-WOMEN-FIN-W',
+          homeTeamShort: 'FIN-W',
+          homeTeamLogo: '',
+          homeTeamLogoDark: '',
+          awayTeamId: 'OLYMPICS-MEN-KOR-M',
+          awayTeamShort: 'KOR-M',
+          awayTeamLogo: '',
+          awayTeamLogoDark: '',
+        },
+        new Map(),
+      );
+
+      expect(enriched.homeTeamLogo).toBe(
+        'https://a.espncdn.com/i/teamlogos/countries/500/fin.png',
+      );
+      expect(enriched.homeTeamLogoDark).toBe(enriched.homeTeamLogo);
+      expect(enriched.awayTeamLogo).toBe(
+        'https://a.espncdn.com/i/teamlogos/countries/500/kor.png',
+      );
+      expect(enriched.awayTeamLogoDark).toBe(enriched.awayTeamLogo);
+    });
+
+    it('preserves existing logos for non-Olympic games', () => {
+      const game = {
+        homeTeamId: 'NHL-BOS',
+        homeTeamShort: 'BOS',
+        homeTeamLogo: 'https://example.test/bos.png',
+        homeTeamLogoDark: 'https://example.test/bos-dark.png',
+        awayTeamId: 'NHL-TOR',
+        awayTeamShort: 'TOR',
+        awayTeamLogo: 'https://example.test/tor.png',
+        awayTeamLogoDark: 'https://example.test/tor-dark.png',
+      };
+
+      const enriched = (service as any)._enrichGameWithTeamData(
+        game,
+        new Map(),
+      );
+
+      expect(enriched.homeTeamLogo).toBe(game.homeTeamLogo);
+      expect(enriched.homeTeamLogoDark).toBe(game.homeTeamLogoDark);
+      expect(enriched.awayTeamLogo).toBe(game.awayTeamLogo);
+      expect(enriched.awayTeamLogoDark).toBe(game.awayTeamLogoDark);
+    });
+  });
+
   describe('refreshCurrentSeasonRecords', () => {
     afterEach(() => {
       jest.restoreAllMocks();

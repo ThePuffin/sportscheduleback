@@ -2,9 +2,12 @@ import {
   applySeasonFinalRecords,
   extractCompetitorRecord,
   fetchJsonOrNull,
+  getOlympicTeamLogo,
   getOlympicSeasonTeams,
   getSeasonFinals,
   getTeamsSchedule,
+  isD1Groups,
+  NCAAMH_D1_TEAMS,
   resolveScheduleGameStatus,
 } from './espnAllData';
 
@@ -406,6 +409,25 @@ describe('getOlympicSeasonTeams', () => {
   });
 });
 
+describe('getOlympicTeamLogo', () => {
+  it.each([
+    ['OLYMPICS-MEN', 'KOR-W', 'kor'],
+    ['OLYMPICS-WOMEN', 'KOR-W', 'kor'],
+    ['OLYMPICS-MEN', 'CHN-M', 'chn'],
+    ['OLYMPICS-WOMEN', 'CHN-W', 'chn'],
+    ['OLYMPICS-WOMEN', 'ROC-W', 'roc'],
+  ])('resolves %s team code %s to its ESPN flag', (league, abbrev, code) => {
+    expect(getOlympicTeamLogo(league, abbrev)).toBe(
+      `https://a.espncdn.com/i/teamlogos/countries/500/${code}.png`,
+    );
+  });
+
+  it('does not apply country-flag fallbacks outside Olympic leagues', () => {
+    expect(getOlympicTeamLogo('NHL', 'KOR')).toBe('');
+    expect(getOlympicTeamLogo('OLYMPICS-MEN', 'UNKNOWN')).toBe('');
+  });
+});
+
 describe('fetchJsonOrNull', () => {
   let fetchSpy;
 
@@ -553,5 +575,89 @@ describe('fetchJsonOrNull', () => {
     ).rejects.toThrow('network down');
     // fetchWithRetry itself retries once (2 calls); the throw propagates.
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * D1 filtering regression.
+ *
+ * For every college league except men's hockey, ESPN's `groups.parent.id` is a
+ * reliable D1 marker, so `isD1Groups()` keeps a team when its group parent id
+ * is one of the D1 parents and drops it otherwise (never on a missing group —
+ * a transient fetch failure must not drop a team).
+ *
+ * Men's college hockey (NCAAMH) is the exception: ESPN reports `parent.id = 51`
+ * for D1, D3 and Canadian U Sports programs alike, and `isConference` is true
+ * for several non-D1 programs too, so neither marker can be trusted. NCAAMH is
+ * therefore filtered by the explicit `NCAAMH_D1_TEAMS` allowlist.
+ */
+describe('isD1Groups', () => {
+  describe('parent-id leagues (NCAAF/NCAAB/WNCAAB/NCCABB)', () => {
+    it('keeps a D1 team (NCAAB parent 50)', () => {
+      expect(
+        isD1Groups('NCAAB', { id: '100', parent: { id: '50' } }, 'DUKE'),
+      ).toBe(true);
+    });
+
+    it('drops a non-D1 team (NCAAB under a non-50 parent)', () => {
+      expect(
+        isD1Groups('NCAAB', { id: '99', parent: { id: '49' } }, 'D3TEAM'),
+      ).toBe(false);
+    });
+
+    it('keeps FBS and FCS football (parents 80/81)', () => {
+      expect(isD1Groups('NCAAF', { id: '1', parent: { id: '80' } }, 'ALA')).toBe(true);
+      expect(isD1Groups('NCAAF', { id: '1', parent: { id: '81' } }, 'NDSU')).toBe(true);
+      expect(isD1Groups('NCAAF', { id: '1', parent: { id: '35' } }, 'D3')).toBe(false);
+    });
+
+    it('keeps a team with no groups info (transient fetch failure)', () => {
+      expect(isD1Groups('NCAAB', undefined, 'DUKE')).toBe(true);
+    });
+  });
+
+  describe('men\u2019s college hockey (NCAAMH) allowlist', () => {
+    it('keeps a D1 program even though ESPN reports parent.id 51 for it', () => {
+      // Adrian/Middlebury-style D3 teams also report parent 51, so the marker
+      // alone is not enough: the allowlist is what decides.
+      expect(
+        isD1Groups('NCAAMH', { id: '58', parent: { id: '51' } }, 'MIDB'),
+      ).toBe(false);
+      expect(
+        isD1Groups('NCAAMH', { id: '62', parent: { id: '51' } }, 'MICH'),
+      ).toBe(true);
+    });
+
+    it('drops known non-D1 programs (D3 / U Sports)', () => {
+      for (const ab of ['ADR', 'CORTLAND', 'LAUREN', 'TRNE', 'WORC', 'UWEC']) {
+        expect(NCAAMH_D1_TEAMS.has(ab)).toBe(false);
+        expect(
+          isD1Groups('NCAAMH', { id: '58', parent: { id: '51' } }, ab),
+        ).toBe(false);
+      }
+    });
+
+    it('keeps known D1 programs across every conference + independents', () => {
+      for (const ab of [
+        'MICH', // Big Ten
+        'DEN', // NCHC
+        'BC', // Hockey East
+        'QUIN', // ECAC
+        'MNST', // CCHA
+        'RIT', // Atlantic Hockey
+        'UAA', // Independent
+      ]) {
+        expect(NCAAMH_D1_TEAMS.has(ab)).toBe(true);
+      }
+    });
+
+    it('contains exactly the 64 D1 programs', () => {
+      expect(NCAAMH_D1_TEAMS.size).toBe(64);
+    });
+
+    it('keeps a team with no groups info (transient fetch failure)', () => {
+      expect(isD1Groups('NCAAMH', undefined, 'MICH')).toBe(true);
+      expect(isD1Groups('NCAAMH', undefined, undefined)).toBe(true);
+    });
   });
 });

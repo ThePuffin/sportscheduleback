@@ -18,6 +18,7 @@ import {
 import {
   getESPNGameScore,
   getESPNScores,
+  getOlympicTeamLogo,
   getOlympicSeasonTeams,
   getSeasonFinals,
   getTeamRecordFromSchedule,
@@ -208,18 +209,36 @@ export class GameService {
         homeTeam?.teamLogo ||
         game.homeTeamLogo ||
         UniversityLogos[homeTeam?.abbrev || game.homeTeamShort || ''] ||
-        '',
+        getOlympicTeamLogo(
+          game.homeTeamId,
+          homeTeam?.abbrev || game.homeTeamShort,
+        ),
       homeTeamLogoDark:
         homeTeam?.teamLogoDark ||
         game.homeTeamLogoDark ||
         UniversityLogos[homeTeam?.abbrev || game.homeTeamShort || ''] ||
-        '',
+        getOlympicTeamLogo(
+          game.homeTeamId,
+          homeTeam?.abbrev || game.homeTeamShort,
+        ),
       homeTeamColor: homeTeamColors.color,
       homeTeamBackgroundColor: homeTeamColors.backgroundColor,
       awayTeam: awayTeam?.label || game.awayTeam,
       awayTeamShort: awayTeam?.abbrev || game.awayTeamShort,
-      awayTeamLogo: awayTeam?.teamLogo || game.awayTeamLogo,
-      awayTeamLogoDark: awayTeam?.teamLogoDark || game.awayTeamLogoDark,
+      awayTeamLogo:
+        awayTeam?.teamLogo ||
+        game.awayTeamLogo ||
+        getOlympicTeamLogo(
+          game.awayTeamId,
+          awayTeam?.abbrev || game.awayTeamShort,
+        ),
+      awayTeamLogoDark:
+        awayTeam?.teamLogoDark ||
+        game.awayTeamLogoDark ||
+        getOlympicTeamLogo(
+          game.awayTeamId,
+          awayTeam?.abbrev || game.awayTeamShort,
+        ),
       awayTeamColor: awayTeamColors.color,
       awayTeamBackgroundColor: awayTeamColors.backgroundColor,
     };

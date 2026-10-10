@@ -5183,6 +5183,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#ede939',
     backgroundColor: '#000000',
   },
+  'OLYMPICS-BASKETBALL-MEN-ARG': {
+    color: '#9fcfff',
+    backgroundColor: '#0a2f41',
+  },
   'OLYMPICS-BASKETBALL-MEN-AUS': {
     color: '#dabf00',
     backgroundColor: '#213a36',
@@ -5194,6 +5198,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   'OLYMPICS-BASKETBALL-MEN-CAN': {
     color: '#ed174b',
     backgroundColor: '#c60000',
+  },
+  'OLYMPICS-BASKETBALL-MEN-CZE': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
   },
   'OLYMPICS-BASKETBALL-MEN-ESP': {
     color: '#F1BF00',
@@ -5211,13 +5219,29 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#ffffff',
     backgroundColor: '#295da8',
   },
+  'OLYMPICS-BASKETBALL-MEN-IRI': {
+    color: '#F1F2F3',
+    backgroundColor: '#C60000',
+  },
+  'OLYMPICS-BASKETBALL-MEN-ITA': {
+    color: '#0064AA',
+    backgroundColor: '#E30521',
+  },
   'OLYMPICS-BASKETBALL-MEN-JPN': {
     color: '#BC002D',
+    backgroundColor: '#000000',
+  },
+  'OLYMPICS-BASKETBALL-MEN-NGR': {
+    color: '#C60000',
     backgroundColor: '#000000',
   },
   'OLYMPICS-BASKETBALL-MEN-PUR': {
     color: '#0537e4',
     backgroundColor: '#C60000',
+  },
+  'OLYMPICS-BASKETBALL-MEN-SLO': {
+    color: '#005DA4',
+    backgroundColor: '#ED1C24',
   },
   'OLYMPICS-BASKETBALL-MEN-SRB': {
     color: '#C6363C',
@@ -5263,6 +5287,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#BC002D',
     backgroundColor: '#000000',
   },
+  'OLYMPICS-BASKETBALL-WOMEN-KOR': {
+    color: '#CD2E3A',
+    backgroundColor: '#000000',
+  },
   'OLYMPICS-BASKETBALL-WOMEN-NGA': {
     color: '#C60000',
     backgroundColor: '#000000',
@@ -5281,91 +5309,111 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
   },
   'OLYMPICS-HOCKEY-MEN-CAN': {
     color: '#ffffff',
+    backgroundColor: '#c60000',
+  },
+  'OLYMPICS-HOCKEY-MEN-CHN': {
+    color: '#ffffff',
     backgroundColor: '#000000',
   },
   'OLYMPICS-HOCKEY-MEN-CZE': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
+    color: '#d52b1e',
+    backgroundColor: '#11457e',
   },
   'OLYMPICS-HOCKEY-MEN-DEN': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#c60000',
   },
   'OLYMPICS-HOCKEY-MEN-FIN': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#002f6c',
   },
   'OLYMPICS-HOCKEY-MEN-FRA': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#052789',
   },
   'OLYMPICS-HOCKEY-MEN-GER': {
-    color: '#ffffff',
+    color: '#dd0000',
     backgroundColor: '#000000',
   },
   'OLYMPICS-HOCKEY-MEN-ITA': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#0064aa',
   },
   'OLYMPICS-HOCKEY-MEN-LAT': {
+    color: '#ffffff',
+    backgroundColor: '#9e3039',
+  },
+  'OLYMPICS-HOCKEY-MEN-ROC': {
     color: '#ffffff',
     backgroundColor: '#000000',
   },
   'OLYMPICS-HOCKEY-MEN-SUI': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#d52b1e',
   },
   'OLYMPICS-HOCKEY-MEN-SVK': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#0b4ea2',
   },
   'OLYMPICS-HOCKEY-MEN-SWE': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
+    color: '#fecc00',
+    backgroundColor: '#004b87',
   },
   'OLYMPICS-HOCKEY-MEN-USA': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#002868',
   },
   'OLYMPICS-HOCKEY-WOMEN-CAN': {
+    color: '#ffffff',
+    backgroundColor: '#c60000',
+  },
+  'OLYMPICS-HOCKEY-WOMEN-CHN': {
     color: '#ffffff',
     backgroundColor: '#000000',
   },
   'OLYMPICS-HOCKEY-WOMEN-CZE': {
+    color: '#d52b1e',
+    backgroundColor: '#11457e',
+  },
+  'OLYMPICS-HOCKEY-WOMEN-DEN': {
     color: '#ffffff',
     backgroundColor: '#000000',
   },
   'OLYMPICS-HOCKEY-WOMEN-FIN': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#002f6c',
   },
   'OLYMPICS-HOCKEY-WOMEN-FRA': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#052789',
   },
   'OLYMPICS-HOCKEY-WOMEN-GER': {
-    color: '#ffffff',
+    color: '#dd0000',
     backgroundColor: '#000000',
   },
   'OLYMPICS-HOCKEY-WOMEN-ITA': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#0064aa',
   },
   'OLYMPICS-HOCKEY-WOMEN-JPN': {
+    color: '#ffffff',
+    backgroundColor: '#bc002d',
+  },
+  'OLYMPICS-HOCKEY-WOMEN-ROC': {
     color: '#ffffff',
     backgroundColor: '#000000',
   },
   'OLYMPICS-HOCKEY-WOMEN-SUI': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#d52b1e',
   },
   'OLYMPICS-HOCKEY-WOMEN-SWE': {
-    color: '#ffffff',
-    backgroundColor: '#000000',
+    color: '#fecc00',
+    backgroundColor: '#004b87',
   },
   'OLYMPICS-HOCKEY-WOMEN-USA': {
     color: '#ffffff',
-    backgroundColor: '#000000',
+    backgroundColor: '#002868',
   },
   'PWHL-BOS': {
     color: '#b3e2d8',

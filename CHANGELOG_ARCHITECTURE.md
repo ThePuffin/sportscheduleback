@@ -2,6 +2,50 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: men's college hockey (NCAAMH) now keeps only the 64 true D1 programs
+
+### Problem
+
+The D1 filter trusted ESPN's per-team `groups.parent.id`. For men's college hockey that marker is
+worthless: **every** NCAAMH team — D1, D3 and Canadian U-Sports alike (Adrian, Middlebury, SUNY
+Cortland, Laurentian, UW-Eau Claire…) — reports `groups.parent.id = "51"`, and `groups.isConference`
+has false positives too (Findlay, Wayne State, St. Olaf, Post, Saint Anselm…). So `parent.id = 51`
+admitted 107 "D1" teams when only **64** actually play Division-1 hockey. Those non-D1 programs leaked
+into the roster and the schedule.
+
+### Fix
+
+- **`backend/src/utils/fetchData/espnAllData.ts`** — removed `[CollegeLeague.NCAAMH]: ['51']` from
+  `D1_PARENT_IDS` and added an exported **`NCAAMH_D1_TEAMS`** `ReadonlySet<string>` of the 64 D1
+  programs (grouped by conference: Big Ten, NCHC, Hockey East, ECAC, CCHA, Atlantic Hockey, plus the
+  D1 independents). `isD1Groups(leagueName, groups, teamAbbrev?)` now delegates NCAAMH to that
+  allowlist — a team is kept only when its ESPN abbreviation is listed — while every other college
+  league keeps using the parent-id test. Fail-open is preserved: a team with no `groups` info **and**
+  no abbreviation (transient detail-fetch failure) is still kept, never dropped on a network error.
+  `getESPNTeams()` now passes `team.abbrev` into the check.
+- **`backend/src/utils/fetchData/espnAllData.spec.ts`** — new `describe('isD1Groups')` block: parent-id
+  leagues unchanged, NCAAMH allowlist keeps D1 / drops known D3 & U-Sports programs, asserts the set
+  size is exactly 64, and covers the transient-failure keep.
+- **`frontend/constants/Teams.tsx`** — regenerated the `NCAAMH-` block to match: dropped the 44 non-D1
+  codes, kept the 64 D1 ones (Miami OH `M-OH` is present). This file is only consumed by the favorites
+  modal (`TeamsEnum`) and the id→display-name map; D1 filtering itself happens backend-side in
+  `getESPNTeams()`/`isD1Groups()`, but the constant had gone stale from before the filter existed.
+- Verified live against ESPN: the D1 allowlist matches the six conference group ids (52/53/54/59/61/62/63).
+
+### Files
+
+- `backend/src/utils/fetchData/espnAllData.ts` — `NCAAMH_D1_TEAMS`, NCAAMH branch of `isD1Groups()`, `D1_PARENT_IDS` (NCAAMH removed), `getESPNTeams()` call site.
+- `backend/src/utils/fetchData/espnAllData.spec.ts` — `isD1Groups` regression tests.
+- `frontend/constants/Teams.tsx` — NCAAMH block regenerated to the 64 D1 programs.
+- `backend/docs/utils/fetchData/espnAllData.ts.md` — this entry.
+
+## Fixed: missing Olympic country logos now fall back to flags for both genders
+
+- **`backend/src/utils/fetchData/espnAllData.ts`** — added a generic ESPN country-flag fallback for Olympic team abbreviations when scoreboard/roster payloads omit logos. It strips optional gender suffixes (`-M`/`-W`), so countries represented in both men's and women's competitions resolve to the same flag. Direct ESPN logo fields remain preferred.
+- Applied the fallback during team roster mapping, historical Olympic participant discovery, and game normalization.
+- **`backend/src/games/games.service.ts`** — legacy stored games with empty logo fields now receive the same fallback during response enrichment.
+- Verified ESPN flag image endpoints for KOR, CHN, FIN, JPN, ROC, and RUS; added tests for gender variants and non-Olympic safety.
+
 ## Added: per-team game schedule and league refresh completion logs
 
 - **`backend/src/utils/fetchData/espnAllData.ts`** — all ESPN-backed league refreshes now log how many games were fetched for each team and a league summary of team schedules and distinct matches.

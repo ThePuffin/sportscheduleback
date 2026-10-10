@@ -64,6 +64,7 @@ export interface Team2 {
   alternateColor: string;
   isActive: boolean;
   isAllStar: boolean;
+  logo?: string;
   logos: Logo[];
   links: Link[];
 }

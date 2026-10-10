@@ -465,6 +465,23 @@ const getNormalizedLeagueName = (leagueName: string) => {
   return leagueName;
 };
 
+export const getOlympicTeamLogo = (
+  leagueName: string,
+  abbreviation?: string,
+): string => {
+  if (!leagueName?.toUpperCase().includes('OLYMPICS') || !abbreviation) {
+    return '';
+  }
+
+  const countryCode = abbreviation
+    .trim()
+    .replace(/[-_](?:M|W)$/i, '')
+    .toLowerCase();
+  if (!/^[a-z]{3}$/.test(countryCode)) return '';
+
+  return `https://a.espncdn.com/i/teamlogos/countries/500/${countryCode}.png`;
+};
+
 const ESPNAbbrevs = {
   NHL: {
     UTAH: 'UTA',
@@ -540,25 +557,72 @@ const leaguesData = Object.fromEntries(
  * and for independent D1 programs, so only the parent id is reliable.
  * Women's college hockey (NCAAWH) is intentionally absent: ESPN exposes no
  * such marker there, so it is kept as-is.
+ *
+ * Men's college hockey (NCAAMH) is a special case: ESPN's `parent.id = 51`
+ * there lumps D1, D3 and even non-NCAA (U Sports) programs together, and its
+ * `isConference` flag is unreliable too, so the parent id alone would admit
+ * non-D1 teams (Adrian, Middlebury, SUNY Cortland, Laurentian…). NCAAMH is
+ * therefore filtered by an explicit allowlist (`NCAAMH_D1_TEAMS`) instead —
+ * see `isD1Groups()`.
  */
 export const D1_PARENT_IDS: Record<string, string[]> = {
   [CollegeLeague.NCAAF]: ['80', '81'],
   [CollegeLeague.NCAAB]: ['50'],
   [CollegeLeague.WNCAAB]: ['50'],
   [CollegeLeague.NCCABB]: ['27'],
-  [CollegeLeague.NCAAMH]: ['51'],
 };
+
+/**
+ * The 64 Division-1 men's college hockey programs, by ESPN abbreviation.
+ *
+ * ESPN exposes no reliable D1 marker for men's college hockey: every team —
+ * D1, D3 and Canadian U Sports alike — reports `groups.parent.id = "51"`, and
+ * `groups.isConference` is `true` for several non-D1 programs (e.g. Findlay,
+ * Wayne State, St. Olaf). This allowlist is the source of truth instead. It is
+ * derived from the six D1 conferences (Big Ten, NCHC, Hockey East, ECAC, CCHA,
+ * Atlantic Hockey) plus the D1 independents (Alaska Anchorage/Fairbanks,
+ * Lindenwood, Long Island, Stonehill).
+ *
+ * Keep it in sync each season: promoted/relegated D1 programs must be added or
+ * removed here.
+ */
+export const NCAAMH_D1_TEAMS: ReadonlySet<string> = new Set([
+  // Big Ten
+  'MICH', 'MSU', 'MINN', 'ND', 'OSU', 'PSU', 'WIS',
+  // NCHC
+  'ASU', 'COLC', 'DEN', 'M-OH', 'OMA', 'UND', 'UMD', 'SCSU', 'WMU',
+  // Hockey East
+  'BC', 'BU', 'CONN', 'ME', 'MASS', 'MRMK', 'NE', 'UNH', 'PROV', 'UML', 'UVM',
+  // ECAC
+  'BRWN', 'CLAR', 'COLG', 'COR', 'DART', 'HARV', 'PRIN', 'QUIN', 'RPI', 'UNNY', 'USL', 'YALE',
+  // CCHA
+  'AUSD', 'BGSU', 'BST', 'FRST', 'LSS', 'MNST', 'MTU', 'NMI', 'STMN',
+  // Atlantic Hockey
+  'AIC', 'AF', 'ARMY', 'BENT', 'CAN', 'HC', 'MERC', 'NIA', 'RIT', 'RMU', 'SHU',
+  // Independents
+  'AKFB', 'UAA', 'LIN', 'LIU', 'STO',
+]);
 
 /**
  * Whether an ESPN team-detail `groups` object marks a Division 1 team.
  * Returns `true` when there is no `groups` info (transient fetch failure):
  * a team must never be dropped on a network error, only on positive proof
  * that it plays outside D1.
+ *
+ * For men's college hockey (NCAAMH) the group parent id is not trustworthy, so
+ * the decision is delegated to the explicit `NCAAMH_D1_TEAMS` allowlist; a
+ * team is kept only when its abbreviation is listed there.
  */
 export const isD1Groups = (
   leagueName: string,
   groups?: { id: string; parent?: { id: string }; isConference?: boolean },
+  teamAbbrev?: string,
 ): boolean => {
+  if (leagueName === CollegeLeague.NCAAMH) {
+    // No groups info (transient failure): keep, never drop on a network error.
+    if (!groups && !teamAbbrev) return true;
+    return !!teamAbbrev && NCAAMH_D1_TEAMS.has(teamAbbrev);
+  }
   const d1Parents = D1_PARENT_IDS[leagueName];
   if (!d1Parents) return true;
   if (!groups) return true;
@@ -732,10 +796,12 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
         // ESPN sometimes returns no logos; fall back to our manual list if we
         // have an entry for this abbreviation. the abbreviation is the second
         // part of the uniqueId when saved in the database.
-        let teamLogo = logos?.[2]?.href ?? logos?.[0]?.href;
-        if (!teamLogo) {
-          teamLogo = UniversityLogos[teamID] || '';
-        }
+        let teamLogo =
+          logos?.[2]?.href ??
+          logos?.[0]?.href ??
+          team.logo ??
+          UniversityLogos[teamID] ??
+          getOlympicTeamLogo(leagueName, teamID);
         const teamLogoDark =
           logos?.find(
             (l) => l.rel?.includes('dark') && l.rel?.includes('scoreboard'),
@@ -802,7 +868,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
           (team as any).otLosses = record.otLosses;
         }
       }
-      if (isD1Groups(leagueName, groups)) {
+      if (isD1Groups(leagueName, groups, team.abbrev)) {
         filteredTeams.push(team);
       } else {
         console.info(
@@ -869,8 +935,9 @@ export const getOlympicSeasonTeams = async (
           const teamLogo =
             team.logos?.[2]?.href ??
             team.logos?.[0]?.href ??
+            team.logo ??
             UniversityLogos[abbrev] ??
-            '';
+            getOlympicTeamLogo(sourceLeague, abbrev);
           discovered.set(uniqueId, {
             uniqueId,
             id: String(team.id),
@@ -1143,11 +1210,17 @@ const getEachTeamSchedule = async (
         const awayTeamLogo =
           awayTeam?.logos?.find(
             (l) => l.rel?.includes('full') && l.rel?.includes('scoreboard'),
-          )?.href || leagueLogos[awayAbbrev];
+          )?.href ||
+          awayTeam?.logo ||
+          leagueLogos[awayAbbrev] ||
+          getOlympicTeamLogo(leagueName, awayAbbrev);
         const homeTeamLogo =
           homeTeam?.logos?.find(
             (l) => l.rel?.includes('full') && l.rel?.includes('scoreboard'),
-          )?.href || leagueLogos[homeAbbrev];
+          )?.href ||
+          homeTeam?.logo ||
+          leagueLogos[homeAbbrev] ||
+          getOlympicTeamLogo(leagueName, homeAbbrev);
 
         const awayTeamLogoDark =
           awayTeam?.logos?.find(
