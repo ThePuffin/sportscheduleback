@@ -1,6 +1,7 @@
 import {
   applySeasonFinalRecords,
   extractCompetitorRecord,
+  fetchESPNTeamScheduleEvents,
   fetchJsonOrNull,
   getESPNTeamLogo,
   getOlympicTeamLogo,
@@ -679,6 +680,85 @@ describe('fetchJsonOrNull', () => {
   });
 });
 
+describe('fetchESPNTeamScheduleEvents pagination', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  const response = (payload) =>
+    new Response(JSON.stringify(payload), {
+      headers: { 'content-type': 'application/json' },
+    });
+
+  it('fetches every page reported by ESPN and deduplicates overlapping events', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(
+      async (input) => {
+        const url = new URL(String(input));
+        const page = Number(url.searchParams.get('page'));
+        return page === 1
+          ? response({
+              pageIndex: 0,
+              pageCount: 2,
+              events: [{ id: 'game-1' }, { id: 'game-2' }],
+            })
+          : response({
+              pageIndex: 1,
+              pageCount: 2,
+              events: [{ id: 'game-2' }, { id: 'game-3' }],
+            });
+      },
+    );
+
+    const events = await fetchESPNTeamScheduleEvents(
+      'https://site.api.espn.com/teams/302/schedule?seasontype=2&season=2025',
+    );
+
+    expect(events.map(({ id }) => id)).toEqual([
+      'game-1',
+      'game-2',
+      'game-3',
+    ]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(
+      fetchSpy.mock.calls.map(([input]) => new URL(String(input)).searchParams.get('page')),
+    ).toEqual(['1', '2']);
+    expect(
+      fetchSpy.mock.calls.every(
+        ([input]) => new URL(String(input)).searchParams.get('limit') === '1000',
+      ),
+    ).toBe(true);
+  });
+
+  it('does not request another page when the schedule fits in one response', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(response({ events: [{ id: 'game-1' }] }));
+
+    await expect(
+      fetchESPNTeamScheduleEvents(
+        'https://site.api.espn.com/teams/302/schedule?seasontype=2',
+      ),
+    ).resolves.toEqual([{ id: 'game-1' }]);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails explicitly when ESPN advertises another page but returns no new events', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async () =>
+      response({
+        hasNext: true,
+        events: [{ id: 'game-1' }],
+      }),
+    );
+
+    await expect(
+      fetchESPNTeamScheduleEvents(
+        'https://site.api.espn.com/teams/302/schedule?seasontype=2',
+      ),
+    ).rejects.toThrow('pagination made no progress');
+  });
+});
+
 /**
  * D1 filtering regression.
  *
@@ -873,6 +953,7 @@ describe('isD1Groups', () => {
       // schedule"). The league roster is now the second source of truth: an id
       // it does not list either is excluded with proof; the league completes.
       jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      jest.spyOn(console, 'info').mockImplementation(() => undefined);
       const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       jest.spyOn(global, 'fetch').mockImplementation(async (input) => {
         const url = String(input);
@@ -953,8 +1034,13 @@ describe('isD1Groups', () => {
       // The league refresh completes (no "refusing partial schedule") and the
       // game against the opponent unknown to both ESPN sources is excluded.
       expect(result['NCAAB-404OPP']).toHaveLength(0);
-      expect(console.warn).toHaveBeenCalledWith(
-        expect.stringContaining('treating as non-D1'),
+      expect(console.info).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'excluded 1 distinct game(s) with participant(s) not verified as D1',
+        ),
+      );
+      expect(console.info).toHaveBeenCalledWith(
+        expect.stringContaining('Unknown Opponent [99202] (1)'),
       );
     });
 
@@ -1067,6 +1153,9 @@ describe('isD1Groups', () => {
 
     it('still excludes a game against a provably non-D1 opponent without aborting', async () => {
       jest.spyOn(console, 'info').mockImplementation(() => undefined);
+      const warnSpy = jest
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
       const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       jest.spyOn(global, 'fetch').mockImplementation(async (input) => {
         const url = String(input);
@@ -1102,6 +1191,11 @@ describe('isD1Groups', () => {
                         },
                       ],
                     },
+                    {
+                      date: futureDate,
+                      id: '99302',
+                      competitions: [{ competitors: [] }],
+                    },
                   ]
                 : [],
             }),
@@ -1136,6 +1230,12 @@ describe('isD1Groups', () => {
 
       // The non-D1 game is excluded, but the league refresh itself completes.
       expect(result['NCAAF-D3OPP']).toHaveLength(0);
+      expect(console.info).toHaveBeenCalledWith(
+        '[Schedule] NCAAF: excluded 1 distinct game(s) with participant(s) not verified as D1 across 1 team schedule(s); opponents: D3 University [99302] (1).',
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[Schedule] NCAAF: skipped 1 game occurrence(s) with invalid or missing competitor data across 1 team schedule(s).',
+      );
     });
   });
 });

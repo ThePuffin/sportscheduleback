@@ -65,6 +65,8 @@ const ESPN_FETCH_TIMEOUT_MS = 15000;
 // the oldies crawl fires hundreds of team-schedule requests back-to-back and
 // ESPN's Akamai edge starts answering with transient 403 "Access Denied" pages.
 const ESPN_TEAM_BATCH_DELAY_MS = 120;
+const ESPN_TEAM_SCHEDULE_PAGE_SIZE = 1000;
+const ESPN_TEAM_SCHEDULE_MAX_PAGES = 100;
 
 // A browser-like identity: ESPN's Akamai edge is known to answer some
 // headerless / bot-like requests with a 403 "Access Denied" HTML page. Sending a
@@ -171,6 +173,154 @@ export const fetchJsonOrNull = async (url: string): Promise<any> => {
     );
   }
   return null;
+};
+
+const getNextTeamSchedulePageUrl = (
+  data: any,
+  currentUrl: string,
+  currentPage: number,
+  eventCount: number,
+): string | undefined => {
+  const nextLink =
+    typeof data?.links?.next === 'string'
+      ? data.links.next
+      : typeof data?.links?.next?.href === 'string'
+        ? data.links.next.href
+        : typeof data?.nextPage === 'string' &&
+            !/^\d+$/.test(data.nextPage)
+          ? data.nextPage
+          : undefined;
+
+  if (nextLink) return new URL(nextLink, currentUrl).toString();
+
+  const totalPages =
+    data?.pagination?.totalPages ??
+    data?.pagination?.pageCount ??
+    data?.totalPages ??
+    data?.pageCount;
+  const reportedPageIndex = data?.pagination?.pageIndex ?? data?.pageIndex;
+  const reportedCurrentPage =
+    data?.pagination?.currentPage ?? data?.currentPage;
+  const hasNext =
+    data?.pagination?.hasNext ??
+    data?.hasNext ??
+    data?.hasNextPage;
+  const nextPage = data?.pagination?.nextPage ?? data?.nextPage;
+  const nextPageNumber =
+    typeof nextPage === 'number'
+      ? nextPage
+      : typeof nextPage === 'string' && /^\d+$/.test(nextPage)
+        ? Number(nextPage)
+        : undefined;
+
+  if (hasNext === false) return undefined;
+  if (nextPageNumber !== undefined && nextPageNumber > currentPage) {
+    const nextUrl = new URL(currentUrl);
+    nextUrl.searchParams.set('page', String(nextPageNumber));
+    return nextUrl.toString();
+  }
+  if (
+    typeof totalPages === 'number' &&
+    Number.isFinite(totalPages) &&
+    totalPages > 0
+  ) {
+    const pageNumber =
+      typeof reportedPageIndex === 'number'
+        ? reportedPageIndex + 1
+        : typeof reportedCurrentPage === 'number'
+          ? reportedCurrentPage
+          : currentPage;
+    if (pageNumber < totalPages) {
+      const nextUrl = new URL(currentUrl);
+      nextUrl.searchParams.set('page', String(pageNumber + 1));
+      return nextUrl.toString();
+    }
+    return undefined;
+  }
+  if (hasNext === true || eventCount >= ESPN_TEAM_SCHEDULE_PAGE_SIZE) {
+    const nextUrl = new URL(currentUrl);
+    nextUrl.searchParams.set('page', String(currentPage + 1));
+    return nextUrl.toString();
+  }
+  return undefined;
+};
+
+export const fetchESPNTeamScheduleEvents = async (
+  initialUrl: string,
+): Promise<any[]> => {
+  const firstPageUrl = new URL(initialUrl);
+  firstPageUrl.searchParams.set(
+    'limit',
+    String(ESPN_TEAM_SCHEDULE_PAGE_SIZE),
+  );
+  firstPageUrl.searchParams.set('page', '1');
+
+  const events: any[] = [];
+  const seenEventIds = new Set<string>();
+  let nextUrl: string | undefined = firstPageUrl.toString();
+  let page = 0;
+
+  while (nextUrl) {
+    if (page >= ESPN_TEAM_SCHEDULE_MAX_PAGES) {
+      throw new Error(
+        `ESPN team schedule exceeded the ${ESPN_TEAM_SCHEDULE_MAX_PAGES}-page safety limit for ${initialUrl}.`,
+      );
+    }
+
+    const pageUrl = nextUrl;
+    const data = await fetchJsonOrNull(pageUrl);
+    if (!data || !Array.isArray(data.events)) {
+      throw new Error(
+        `ESPN returned no complete schedule data for ${pageUrl}.`,
+      );
+    }
+
+    const priorEventCount = events.length;
+    for (const event of data.events) {
+      const eventId =
+        event?.id != null ? String(event.id) : JSON.stringify(event);
+      if (seenEventIds.has(eventId)) continue;
+      seenEventIds.add(eventId);
+      events.push(event);
+    }
+
+    page++;
+    const requestedNextUrl = getNextTeamSchedulePageUrl(
+      data,
+      pageUrl,
+      page,
+      data.events.length,
+    );
+    if (!requestedNextUrl) {
+      nextUrl = undefined;
+      continue;
+    }
+
+    if (events.length === priorEventCount) {
+      const hasExplicitNextPage =
+        data?.links?.next ||
+        data?.nextPage ||
+        data?.pagination?.hasNext === true ||
+        data?.hasNext === true ||
+        data?.hasNextPage === true ||
+        data?.pagination?.totalPages ||
+        data?.pagination?.pageCount ||
+        data?.totalPages ||
+        data?.pageCount ||
+        data.events.length >= ESPN_TEAM_SCHEDULE_PAGE_SIZE;
+      if (hasExplicitNextPage) {
+        throw new Error(
+          `ESPN team schedule pagination made no progress at ${requestedNextUrl}.`,
+        );
+      }
+      nextUrl = undefined;
+      continue;
+    }
+
+    nextUrl = requestedNextUrl;
+  }
+
+  return events;
 };
 
 
@@ -937,9 +1087,7 @@ export const isD1ScheduleTeam = async (
       if (rosterEntry?.parent?.id) {
         isD1 = isD1Groups(leagueName, rosterEntry, abbrev, id);
       } else if (rosterGroups) {
-        console.warn(
-          `[Schedule] ${leagueName} team ${id}: not verified by the team detail endpoint nor present in the league roster; treating as non-D1 and excluding its game(s).`,
-        );
+        // The league-level exclusion summary reports this once per refresh.
         isD1 = false;
       } else {
         console.warn(
@@ -1011,6 +1159,14 @@ const getD1ScheduleTeamIds = async (
   }
 
   return d1TeamIds;
+};
+
+type D1ScheduleDiagnostics = {
+  excludedGames: Map<
+    string,
+    { opponents: Set<string>; sourceSchedules: Set<string> }
+  >;
+  invalidGames: Map<string, number>;
 };
 
 const getESPNStandings = async (leagueName: string) => {
@@ -1330,6 +1486,10 @@ export const getTeamsSchedule = async (
 ) => {
   const allGames = {};
   const concurrencyLimit = 2;
+  const d1Diagnostics: D1ScheduleDiagnostics = {
+    excludedGames: new Map(),
+    invalidGames: new Map(),
+  };
   let d1TeamIds: Set<string> | undefined;
   try {
     d1TeamIds = await getD1ScheduleTeamIds(leagueName, activeTeams);
@@ -1387,6 +1547,7 @@ export const getTeamsSchedule = async (
             season,
             teamRecords,
             d1TeamIds,
+            d1Diagnostics,
           );
           allGames[leagueID] = teamGames;
           console.info(
@@ -1424,6 +1585,39 @@ export const getTeamsSchedule = async (
         ? ` ${scheduleErrors.length} team schedule request(s) failed; league refresh aborted.`
         : ''),
   );
+  if (d1Diagnostics.excludedGames.size > 0) {
+    const excludedGames = [...d1Diagnostics.excludedGames.values()];
+    const opponentCounts = new Map<string, number>();
+    const sourceSchedules = new Set<string>();
+    for (const excludedGame of excludedGames) {
+      for (const opponent of excludedGame.opponents) {
+        opponentCounts.set(opponent, (opponentCounts.get(opponent) ?? 0) + 1);
+      }
+      for (const sourceSchedule of excludedGame.sourceSchedules) {
+        sourceSchedules.add(sourceSchedule);
+      }
+    }
+    const topOpponents = [...opponentCounts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 10)
+      .map(([opponent, count]) => `${opponent} (${count})`);
+    const omittedOpponents = opponentCounts.size - topOpponents.length;
+    const opponentSummary =
+      topOpponents.join(', ') +
+      (omittedOpponents > 0 ? `, and ${omittedOpponents} more` : '');
+    console.info(
+      `[Schedule] ${leagueName}: excluded ${excludedGames.length} distinct game(s) with participant(s) not verified as D1 across ${sourceSchedules.size} team schedule(s); opponents: ${opponentSummary}.`,
+    );
+  }
+  if (d1Diagnostics.invalidGames.size > 0) {
+    const invalidEvents = [...d1Diagnostics.invalidGames.values()].reduce(
+      (total, count) => total + count,
+      0,
+    );
+    console.warn(
+      `[Schedule] ${leagueName}: skipped ${invalidEvents} game occurrence(s) with invalid or missing competitor data across ${d1Diagnostics.invalidGames.size} team schedule(s).`,
+    );
+  }
   if (scheduleErrors.length > 0) {
     throw new Error(
       `[Schedule] ${leagueName}: ${scheduleErrors.length} team schedule request(s) failed; refusing to return a partial league schedule.`,
@@ -1438,6 +1632,7 @@ const getEachTeamSchedule = async (
   season?: number,
   teamRecords?: Map<string, string>,
   d1TeamIds?: Set<string>,
+  d1Diagnostics?: D1ScheduleDiagnostics,
 ) => {
   try {
     const normalizedLeagueName = getNormalizedLeagueName(leagueName);
@@ -1457,6 +1652,7 @@ const getEachTeamSchedule = async (
           season,
           teamRecords,
           d1TeamIds,
+          d1Diagnostics,
         );
         allGames = [...allGames, ...games];
       }
@@ -1546,21 +1742,12 @@ const getEachTeamSchedule = async (
           try {
             const seasonParam = season ? `&season=${season}` : '';
             const link = `${baseUrl}?seasontype=${type}${seasonParam}`;
-            const fetchGamesData = await fetchJsonOrNull(link);
+            const scheduleEvents = await fetchESPNTeamScheduleEvents(link);
 
-            if (
-              !fetchGamesData ||
-              !Array.isArray(fetchGamesData.events)
-            ) {
-              throw new Error(
-                `ESPN returned no complete schedule data for ${teamUniqueId} (season type ${type}).`,
-              );
-            }
-
-            if (fetchGamesData.events.length > 0) {
+            if (scheduleEvents.length > 0) {
               games = [
                 ...games,
-                ...fetchGamesData.events.map((event) => ({
+                ...scheduleEvents.map((event) => ({
                   ...event,
                   recordSeasonType: type,
                 })),
@@ -1596,12 +1783,15 @@ const getEachTeamSchedule = async (
     }
 
     if (d1TeamIds) {
-      const fetchedCount = games.length;
       const d1Games = [];
+      let invalidCompetitorCount = 0;
       for (const game of games) {
         const competitors = game?.competitions?.[0]?.competitors;
-        if (!Array.isArray(competitors) || competitors.length !== 2) continue;
-        const bothTeamsAreD1 = await Promise.all(
+        if (!Array.isArray(competitors) || competitors.length !== 2) {
+          invalidCompetitorCount++;
+          continue;
+        }
+        const teamDivisionResults = await Promise.all(
           competitors.map((competitor) =>
             isD1ScheduleTeam(
               leagueName,
@@ -1610,14 +1800,35 @@ const getEachTeamSchedule = async (
             ),
           ),
         );
-        if (bothTeamsAreD1.every(Boolean)) d1Games.push(game);
+        if (teamDivisionResults.every(Boolean)) {
+          d1Games.push(game);
+          continue;
+        }
+
+        const eventId = game?.id
+          ? String(game.id)
+          : `${game?.date || 'unknown-date'}|${competitors
+              .map((competitor) => String(competitor?.team?.id || 'unknown'))
+              .sort()
+              .join('|')}`;
+        const excludedGame = d1Diagnostics?.excludedGames.get(eventId) ?? {
+          opponents: new Set<string>(),
+          sourceSchedules: new Set<string>(),
+        };
+        excludedGame.sourceSchedules.add(teamUniqueId);
+        for (let index = 0; index < teamDivisionResults.length; index++) {
+          if (teamDivisionResults[index]) continue;
+          const team = competitors[index]?.team;
+          const teamName =
+            team?.displayName || team?.abbreviation || 'unknown team';
+          const teamId = team?.id ? ` [${team.id}]` : '';
+          excludedGame.opponents.add(`${teamName}${teamId}`);
+        }
+        d1Diagnostics?.excludedGames.set(eventId, excludedGame);
       }
       games = d1Games;
-      const excludedCount = fetchedCount - d1Games.length;
-      if (excludedCount > 0) {
-        console.info(
-          `[Schedule] ${leagueName} ${teamUniqueId}: excluded ${excludedCount} game(s) involving a non-D1 opponent.`,
-        );
+      if (invalidCompetitorCount > 0) {
+        d1Diagnostics?.invalidGames.set(teamUniqueId, invalidCompetitorCount);
       }
     }
 

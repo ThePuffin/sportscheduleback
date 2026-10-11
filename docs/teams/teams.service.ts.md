@@ -77,7 +77,10 @@ For the **ColorsTeam** and **UniversityLogos** files the generation is **additiv
 instead of overwriting the whole file, it merges the freshly generated entries with the existing
 content so that an entry that already exists is never dropped (`mergeGeneratedEntries`). Existing keys
 that are no longer produced are kept, keys present in both are updated with the new value, and brand-new
-keys are appended. This guarantees a regeneration never deletes a previously stored line.
+keys are appended. This guarantees a regeneration never deletes a previously stored line. For colors,
+if the database still has the exact default placeholder (or no color fields) and the existing file
+contains a non-placeholder palette, regeneration retains that palette. A later non-placeholder
+database value can still update it.
 
 ## Data Flow
 

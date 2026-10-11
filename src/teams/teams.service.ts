@@ -541,9 +541,27 @@ export class TeamService {
     const map = this.parseExistingColorBlocks(existingContent);
 
     for (const item of newEntries) {
-      map.set(item.uniqueId, {
+      const generatedColors = {
         color: item.color ?? '#000000',
         backgroundColor: item.backgroundColor ?? '#ffffff',
+      };
+      const hasNoGeneratedColors = !item.color && !item.backgroundColor;
+      const generatedColorsArePlaceholder =
+        hasNoGeneratedColors ||
+        (generatedColors.color.trim().toLowerCase() === '#ffffff' &&
+          generatedColors.backgroundColor.trim().toLowerCase() === '#000000');
+      const existingColors = map.get(item.uniqueId);
+      const existingColorsArePlaceholder =
+        !existingColors ||
+        (existingColors.color.trim().toLowerCase() === '#ffffff' &&
+          existingColors.backgroundColor.trim().toLowerCase() === '#000000');
+
+      if (generatedColorsArePlaceholder && !existingColorsArePlaceholder) {
+        continue;
+      }
+
+      map.set(item.uniqueId, {
+        ...generatedColors,
       });
     }
 

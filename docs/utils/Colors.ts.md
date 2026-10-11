@@ -40,5 +40,7 @@ placeholder, and exposes helpers to resolve a team's colors from its `uniqueId`.
   DB by `TeamService.generateLeaguesTeamsAndColorsFiles()`; entries whose colors
   could not be retrieved are stored as the placeholder and are therefore
   eligible for the cross-college fallback.
+- Curated non-placeholder palettes in those files are retained by regeneration
+  while the corresponding database entry remains the exact default placeholder.
 - Only the exact placeholder (`#ffffff` on `#000000`) is treated as "unknown".
   Other degenerate entries stored in `ColorsTeam.ts` are returned as-is.

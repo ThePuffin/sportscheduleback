@@ -179,6 +179,27 @@ describe('TeamService', () => {
       );
     });
 
+    it('should preserve curated colors when the database still has placeholders', () => {
+      const existingContent = `  'PWHL-DET': {\n    color: '#C0C0C0',\n    backgroundColor: '#000000',\n  },`;
+      const newEntries = [
+        {
+          uniqueId: 'PWHL-DET',
+          color: '#ffffff',
+          backgroundColor: '#000000',
+        },
+        { uniqueId: 'PWHL-HAM' },
+      ];
+
+      const merged = service['mergeColorsContent'](existingContent, newEntries);
+
+      expect(merged).toContain(
+        "'PWHL-DET': {\n    color: '#C0C0C0',\n    backgroundColor: '#000000',\n  }",
+      );
+      expect(merged).toContain(
+        "'PWHL-HAM': {\n    color: '#000000',\n    backgroundColor: '#ffffff',\n  }",
+      );
+    });
+
     it('should keep existing entries even if they are missing from new entries', () => {
       const existingContent = `  'OLD-TEAM': {\n    color: '#123456',\n    backgroundColor: '#654321',\n  },`;
       const newEntries = [

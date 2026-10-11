@@ -2,6 +2,58 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: missing team palettes corrected and retained during regeneration
+
+Updated the supplied university and professional-team palettes in both
+`ColorsTeam` maps, reusing university colors across their sport-specific keys.
+Added the PWHL Detroit, Hamilton, Las Vegas, and San Jose palettes. Team color
+generation now preserves an existing non-placeholder palette when the database
+still has no color data or the exact default placeholder, while valid database
+colors can continue to update the map.
+
+- **`src/teams/teams.service.ts`** — protects curated map values from placeholder
+  database values during color-file regeneration.
+- **`src/teams/tests/teams.service.spec.ts`** — covers preserving curated values
+  and retaining the existing default for teams without a stored palette.
+- **`docs/teams/teams.service.ts.md`**, **`docs/utils/Colors.ts.md`** — document
+  color-map regeneration behavior.
+- **PWHL references:** [league expansion announcement for Detroit](https://www.thepwhl.com/en/news/2026/may/06/professional-womens-hockey-league-expands-to-detroit)
+  and the [ice hockey color module](https://en.wikipedia.org/wiki/Module:Sports_color/ice_hockey).
+
+## Improved: college schedule exclusion logs identify participants
+
+The per-team Division I filter is shared by all six college leagues. Exclusions
+are deduplicated by event ID and summarized once per league with distinct-game
+and affected-schedule counts, plus up to ten participant names/provider IDs.
+Malformed games are counted and logged separately. Per-team fetched-game
+progress and league completion summaries remain unchanged. This reduces
+repeated output without changing the Division I classification or exclusion
+behavior.
+
+- **`src/utils/fetchData/espnAllData.ts`** — reports verified-D1 exclusions and
+  invalid competitor records separately.
+- **`src/utils/fetchData/espnAllData.spec.ts`** — checks the participant IDs and
+  the separate malformed-game warning.
+- **`docs/utils/fetchData/espnAllData.ts.md`** — documents the updated logs.
+
+## Added: ESPN team schedule pagination checks
+
+Per-team ESPN schedules are now fetched with an explicit page size and page
+number. The loader follows next-page links and page metadata when present, and
+checks for a further page when a response reaches the 1,000-event page size.
+Overlapping events are deduplicated. If ESPN indicates another page but returns
+no new events, the fetch fails explicitly instead of silently accepting a
+partial schedule. When ESPN provides fewer than 1,000 events without pagination
+metadata, the response is treated as complete; current ESPN team schedules
+typically arrive in that single-response format.
+
+- **`src/utils/fetchData/espnAllData.ts`** — adds `fetchESPNTeamScheduleEvents()`
+  and uses it for all per-team schedule fetches, including oldies.
+- **`src/utils/fetchData/espnAllData.spec.ts`** — covers page traversal,
+  duplicate removal, normal single-response schedules and pagination that
+  advertises a next page without making progress.
+- **`docs/utils/fetchData/espnAllData.ts.md`** — documents pagination behavior.
+
 ## Improved: unverifiable opponents are cross-checked against the league roster
 
 The fail-open introduced for unverifiable opponents (detail endpoint 404) kept every unknown id, so buy games against small D3 schools (St. Francis IL, Framingham State — persistently unknown to the detail endpoint) reappeared in D1 schedules. The verification now degrades in three steps: detail endpoint → league roster (`teams?limit=1000`, which also carries `groups`) → fail-open only when both ESPN sources are unreachable. An id absent from a **successfully fetched** roster is treated as non-D1 (no D1 program of a college league is unknown to both ESPN sources) and its games are excluded with proof; a D1 program only the roster knows (recent programs such as Little Rock) is kept.
