@@ -65,6 +65,40 @@ describe('TeamService', () => {
     expect(service).toBeDefined();
   });
 
+  describe('purgeNonD1Teams', () => {
+    it.each(['NCAAMH', 'NCAAWH'])(
+      'purges stale non-D1 teams from %s rosters',
+      async (league) => {
+        const retainedId = `${league}-D1`;
+        const removedId = `${league}-NON-D1`;
+        (model.find as jest.Mock).mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockReturnValue({
+              exec: jest.fn().mockResolvedValue([
+                { uniqueId: retainedId, isActive: true },
+                { uniqueId: removedId, isActive: true },
+              ]),
+            }),
+          }),
+        });
+        (model.deleteMany as jest.Mock).mockReturnValue({
+          exec: jest
+            .fn()
+            .mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
+        });
+
+        const deletedIds = await service.purgeNonD1Teams(league, [
+          { uniqueId: retainedId } as TeamType,
+        ]);
+
+        expect(deletedIds).toEqual([removedId]);
+        expect(model.deleteMany).toHaveBeenCalledWith({
+          $or: [{ uniqueId: { $in: [removedId] } }],
+        });
+      },
+    );
+  });
+
   describe('addRecord', () => {
     it('should add a record string with wins and losses', () => {
       const team = { wins: 10, losses: 5 };

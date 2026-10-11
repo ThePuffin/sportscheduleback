@@ -1190,6 +1190,7 @@ export class GameService {
           console.info(
             `[Oldies] ${normalizedLeague} ${season ? `(season ${season})` : ''}: added ${added}, skipped (existing identical) ${skippedExisting}, skipped (missing team/score data) ${skippedMissingTeamData}, records backfilled ${backfilled}.`,
           );
+          await this._deleteGamesOfPurgedTeams(normalizedLeague);
           return { added, skippedExisting, skippedMissingTeamData };
         }
       }

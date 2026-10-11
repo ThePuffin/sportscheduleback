@@ -2,6 +2,83 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Improved: unverifiable opponents are cross-checked against the league roster
+
+The fail-open introduced for unverifiable opponents (detail endpoint 404) kept every unknown id, so buy games against small D3 schools (St. Francis IL, Framingham State — persistently unknown to the detail endpoint) reappeared in D1 schedules. The verification now degrades in three steps: detail endpoint → league roster (`teams?limit=1000`, which also carries `groups`) → fail-open only when both ESPN sources are unreachable. An id absent from a **successfully fetched** roster is treated as non-D1 (no D1 program of a college league is unknown to both ESPN sources) and its games are excluded with proof; a D1 program only the roster knows (recent programs such as Little Rock) is kept.
+
+- **`src/utils/fetchData/espnAllData.ts`** — `getLeagueTeamGroups()`: the league roster as an id→groups map, cached six hours, failed fetches remembered for 60s (no storm during an outage), `null` when unavailable. `isD1ScheduleTeam()` consults it whenever the detail fetch is inconclusive, and `resetESPNDivisionCachesForTests()` clears the module-level caches for the spec.
+- **`src/utils/fetchData/espnAllData.spec.ts`** — new cases: roster keeps a D1 opponent unknown to the detail endpoint, roster excludes ids it does not list and ids it lists as non-D1, fail-open only when the roster itself is unreachable; caches reset per test.
+- **`docs/utils/fetchData/espnAllData.ts.md`** — documents the three-step verification.
+
+## Fixed: unverifiable college opponents no longer abort the whole league refresh
+
+The Division-1 schedule verification threw
+`[Schedule] Cannot verify Division I status for <league> team <id>: ESPN did not
+return a group parent.` whenever ESPN's per-team detail endpoint could not
+confirm a team's division. That path is reached while checking **opponents**
+(they are verified directly against ESPN when they are not in the local roster),
+and the detail endpoint legitimately answers HTTP 404 for ids it does not know —
+small D3 schools (St. Francis IL, Framingham State) or programs too recent for
+the endpoint (Little Rock). A single such opponent aborted the ENTIRE league
+refresh ("refusing to return a partial league schedule"), losing every valid
+schedule of that league (observed on NCAAF and NCAAB).
+
+- **`src/utils/fetchData/espnAllData.ts`** — `isD1ScheduleTeam()` no longer
+  throws when ESPN cannot verify a team: it fails open (keeps the team/game —
+  the same rule as `isD1Groups()`, never dropped without positive proof of
+  non-D1), logs a `[Schedule] … ESPN returned no group parent; assuming
+  Division I (fail-open)…` warning, and does NOT cache the unverifiable verdict
+  so the next refresh can re-verify it. Verified verdicts keep the six-hour
+  cache. `getTeamRecord()` now reports failures explicitly (`fetchFailed: true`
+  for non-2xx or team-less payloads and network errors) so a fetch failure can
+  be told apart from "the payload has no groups". Games with a **provably**
+  non-D1 opponent are still excluded, and incomplete schedule payloads still
+  fail the league refresh explicitly. Covers all four parent-id college leagues
+  (NCAAF, NCAAB, WNCAAB, NCCABB); NCAAMH/NCAAWH keep their allowlist behavior
+  (no fetch, no throw).
+- **`src/utils/fetchData/espnAllData.spec.ts`** — exports `isD1ScheduleTeam()`
+  and adds a regression suite: fail-open without caching on detail 404 /
+  network error / group-less payload, six-hour caching of verified verdicts,
+  allowlist leagues never calling ESPN, a league refresh surviving a 404
+  opponent, and provably non-D1 opponents still excluded without aborting.
+- **`docs/utils/fetchData/espnAllData.ts.md`** — documents the fail-open
+  verification behavior.
+
+## Fixed: ESPN schedules verify Division I teams and reject incomplete refreshes
+
+College game refreshes previously trusted the locally stored team list, so stale
+non-D1 teams could still be queried in both the current-season and oldies paths.
+ESPN's schedule endpoint also allowed an unavailable or invalid response for one
+season type to be treated like a successful empty calendar, risking partial
+refreshes.
+
+- **`src/utils/fetchData/espnAllData.ts`** — schedule crawls now verify every
+  stored college team against ESPN's division metadata before requesting its
+  calendar. NCAAMH and NCAAWH use explicit D1 allowlists because ESPN does not
+  expose reliable division metadata for those leagues. Every opponent is also
+  verified, so D1-vs-non-D1 fixtures are excluded while valid D1 opponents
+  missing from the local roster can still be included. Verified divisions are
+  cached for six hours. Missing or invalid schedule payloads now fail the league
+  refresh instead of being mistaken for an empty schedule; this protects both
+  normal refreshes and add-missing-only oldies imports from partial data.
+- Historical requests with an explicit season keep that season's full schedule.
+  Normal forced refreshes retain the existing 300-day-and-future date window.
+- **`src/utils/fetchData/espnAllData.spec.ts`** — covers NCAAWH's D1 allowlist
+  and ensures non-D1 teams are skipped before their schedules are requested.
+- **`src/teams/teams.service.ts`** — extends stale non-D1 team cleanup to both
+  college hockey leagues, so stored non-D1 team rows can be removed on roster
+  refresh and the existing game-cascade cleanup can remove their old fixtures.
+- **`src/teams/tests/teams.service.spec.ts`** — covers stale-team cleanup for
+  NCAAMH and NCAAWH.
+- **`src/games/games.service.ts`** — cascades queued non-D1 team cleanup during
+  add-missing-only oldies runs too, so stale historical fixtures are removed.
+- **`src/games/tests/games.service.spec.ts`** — provides the team-purge queue
+  used by refresh-path tests.
+- **`docs/utils/fetchData/espnAllData.ts.md`** — documents the schedule-level
+  division verification and incomplete-response behavior.
+- **`docs/teams/teams.service.ts.md`** — documents hockey roster cleanup.
+- **`docs/games/games.service.ts.md`** — documents oldies purge cascading.
+
 ## Improved: ESPN university logo fallbacks inspect all available logo variants
 
 ESPN university team payloads can include several logo objects with different `rel` labels, and

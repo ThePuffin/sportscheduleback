@@ -14,7 +14,8 @@ This is the core business logic module for games. It fetches schedules and score
 - **Maintenance logic** — removes duplicates, old games and invalid score records, and purges stale
   active games whose final result can no longer be recovered. `_deleteGamesOfPurgedTeams()` also
   deletes the games referencing teams purged as non-D1 by the last `TeamService.getTeams()` run
-  (pulled via `takeLastPurgedNonD1Ids(league)`, which drains only that league's ids): a game is
+  on both normal refreshes and add-missing-only oldies recoveries (pulled via
+  `takeLastPurgedNonD1Ids(league)`, which drains only that league's ids): a game is
   deleted when `teamSelectedId`, `homeTeamId` or
   `awayTeamId` matches a purged id, removing both the non-D1 team's own rows and the D1-side twin
   of a D1-vs-D2 fixture.

@@ -14,6 +14,12 @@ import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
 import { Team } from './schemas/team.schema';
 
+const DIVISION_ONE_LEAGUES = new Set<string>([
+  ...Object.keys(D1_PARENT_IDS),
+  CollegeLeague.NCAAMH,
+  CollegeLeague.NCAAWH,
+]);
+
 @Injectable()
 export class TeamService {
   private isFetchingTeams: { [league: string]: boolean } = {};
@@ -157,7 +163,7 @@ export class TeamService {
         // deleted — see `purgeNonD1Teams`). The just-fetched roster is passed
         // along so ESPN is not queried a second time; the deleted ids are
         // queued so `GameService` can cascade the deletion to their games.
-        if (activeTeams.length > 0 && D1_PARENT_IDS[league]) {
+        if (activeTeams.length > 0 && DIVISION_ONE_LEAGUES.has(league)) {
           const purged = await this.purgeNonD1Teams(league, activeTeams);
           if (purged.length > 0) {
             this.lastPurgedNonD1Ids.push(...purged);
@@ -180,9 +186,8 @@ export class TeamService {
 
   /**
    * Deletes the stored teams of `league` that ESPN no longer lists as
-   * Division 1 (see `D1_PARENT_IDS` in `espnAllData.ts`). Only leagues with a
-   * D1 marker are handled; other leagues (incl. NCAAWH, which exposes no
-   * marker) return an empty list.
+   * Division 1. ESPN parent markers are used where available; NCAAMH and
+   * NCAAWH use explicit allowlists in `getESPNTeams()`.
    *
    * Safety rules:
    * - never deletes when the ESPN fetch returns an empty list (outage guard);
@@ -198,7 +203,7 @@ export class TeamService {
     league: string,
     espnTeams?: TeamType[],
   ): Promise<string[]> {
-    if (!D1_PARENT_IDS[league]) return [];
+    if (!DIVISION_ONE_LEAGUES.has(league)) return [];
     const roster = espnTeams ?? (await getESPNTeams(league));
     if (!roster?.length) {
       console.info(

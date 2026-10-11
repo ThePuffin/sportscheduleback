@@ -33,6 +33,7 @@ describe('GameService', () => {
     findAll: jest.fn(),
     create: jest.fn().mockResolvedValue(undefined),
     deleteManyByIds: jest.fn(),
+    takeLastPurgedNonD1Ids: jest.fn().mockReturnValue([]),
     purgeStaleTeamsWithoutGames: jest.fn(),
     updateRecord: jest.fn().mockResolvedValue(undefined),
     updateRecords: jest.fn().mockResolvedValue(undefined),
