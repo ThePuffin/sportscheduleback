@@ -2,6 +2,7 @@ import {
   applySeasonFinalRecords,
   extractCompetitorRecord,
   fetchJsonOrNull,
+  getESPNTeamLogo,
   getOlympicTeamLogo,
   getOlympicSeasonTeams,
   getRecordSeasonType,
@@ -11,6 +12,68 @@ import {
   NCAAMH_D1_TEAMS,
   resolveScheduleGameStatus,
 } from './espnAllData';
+
+describe('getESPNTeamLogo', () => {
+  const logo = (href: string, rel: string[]) => ({
+    href,
+    rel,
+    alt: '',
+    width: 500,
+    height: 500,
+  });
+
+  it('preserves the existing ESPN logo preference order', () => {
+    expect(
+      getESPNTeamLogo({
+        logo: 'singular-logo.png',
+        logos: [
+          logo('first-logo.png', ['default']),
+          logo('second-logo.png', ['full']),
+          logo('third-logo.png', ['primary_logo_on_white_color']),
+        ],
+      }),
+    ).toBe('third-logo.png');
+  });
+
+  it('falls back to known ESPN logo relations when the original indexes are absent', () => {
+    expect(
+      getESPNTeamLogo({
+        logos: [
+          logo('', ['default']),
+          logo('scoreboard-logo.png', ['full', 'scoreboard']),
+        ],
+      }),
+    ).toBe('scoreboard-logo.png');
+  });
+
+  it('uses any remaining ESPN logo href when no known relation is present', () => {
+    expect(
+      getESPNTeamLogo({
+        logos: [logo('alternate-logo.png', ['alternate'])],
+      }),
+    ).toBe('alternate-logo.png');
+  });
+
+  it('allows a caller-specific ESPN relation to take precedence', () => {
+    expect(
+      getESPNTeamLogo(
+        {
+          logo: 'singular-logo.png',
+          logos: [
+            logo('indexed-logo.png', ['default']),
+            logo('preferred-logo.png', ['full', 'scoreboard']),
+          ],
+        },
+        [['full', 'scoreboard']],
+      ),
+    ).toBe('preferred-logo.png');
+  });
+
+  it('returns undefined when ESPN provides no usable URL', () => {
+    expect(getESPNTeamLogo({ logos: [] })).toBeUndefined();
+    expect(getESPNTeamLogo(undefined)).toBeUndefined();
+  });
+});
 
 describe('getSeasonFinals', () => {
   const game = (id, home, away, homeRecord, awayRecord) => ({

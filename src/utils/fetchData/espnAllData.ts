@@ -7,6 +7,55 @@ import { capitalize, getLuminance, getCurrentSeasonYears } from '../utils';
 
 const espnAPI = 'https://site.api.espn.com/apis/site/v2/sports/';
 
+const ESPN_LOGO_RELATION_PRIORITIES = [
+  ['default'],
+  ['full', 'scoreboard'],
+  ['scoreboard'],
+  ['full'],
+  ['primary_logo_on_white_color'],
+  ['primary_logo_on_primary_color'],
+  ['primary_logo_on_secondary_color'],
+  ['primary_logo_on_black_color'],
+  ['primary_logo_black'],
+  ['primary_logo_white'],
+];
+
+export const getESPNTeamLogo = (
+  team?: Partial<Pick<ESPNTeam['team'], 'logo' | 'logos'>>,
+  preferredRelations: string[][] = [],
+): string | undefined => {
+  const logos = Array.isArray(team?.logos)
+    ? team.logos.filter((logo) => logo && typeof logo.href === 'string')
+    : [];
+  const validUrl = (href?: string) =>
+    typeof href === 'string' && href.trim().length > 0;
+
+  const preferredLogo = preferredRelations
+    .map(
+      (relations) =>
+        logos.find((logo) =>
+          relations.every((relation) => logo.rel?.includes(relation)),
+        )?.href,
+    )
+    .find(validUrl);
+
+  return (
+    preferredLogo ??
+    [
+      logos[2]?.href,
+      logos[0]?.href,
+      team?.logo,
+      ...ESPN_LOGO_RELATION_PRIORITIES.map(
+        (relations) =>
+          logos.find((logo) =>
+            relations.every((relation) => logo.rel?.includes(relation)),
+          )?.href,
+      ),
+      ...logos.map((logo) => logo.href),
+    ].find(validUrl)
+  );
+};
+
 // Abort a hanging ESPN request after `timeoutMs`, using the global AbortController
 // (Node >= 18). Prevents a connect-timeout from blocking the schedule/oldies
 // refresh for an unbounded amount of time (undici's default is very long).
@@ -861,10 +910,8 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
         // have an entry for this abbreviation. the abbreviation is the second
         // part of the uniqueId when saved in the database.
         let teamLogo =
-          logos?.[2]?.href ??
-          logos?.[0]?.href ??
-          team.logo ??
-          UniversityLogos[teamID] ??
+          getESPNTeamLogo(team) ||
+          UniversityLogos[teamID] ||
           getOlympicTeamLogo(leagueName, teamID);
         const teamLogoDark =
           logos?.find(
@@ -997,10 +1044,8 @@ export const getOlympicSeasonTeams = async (
           }
 
           const teamLogo =
-            team.logos?.[2]?.href ??
-            team.logos?.[0]?.href ??
-            team.logo ??
-            UniversityLogos[abbrev] ??
+            getESPNTeamLogo(team) ||
+            UniversityLogos[abbrev] ||
             getOlympicTeamLogo(sourceLeague, abbrev);
           discovered.set(uniqueId, {
             uniqueId,
@@ -1281,16 +1326,12 @@ const getEachTeamSchedule = async (
         const homeAbbrev = `${homeTeam.abbreviation}`;
 
         const awayTeamLogo =
-          awayTeam?.logos?.find(
-            (l) => l.rel?.includes('full') && l.rel?.includes('scoreboard'),
-          )?.href ||
+          getESPNTeamLogo(awayTeam, [['full', 'scoreboard']]) ||
           awayTeam?.logo ||
           leagueLogos[awayAbbrev] ||
           getOlympicTeamLogo(leagueName, awayAbbrev);
         const homeTeamLogo =
-          homeTeam?.logos?.find(
-            (l) => l.rel?.includes('full') && l.rel?.includes('scoreboard'),
-          )?.href ||
+          getESPNTeamLogo(homeTeam, [['full', 'scoreboard']]) ||
           homeTeam?.logo ||
           leagueLogos[homeAbbrev] ||
           getOlympicTeamLogo(leagueName, homeAbbrev);

@@ -2,6 +2,18 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Improved: ESPN university logo fallbacks inspect all available logo variants
+
+ESPN university team payloads can include several logo objects with different `rel` labels, and
+their array order is not guaranteed to stay consistent. Logo resolution preserves the existing
+`logos[2]`, `logos[0]`, and `team.logo` preferences, then tries recognized ESPN relation variants
+and any remaining non-empty logo URL before falling back to the local university map.
+
+- **`src/utils/fetchData/espnAllData.ts`** — adds `getESPNTeamLogo()` and uses it for roster
+  discovery, historical scoreboard discovery, and game normalization.
+- **`src/utils/fetchData/espnAllData.spec.ts`** — verifies preferred order, alternate relations,
+  arbitrary fallback URLs, and empty payload behavior.
+
 ## Fixed: records are isolated by preseason, regular season, and playoffs
 
 ESPN schedule requests retain the `seasontype` for every event, and historical record normalization
