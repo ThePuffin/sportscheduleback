@@ -110,6 +110,15 @@ games that have a complete home **and** away team. It logs added / skipped count
 - **Score requirement** (flexible for past games):
   - **Past games** (startTimeUTC < now): Null scores are allowed. The cron job's `fetchGamesScores()` will fill them later.
   - **Future games** (startTimeUTC ≥ now): Rejected to prevent scheduled games from polluting historical data.
+- **Per-game season records**: ESPN-backed schedules keep preseason, regular season, and playoffs
+  separate. A phase that has not started gets `0-0-0`; completed preseason/regular-season records
+  are normalized to that phase's verified final tally, while playoff records remain game-specific.
+  Series progression (for example, a team leading 2-0) stays in `seriesSummary` / `seriesStatus` and
+  is never written into `homeTeamRecord` / `awayTeamRecord`. Oldies saves/updates use those corrected
+  values. PWHL oldies fetches load
+  HockeyTech standings once per regular season, with a schedule replay fallback, and apply those
+  season-specific records before the same save/update step. These historical per-game records never
+  overwrite current `team.record`.
 - **Deduplication**: For a `uniqueId` already in the DB:
   - If the `uniqueId` matches, both stored home/away scores equal the fetched ones **and** the stored `homeTeamRecord` / `awayTeamRecord` already match (or are absent) → **skipped** (not overwritten).
   - If the `uniqueId` exists but the scores differ → treated as a stale/different result and **refreshed**.
@@ -119,17 +128,19 @@ games that have a complete home **and** away team. It logs added / skipped count
 
 **Records backfill at the end of an oldies run (`_backfillSeasonRecords()`):**
 
-After the insert loop, the oldies path sweeps the stored season once more and writes the season
-tally onto every game whose `homeTeamRecord` / `awayTeamRecord` is still **empty**. It exists because
+After the insert loop, the oldies path sweeps the stored season once more and writes the phase-appropriate
+record onto every game whose `homeTeamRecord` / `awayTeamRecord` is still **empty**. It exists because
 the insert loop cannot reach every case on its own: a game stored before the per-game records existed
 whose freshly fetched season carries no `record` for that team is _skipped_ by the comparison above
 (both sides empty), so it would keep an empty record forever.
 
-- The tally per team is read from the fetched games, which `applySeasonFinalRecords()` has already
-  normalized to the season's final value. Only tallies **verified as complete** by
-  `getSeasonFinals()` (`espnAllData.ts`) are restored: a truncated fetch yields intermediate numbers,
-  and writing them would freeze a wrong record on the stored games. Such a team is left untouched for
-  a later run. This filter is **not** redundant with `applySeasonFinalRecords()` — that pass
+- Preseason and regular-season tallies are read from the fetched games, which
+  `applySeasonFinalRecords()` has already normalized within their own phase. Only tallies **verified
+  as complete** by `getSeasonFinals()` (`espnAllData.ts`) are restored: a truncated fetch yields
+  intermediate numbers, and writing them would freeze a wrong record on the stored games. Playoff
+  records are copied from their own game, never from a later game in the series. Incomplete phase
+  tallies are left untouched for a later run. This filter is **not** redundant with
+  `applySeasonFinalRecords()` — that pass
   deliberately leaves a truncated team's games holding their own cumulative value, so rebuilding the
   tally without the filter would pick an arbitrary intermediate number. No truncation warning is
   logged here: `applySeasonFinalRecords()` already reported it for the same batch.
@@ -317,11 +328,11 @@ the payload as-is (it only applies its own league/team/bookmark chips filters).
 Runs a recovery cycle that tries to fetch missing or stale scores for recent games from ESPN or PWHL sources.
 
 It updates scores, `gameStatus`, series info and the **team** records (`TeamService.updateRecord()`,
-which keeps `team.record` — the most recent win/loss/draw tally — up to date), but it deliberately
-does **not** write `game.homeTeamRecord` / `game.awayTeamRecord`. Doing so would freeze each game's
-tally at the moment the score was synced, whereas a game of the in-progress season must display the
-most recent record (via the `team.record` fallback in `_enrichGameWithTeamData()`). Finished seasons
-get their final tally from the schedule fetch instead.
+which keeps `team.record` — the most recent win/loss/draw tally — up to date). For a completed
+historical PWHL season, the score provider supplies final season records; those are persisted on the
+game without overwriting the team's current `record`. Current/in-progress games without a supplied
+season record continue to update `team.record`, and their game responses use that current record as
+the fallback in `_enrichGameWithTeamData()`.
 
 **End-of-cycle cleanup**, in order: `fixScoreIssue()` → `removeOldGamesWithoutScore()` (started > 72h
 ago with a null score) → `removeStaleUnresolvedGames()`.

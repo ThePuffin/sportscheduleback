@@ -299,15 +299,42 @@ export const getSeasonFinals = (
   return { verified, truncated };
 };
 
+export const getRecordSeasonType = (game: any): number => {
+  const competition = game?.competitions?.[0];
+  const rawType =
+    game?.recordSeasonType ??
+    game?.seasonType ??
+    game?.season?.type?.id ??
+    game?.season?.type?.type ??
+    game?.season?.type ??
+    competition?.season?.type?.id ??
+    competition?.season?.type?.type ??
+    competition?.season?.type;
+  const type =
+    typeof rawType === 'object' && rawType !== null
+      ? rawType.id ?? rawType.type ?? rawType.name ?? rawType.abbreviation
+      : rawType;
+  const normalized = String(type ?? '').toLowerCase();
+
+  if (normalized === '1' || normalized.includes('pre')) return 1;
+  if (
+    normalized === '3' ||
+    normalized.includes('post') ||
+    normalized.includes('playoff')
+  ) {
+    return 3;
+  }
+  return 2;
+};
+
 /**
  * Rewrites the per-game records produced by `getEachTeamSchedule()` so that:
  *
- * - **the season is over** (every fetched game has already started): every game
- *   of that season shows the same **final** season tally — the most complete
- *   record found for each team wins (max games played).
- * - **the season is still running**: the records are cleared, so readers fall
- *   back to `team.record`, which always holds the most recent tally. Keeping
- *   the per-game value there would freeze a stale record on the current season.
+ * - preseason, regular season, and playoffs are independent record phases;
+ * - a phase that has not started explicitly shows `0-0-0`;
+ * - completed preseason and regular-season batches use the verified final tally;
+ * - playoff records remain attached to their individual games, allowing series
+ *   summaries (when available) and the record to progress across the bracket.
  *
  * PWHL is unaffected: its games are produced by `hockeyData.ts`, not by this
  * module.
@@ -319,42 +346,79 @@ export const applySeasonFinalRecords = (allGames: Record<string, any[]>) => {
   if (!games.length) return;
 
   const now = Date.now();
-  const seasonOver = games.every((game) => {
-    const start = game.startTimeUTC
-      ? new Date(game.startTimeUTC).getTime()
-      : NaN;
-    return Number.isFinite(start) && start < now;
-  });
-
-  if (!seasonOver) {
-    for (const game of games) {
-      game.homeTeamRecord = '';
-      game.awayTeamRecord = '';
-    }
-    return;
-  }
-
-  // Only the tallies that account for every game we hold are season finals; a
-  // truncated fetch would otherwise freeze an intermediate tally on the whole
-  // season (see `getSeasonFinals`).
-  const { verified, truncated } = getSeasonFinals(games);
-  if (truncated.length) {
-    console.warn(
-      `[ESPN] Season looks truncated for ${truncated.length} team(s) (${truncated
-        .slice(0, 5)
-        .join(
-          ', ',
-        )}${truncated.length > 5 ? ', …' : ''}); their per-game record is left untouched.`,
-    );
-  }
-
+  const gamesByPhase = new Map<number, any[]>();
   for (const game of games) {
-    // A team whose tally could not be verified keeps its own per-game cumulative
-    // value rather than being given a number that may not be the season's.
-    game.homeTeamRecord =
-      verified.get(game.homeTeamId) ?? game.homeTeamRecord ?? '';
-    game.awayTeamRecord =
-      verified.get(game.awayTeamId) ?? game.awayTeamRecord ?? '';
+    const phase = getRecordSeasonType(game);
+    if (!gamesByPhase.has(phase)) gamesByPhase.set(phase, []);
+    gamesByPhase.get(phase)!.push(game);
+  }
+
+  for (const [phase, phaseGames] of gamesByPhase) {
+    const phaseStarted = phaseGames.some((game) => {
+      const status = String(game.gameStatus ?? '').toUpperCase();
+      return (
+        status === 'FINISHED' ||
+        status === 'IN_PROGRESS' ||
+        recordGamesPlayed(game.homeTeamRecord) > 0 ||
+        recordGamesPlayed(game.awayTeamRecord) > 0
+      );
+    });
+
+    if (!phaseStarted) {
+      for (const game of phaseGames) {
+        game.homeTeamRecord = '0-0-0';
+        game.awayTeamRecord = '0-0-0';
+      }
+      continue;
+    }
+
+    // Post-season tallies are event-specific. Do not copy the last game's
+    // record onto earlier games; seriesSummary/seriesStatus carry the bracket
+    // progression where ESPN provides it (for example, "CHI leads 2-0").
+    if (phase === 3) {
+      for (const game of phaseGames) {
+        game.homeTeamRecord ||= '0-0-0';
+        game.awayTeamRecord ||= '0-0-0';
+      }
+      continue;
+    }
+
+    const phaseOver = phaseGames.every((game) => {
+      const start = game.startTimeUTC
+        ? new Date(game.startTimeUTC).getTime()
+        : NaN;
+      return Number.isFinite(start) && start < now;
+    });
+
+    if (phaseOver) {
+      // Only tallies that account for every game in this phase are finals; a
+      // truncated fetch must not freeze an intermediate number across the phase.
+      const { verified, truncated } = getSeasonFinals(phaseGames);
+      if (truncated.length) {
+        console.warn(
+          `[ESPN] Season type ${phase} looks truncated for ${truncated.length} team(s) (${truncated
+            .slice(0, 5)
+            .join(
+              ', ',
+            )}${truncated.length > 5 ? ', …' : ''}); their per-game record is left untouched.`,
+        );
+      }
+
+      for (const game of phaseGames) {
+        game.homeTeamRecord =
+          verified.get(game.homeTeamId) ?? game.homeTeamRecord ?? '0-0-0';
+        game.awayTeamRecord =
+          verified.get(game.awayTeamId) ?? game.awayTeamRecord ?? '0-0-0';
+      }
+      continue;
+    }
+
+    // Keep ESPN's phase-specific in-progress tally. Missing records mean this
+    // team has not yet played in the phase; never fall back to a prior phase.
+    for (const game of phaseGames) {
+      game.homeTeamRecord ||= '0-0-0';
+      game.awayTeamRecord ||= '0-0-0';
+    }
   }
 };
 
@@ -1015,9 +1079,7 @@ export const getTeamsSchedule = async (
     );
   }
 
-  // Normalize the per-game cumulative tallies into the record that must be
-  // displayed: the final tally of a finished season, nothing (so the most
-  // recent team record is used) while the season is still running.
+  // Normalize records independently for preseason, regular season, and playoffs.
   applySeasonFinalRecords(allGames);
 
   const fetchedGames = Object.values(allGames).flat() as any[];
@@ -1102,11 +1164,16 @@ const getEachTeamSchedule = async (
                 break;
               }
               const events = data.events || [];
-              const eventsFiltered = events.filter((ev) =>
-                ev.competitions?.[0]?.competitors?.some(
-                  (c) => c.team?.id === id,
-                ),
-              );
+              const eventsFiltered = events
+                .filter((ev) =>
+                  ev.competitions?.[0]?.competitors?.some(
+                    (c) => c.team?.id === id,
+                  ),
+                )
+                .map((ev) => ({
+                  ...ev,
+                  recordSeasonType: getRecordSeasonType(ev),
+                }));
               games.push(...eventsFiltered);
               if (events.length < 1000) {
                 hasMore = false;
@@ -1134,7 +1201,13 @@ const getEachTeamSchedule = async (
             const fetchGamesData = await fetchJsonOrNull(link);
 
             if (fetchGamesData && fetchGamesData.events && fetchGamesData.events.length > 0) {
-              games = [...games, ...fetchGamesData.events];
+              games = [
+                ...games,
+                ...fetchGamesData.events.map((event) => ({
+                  ...event,
+                  recordSeasonType: type,
+                })),
+              ];
             }
           } catch (err) {
             console.error(
@@ -1252,11 +1325,12 @@ const getEachTeamSchedule = async (
           homeTeamShort,
           homeTeamScore: homeTeamScore,
           awayTeamScore: awayTeamScore,
-          // Cumulative tally at the time of this game. `getTeamsSchedule()` then
-          // rewrites them into the season's final tally (finished season) or
-          // clears them (season in progress) via `applySeasonFinalRecords()`.
+          // Cumulative phase tally at the time of this game. Completed
+          // preseason/regular-season phases are normalized to their final tally;
+          // playoff records remain game-specific.
           homeTeamRecord: extractCompetitorRecord(homeCompetitor),
           awayTeamRecord: extractCompetitorRecord(awayCompetitor),
+          recordSeasonType: getRecordSeasonType(game),
           seriesSummary: formatSeriesSummary(
             comp?.notes?.[0]?.headline || game.notes?.[0]?.headline || '',
           ),

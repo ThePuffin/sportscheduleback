@@ -96,36 +96,16 @@ export class HockeyData {
    *
    * - `gameSeason` — the entry whose date span covers the date (regular season
    *   first, then playoffs, then pre-season when two entries overlap).
-   * - `recordSeason` — the regular season a team's W-L-OTL comes from: the one
-   *   covering the date, or, for a playoff date, the most recent regular season
-   *   that ended before it. Pre-season dates therefore show the last completed
-   *   tally rather than the upcoming season's (still empty) one.
+   * - `recordSeason` — the phase whose records apply to the date: the pre-season
+   *   or regular season covering it; for a playoff date, the most recent regular
+   *   season that ended before it.
    */
   private async getPWHLSeasonsForDate(
     date: string,
   ): Promise<{ gameSeason?: PWHLSeason; recordSeason?: PWHLSeason }> {
     try {
       const seasons = await this.getPWHLSeasons();
-      if (!Array.isArray(seasons) || seasons.length === 0) return {};
-
-      const isRegular = (s: PWHLSeason) =>
-        /regular season/i.test(s.season_name);
-      const covers = (s: PWHLSeason) =>
-        s.start_date <= date && s.end_date >= date;
-      const rank = (s: PWHLSeason) =>
-        isRegular(s) ? 0 : /playoff/i.test(s.season_name) ? 1 : 2;
-
-      const covering = seasons.filter(covers);
-      const gameSeason = [...covering].sort((a, b) => rank(a) - rank(b))[0];
-
-      const regulars = seasons.filter(isRegular);
-      const recordSeason =
-        regulars.find(covers) ??
-        regulars
-          .filter((s) => s.end_date <= date)
-          .sort((a, b) => b.end_date.localeCompare(a.end_date))[0];
-
-      return { gameSeason, recordSeason };
+      return this.resolvePWHLSeasonsForDate(date, seasons);
     } catch (error) {
       console.error(
         'Error resolving PWHL seasons for date:',
@@ -133,6 +113,85 @@ export class HockeyData {
       );
       return {};
     }
+  }
+
+  private resolvePWHLSeasonsForDate(
+    date: string,
+    seasons: PWHLSeason[],
+  ): { gameSeason?: PWHLSeason; recordSeason?: PWHLSeason } {
+    if (seasons.length === 0) return {};
+
+    const isRegular = (season: PWHLSeason) =>
+      /regular season/i.test(season.season_name);
+    const covers = (season: PWHLSeason) =>
+      season.start_date <= date && season.end_date >= date;
+    const rank = (season: PWHLSeason) =>
+      isRegular(season) ? 0 : /playoff/i.test(season.season_name) ? 1 : 2;
+    const covering = seasons.filter(covers);
+    const gameSeason = [...covering].sort((a, b) => rank(a) - rank(b))[0];
+    const regulars = seasons.filter(isRegular);
+    const regularSeason = regulars.find(covers);
+    const previousRegularSeason = regulars
+      .filter((season) => season.end_date <= date)
+      .sort((a, b) => b.end_date.localeCompare(a.end_date))[0];
+
+    return {
+      gameSeason,
+      recordSeason:
+        gameSeason && /pre-season/i.test(gameSeason.season_name)
+          ? gameSeason
+          : regularSeason || previousRegularSeason,
+    };
+  }
+
+  /**
+   * Load phase-specific records for many stored game dates, fetching standings
+   * (or replay fallback) only once per season.
+   */
+  async getPWHLRecordsForDates(
+    dates: string[],
+  ): Promise<Map<string, Record<string, string>>> {
+    const result = new Map<string, Record<string, string>>();
+    const uniqueDates = [...new Set(dates)];
+    if (uniqueDates.length === 0) return result;
+
+    const seasons = await this.getPWHLSeasons();
+    if (seasons.length === 0) {
+      throw new Error('HockeyTech returned no PWHL seasons.');
+    }
+
+    const datesBySeason = new Map<string, string[]>();
+    for (const date of uniqueDates) {
+      const { recordSeason } = this.resolvePWHLSeasonsForDate(date, seasons);
+      if (!recordSeason) {
+        result.set(date, {});
+        continue;
+      }
+
+      const seasonDates = datesBySeason.get(recordSeason.season_id) ?? [];
+      seasonDates.push(date);
+      datesBySeason.set(recordSeason.season_id, seasonDates);
+    }
+
+    for (const [seasonId, seasonDates] of datesBySeason) {
+      const records = await this.getPWHLRecordsForSeason(seasonId);
+
+      if (Object.keys(records).length === 0) {
+        console.warn(
+          `[Records] PWHL standings and schedule replay returned no records for season ${seasonId}.`,
+        );
+      }
+
+      const recordsWithAliases = { ...records };
+      for (const [alias, canonical] of Object.entries(PWHL_CODE_ALIASES)) {
+        if (records[canonical]) recordsWithAliases[alias] = records[canonical];
+      }
+      for (const date of seasonDates) {
+        result.set(date, recordsWithAliases);
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -360,14 +419,12 @@ export class HockeyData {
     };
 
     try {
-      const standings = await this.getPWHLStandings();
-      if (standings && Object.keys(standings).length > 0) {
-        apply(standings);
-        return;
+      const today = new Date().toISOString().slice(0, 10);
+      const { recordSeason } = await this.getPWHLSeasonsForDate(today);
+      if (!recordSeason) {
+        throw new Error(`No PWHL record phase covers ${today}.`);
       }
-      console.warn(
-        '[Records] PWHL standings returned nothing — falling back to the schedule replay.',
-      );
+      apply(await this.getPWHLRecordsForSeason(recordSeason.season_id));
     } catch (error) {
       console.error(
         '[Records] Error fetching PWHL standings:',
@@ -375,22 +432,6 @@ export class HockeyData {
       );
     }
 
-    try {
-      const response = await fetch(
-        `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
-      );
-      const json = await response.json();
-      const allGames: PWHLGameAPI[] = json?.SiteKit?.Schedule;
-      if (Array.isArray(allGames) && allGames.length > 0) {
-        const { finals } = this.applyPWHLHistoricalRecords(allGames);
-        apply(Object.fromEntries(finals));
-      }
-    } catch (error) {
-      console.error(
-        '[Records] PWHL schedule replay fallback failed:',
-        error instanceof Error ? error.message : String(error),
-      );
-    }
   }
 
   getHockeySchedule = async (
@@ -460,6 +501,9 @@ export class HockeyData {
     );
 
     const fetchedGames = Object.values(allGames).flat() as any[];
+    if (league === League.NHL && season !== undefined) {
+      this.applyNHLHistoricalRecords(allGames);
+    }
     const distinctGames = new Set(
       fetchedGames.map((game) =>
         game?.startTimeUTC && game?.homeTeamId && game?.awayTeamId
@@ -528,21 +572,9 @@ export class HockeyData {
   getPWHLStandings = async (seasonId?: string) => {
     try {
       if (!seasonId) {
-        const seasonsResponse = await fetch(
-          `${pwhlAPI}index.php?feed=modulekit&view=seasons&key=446521baf8c38984&client_code=pwhl&fmt=json`,
-        );
-        const seasonsJson = await seasonsResponse.json();
-        const seasons = seasonsJson?.SiteKit?.Seasons;
-        if (Array.isArray(seasons) && seasons.length > 0) {
-          const regularSeason = [...seasons]
-            .reverse()
-            .find((s) => s.season_name.includes('Regular Season'));
-          if (regularSeason) {
-            seasonId = regularSeason.season_id;
-          } else {
-            seasonId = seasons.at(-1).season_id;
-          }
-        }
+        const today = new Date().toISOString().slice(0, 10);
+        const { recordSeason } = await this.getPWHLSeasonsForDate(today);
+        seasonId = recordSeason?.season_id;
       }
 
       if (!seasonId) return {};
@@ -582,9 +614,66 @@ export class HockeyData {
     }
   };
 
+  private async getPWHLRecordsForSeason(
+    seasonId: string,
+    scheduleOverride?: PWHLGameAPI[],
+  ): Promise<Record<string, string>> {
+    let schedule = scheduleOverride;
+    let scheduleUnavailable = false;
+    if (!schedule) {
+      try {
+        schedule = await this.getPWHLSchedule(seasonId);
+      } catch (error) {
+        scheduleUnavailable = true;
+        schedule = [];
+        console.warn(
+          `[Records] PWHL schedule unavailable for season ${seasonId}; trying official standings.`,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+    const replayRecords = Object.fromEntries(
+      this.applyPWHLHistoricalRecords(schedule),
+    );
+    const hasFinishedGames = schedule.some(
+      (game) =>
+        game.final === '1' ||
+        game.status === '4' ||
+        game.game_status?.toUpperCase().startsWith('FINAL'),
+    );
+
+    // A stale standings row must not leak a previous phase's tally into a new
+    // phase. Until that phase has a completed game, its participants are 0-0-0.
+    if (!hasFinishedGames && !scheduleUnavailable) return replayRecords;
+    const standings = await this.getPWHLStandings(seasonId);
+    if (Object.keys(standings).length > 0) {
+      return { ...replayRecords, ...standings };
+    }
+    console.warn(
+      `[Records] PWHL standings returned nothing for season ${seasonId} — using the schedule replay.`,
+    );
+    return replayRecords;
+  }
+
   getNHLStandings = async () => {
     try {
-      const response = await fetch('https://api-web.nhle.com/v1/standings/now');
+      const date = new Date().toISOString().slice(0, 10);
+      return await this.getNHLStandingsForDate(date);
+    } catch (error) {
+      console.error('Error fetching NHL standings:', error);
+      return {};
+    }
+  };
+
+  private getNHLGameType(game: NHLGameAPI): number {
+    return Number(game.gameType);
+  }
+
+  private async getNHLStandingsForDate(date: string) {
+    try {
+      const response = await fetch(
+        `https://api-web.nhle.com/v1/standings/${date}`,
+      );
       const json = await response.json();
       const standings = json.standings;
       const records = {};
@@ -595,10 +684,115 @@ export class HockeyData {
       });
       return records;
     } catch (error) {
-      console.error('Error fetching NHL standings:', error);
+      console.error(`Error fetching NHL standings for ${date}:`, error);
       return {};
     }
   };
+
+  private applyNHLHistoricalRecords(allGames: Record<string, GameFormatted[]>) {
+    const games = Object.values(allGames).flat() as any[];
+    const byPhase = new Map<number, Map<string, any[]>>();
+
+    for (const game of games) {
+      const phase = Number(game.recordSeasonType);
+      const key = `${game.startTimeUTC}|${game.homeTeamId}|${game.awayTeamId}`;
+      if (!byPhase.has(phase)) byPhase.set(phase, new Map());
+      const phaseGames = byPhase.get(phase)!;
+      if (!phaseGames.has(key)) phaseGames.set(key, []);
+      phaseGames.get(key)!.push(game);
+    }
+
+    for (const [phase, phaseGamesByKey] of byPhase) {
+      const phaseGames = [...phaseGamesByKey.values()]
+        .map((copies) => copies[0])
+        .sort(
+          (a, b) =>
+            new Date(a.startTimeUTC).getTime() -
+            new Date(b.startTimeUTC).getTime(),
+        );
+      const records = new Map<
+        string,
+        { wins: number; losses: number; otLosses: number }
+      >();
+      const recordsAtGame = new Map<
+        string,
+        { home: string; away: string }
+      >();
+      const teamRecord = (teamId: string) => {
+        if (!records.has(teamId)) {
+          records.set(teamId, { wins: 0, losses: 0, otLosses: 0 });
+        }
+        return records.get(teamId)!;
+      };
+      const finished = (game: any) =>
+        ['FINAL', 'OFF', 'OVER'].includes(
+          String(game.scheduleGameState || '').toUpperCase(),
+        );
+
+      for (const game of phaseGames) {
+        const home = teamRecord(game.homeTeamId);
+        const away = teamRecord(game.awayTeamId);
+        const gameKey = `${game.startTimeUTC}|${game.homeTeamId}|${game.awayTeamId}`;
+        const homeScore = Number(game.scheduleHomeScore);
+        const awayScore = Number(game.scheduleAwayScore);
+        if (
+          finished(game) &&
+          Number.isFinite(homeScore) &&
+          Number.isFinite(awayScore) &&
+          homeScore !== awayScore
+        ) {
+          const winner = homeScore > awayScore ? home : away;
+          const loser = homeScore > awayScore ? away : home;
+          winner.wins += 1;
+          if (
+            game.scheduleLastPeriodType === 'OT' ||
+            game.scheduleLastPeriodType === 'SO'
+          ) {
+            loser.otLosses += 1;
+          } else {
+            loser.losses += 1;
+          }
+        }
+        recordsAtGame.set(gameKey, {
+          home: `${home.wins}-${home.losses}-${home.otLosses}`,
+          away: `${away.wins}-${away.losses}-${away.otLosses}`,
+        });
+      }
+
+      const recordString = (teamId: string) => {
+        const record = teamRecord(teamId);
+        return `${record.wins}-${record.losses}-${record.otLosses}`;
+      };
+      const phaseComplete = phaseGames.every(finished);
+
+      for (const game of phaseGames) {
+        const recordsForGame =
+          phase !== 3 && phaseComplete
+            ? {
+                home: recordString(game.homeTeamId),
+                away: recordString(game.awayTeamId),
+              }
+            : recordsAtGame.get(
+                `${game.startTimeUTC}|${game.homeTeamId}|${game.awayTeamId}`,
+              )!;
+
+        for (const copy of phaseGamesByKey.get(
+          `${game.startTimeUTC}|${game.homeTeamId}|${game.awayTeamId}`,
+        ) ?? []) {
+          copy.homeTeamRecord = recordsForGame.home;
+          copy.awayTeamRecord = recordsForGame.away;
+        }
+      }
+
+    }
+
+    for (const game of games) {
+      delete game.scheduleGameState;
+      delete game.scheduleHomeScore;
+      delete game.scheduleAwayScore;
+      delete game.scheduleLastPeriodType;
+    }
+  }
 
   getPWHLTeamschedule = async (
     id: string,
@@ -748,6 +942,11 @@ export class HockeyData {
         homeTeamScore: null,
         awayTeamScore: null,
         gameStatus: null,
+        recordSeasonType: this.getNHLGameType(game),
+        scheduleGameState: game.gameState,
+        scheduleHomeScore: game.homeTeam.score,
+        scheduleAwayScore: game.awayTeam.score,
+        scheduleLastPeriodType: game.periodDescriptor?.periodType,
         seriesSummary: (game as any).seriesSummary?.seriesStatusShort,
         seriesStatus: (game as any).seriesSummary?.seriesStatusLong,
         league: leagueName,
@@ -767,46 +966,22 @@ export class HockeyData {
   };
 
   /**
-   * Replays a PWHL season schedule to compute each team's final W-L-OTL.
-   *
-   * Same rule as the ESPN leagues in `espnAllData.ts` / `syncGameWithScore()`:
-   * - past season (every game already started): the **final** season tally is
-   *   copied onto every game of the team, so opening a game of a finished
-   *   season shows that year's record, not today's;
-   * - season in progress: records stay empty so readers fall back to the live
-   *   `team.record` (most recent tally).
-   *
-   * HockeyTech exposes no per-game cumulative record, hence the local replay:
-   * finished games are walked in chronological order and each team's W/L/OTL is
-   * incremented (OT/SO loss when `overtime`/`shootout` is set or `game_status`
-   * mentions OT/SO, regulation loss otherwise).
-   *
-   * Callers must pass a **regular season** schedule: HockeyTech gives the
-   * playoffs their own `season_id`, and a W-L-OTL tally is a regular-season
-   * figure (that is what the standings show). `getPWHLScores()` therefore picks
-   * the regular season covering the date — or, on a playoff date, the regular
-   * season that ended just before it. Note that `game_type` is an empty string
-   * in **both** feeds today, so the `isPlayoff` guard below never actually
-   * filters anything; the season choice, not that guard, is what keeps
-   * playoff games out of the tally.
+   * Replays a single PWHL phase schedule to compute each team's W-L-OTL when
+   * official standings are unavailable. HockeyTech exposes no per-game
+   * cumulative record, so each finished game increments the phase tally
+   * (OT/SO loss when `overtime`/`shootout` is set or `game_status` mentions
+   * OT/SO, regulation loss otherwise). Callers resolve the phase by season ID;
+   * playoff dates use the preceding regular-season schedule instead.
    */
-  private applyPWHLHistoricalRecords(allGames: PWHLGameAPI[]): {
-    finals: Map<string, string>;
-    seasonOver: boolean;
-  } {
+  private applyPWHLHistoricalRecords(
+    allGames: PWHLGameAPI[],
+  ): Map<string, string> {
     const finals = new Map<string, string>();
     const sorted = [...allGames].sort(
       (a, b) =>
         new Date(a.GameDateISO8601).getTime() -
         new Date(b.GameDateISO8601).getTime(),
     );
-    const now = Date.now();
-    const seasonOver = sorted.every((g) => {
-      const start = g?.GameDateISO8601
-        ? new Date(g.GameDateISO8601).getTime()
-        : NaN;
-      return Number.isFinite(start) && start < now;
-    });
 
     const tallies = new Map<string, { w: number; l: number; otl: number }>();
     const tally = (code: string) => {
@@ -819,25 +994,23 @@ export class HockeyData {
     };
 
     for (const g of sorted) {
+      const home = normalizePWHLCode(g.home_team_code);
+      const away = normalizePWHLCode(g.visiting_team_code);
+      if (home) tally(home);
+      if (away) tally(away);
+
       const isFinished = Boolean(
         g.final === '1' ||
           g.status === '4' ||
           g.game_status?.toUpperCase().startsWith('FINAL'),
       );
-      const isPlayoff =
-        g.game_type !== undefined &&
-        g.game_type !== null &&
-        String(g.game_type) !== '' &&
-        String(g.game_type) !== '1';
-      if (!isFinished || isPlayoff) continue;
+      if (!isFinished) continue;
 
       const homeGoals = Number(g.home_goal_count);
       const awayGoals = Number(g.visiting_goal_count);
       if (!Number.isFinite(homeGoals) || !Number.isFinite(awayGoals)) continue;
       if (homeGoals === awayGoals) continue;
 
-      const home = normalizePWHLCode(g.home_team_code);
-      const away = normalizePWHLCode(g.visiting_team_code);
       const winner = homeGoals > awayGoals ? home : away;
       const loser = homeGoals > awayGoals ? away : home;
       const wentExtra =
@@ -850,17 +1023,15 @@ export class HockeyData {
     }
 
     for (const [code, t] of tallies) finals.set(code, `${t.w}-${t.l}-${t.otl}`);
-    return { finals, seasonOver };
+    return finals;
   }
 
   /**
-   * Scores of one day, with each team's record for that day.
+   * Scores of one day, with each team's regular-season record.
    *
    * The season is resolved from the **exact date**. Without it the feed
    * answers with its default season (the live pre-season), so the requested day
-   * is simply absent from the payload: the `date_played` filter returns nothing
-   * and `applyPWHLHistoricalRecords` finds no finished game, which left both
-   * `seasonOver` false and `finals` empty — hence no record on any past date.
+   * is simply absent from the payload: the `date_played` filter returns nothing.
    *
    * Records come from the **regular season alone**: pre-season, playoffs and
    * regular season have distinct `season_id`s and several of them overlap a
@@ -878,14 +1049,17 @@ export class HockeyData {
       const dayGames = await this.getPWHLSchedule(gameSeason?.season_id);
       const gamesOfDay = dayGames.filter((game) => game.date_played === date);
 
-      // The tally is replayed from the regular season — the same schedule when
-      // the day already belongs to it, one extra request otherwise.
-      const recordGames =
-        recordSeason && recordSeason.season_id !== gameSeason?.season_id
-          ? await this.getPWHLSchedule(recordSeason.season_id)
-          : dayGames;
-      const { finals, seasonOver } =
-        this.applyPWHLHistoricalRecords(recordGames);
+      // Resolve records from the same phase as the game. Playoff games retain
+      // the prior regular-season record; pre-season games use their own phase,
+      // so neither can inherit a record from the other.
+      const seasonRecords = recordSeason
+        ? await this.getPWHLRecordsForSeason(
+            recordSeason.season_id,
+            recordSeason.season_id === gameSeason?.season_id
+              ? dayGames
+              : undefined,
+          )
+        : {};
 
       return gamesOfDay.map((game) => {
         let gameStatus = game.game_status;
@@ -896,17 +1070,10 @@ export class HockeyData {
         ) {
           gameStatus = `${(game as any).game_clock} - ${(game as any).period}`;
         }
-        // Same rule as the ESPN leagues (`applySeasonFinalRecords`): a
-        // finished season shows that year's final tally on every game;
-        // a season in progress leaves records empty so readers fall
-        // back to the live `team.record` (most recent tally, kept via
-        // `syncGameWithScore()` -> `_nextRecord()`).
-        const homeRecord = seasonOver
-          ? finals.get(normalizePWHLCode(game.home_team_code)) || ''
-          : '';
-        const awayRecord = seasonOver
-          ? finals.get(normalizePWHLCode(game.visiting_team_code)) || ''
-          : '';
+        const homeRecord =
+          seasonRecords[normalizePWHLCode(game.home_team_code)] || '';
+        const awayRecord =
+          seasonRecords[normalizePWHLCode(game.visiting_team_code)] || '';
         return {
           homeTeamScore: Number(game.home_goal_count),
           awayTeamScore: Number(game.visiting_goal_count),

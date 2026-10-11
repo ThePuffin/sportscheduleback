@@ -4,6 +4,7 @@ import {
   fetchJsonOrNull,
   getOlympicTeamLogo,
   getOlympicSeasonTeams,
+  getRecordSeasonType,
   getSeasonFinals,
   getTeamsSchedule,
   isD1Groups,
@@ -168,6 +169,14 @@ describe('extractCompetitorRecord', () => {
   });
 });
 
+describe('getRecordSeasonType', () => {
+  it('normalizes ESPN phase ids and labels', () => {
+    expect(getRecordSeasonType({ recordSeasonType: 1 })).toBe(1);
+    expect(getRecordSeasonType({ seasonType: { id: '3', name: 'Postseason' } })).toBe(3);
+    expect(getRecordSeasonType({ season: { type: { type: 'regular' } } })).toBe(2);
+  });
+});
+
 describe('applySeasonFinalRecords', () => {
   const pastGame = (
     homeTeamId: string,
@@ -175,6 +184,7 @@ describe('applySeasonFinalRecords', () => {
     homeTeamRecord: string,
     awayTeamRecord: string,
     uniqueId?: string,
+    recordSeasonType = 2,
   ) => ({
     // Same start for every fixture: games are de-duplicated per team by identity,
     // so a test holding several BOS vs TOR matches must give them distinct ids.
@@ -184,44 +194,44 @@ describe('applySeasonFinalRecords', () => {
     awayTeamId,
     homeTeamRecord,
     awayTeamRecord,
+    recordSeasonType,
   });
 
-  it('replaces the cumulative per-game tallies with the final season tally', () => {
+  it('keeps preseason and regular-season final records separate', () => {
     // Tallies must stay consistent with the number of games held for each team,
     // otherwise the batch is (correctly) treated as truncated.
     const allGames = {
       'NHL-BOS': [
-        pastGame('NHL-BOS', 'NHL-TOR', '1-0-0', '0-1-0'), // pre-season
-        pastGame('NHL-BOS', 'NHL-TOR', '1-1-0', '1-1-0'), // final (2 games)
+        pastGame('NHL-BOS', 'NHL-TOR', '1-0-0', '0-1-0', 'pre-1', 1),
+        pastGame('NHL-BOS', 'NHL-TOR', '1-1-0', '1-1-0', 'reg-1', 2),
       ],
-      'NHL-TOR': [pastGame('NHL-TOR', 'NHL-BOS', '1-1-0', '1-1-0')],
+      'NHL-TOR': [
+        pastGame('NHL-TOR', 'NHL-BOS', '1-1-0', '1-1-0', 'reg-1', 2),
+      ],
     };
 
     applySeasonFinalRecords(allGames);
 
-    const games = [...allGames['NHL-BOS'], ...allGames['NHL-TOR']];
-    for (const game of games) {
-      expect(game.homeTeamRecord).toBe(
-        game.homeTeamId === 'NHL-BOS' ? '1-1-0' : '1-1-0',
-      );
-      expect(game.awayTeamRecord).toBe(
-        game.awayTeamId === 'NHL-BOS' ? '1-1-0' : '1-1-0',
-      );
-    }
+    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('1-0-0');
+    expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('0-1-0');
+    expect(allGames['NHL-BOS'][1].homeTeamRecord).toBe('1-1-0');
+    expect(allGames['NHL-BOS'][1].awayTeamRecord).toBe('1-1-0');
   });
 
-  it('keeps the pre-season tally out of the final one (fewer games played)', () => {
+  it('does not copy the last regular-season tally to preseason games', () => {
     const allGames = {
       'NHL-BOS': [
-        pastGame('NHL-BOS', 'NHL-TOR', '1-0-0', '0-1-0'), // 1 game
-        pastGame('NHL-BOS', 'NHL-TOR', '1-1-0', '1-1-0'), // 2 games
+        pastGame('NHL-BOS', 'NHL-TOR', '1-0-0', '0-1-0', 'pre-1', 1),
+        pastGame('NHL-BOS', 'NHL-TOR', '1-1-0', '1-1-0', 'reg-1', 2),
       ],
     };
 
     applySeasonFinalRecords(allGames);
 
-    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('1-1-0');
-    expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('1-1-0');
+    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('1-0-0');
+    expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('0-1-0');
+    expect(allGames['NHL-BOS'][1].homeTeamRecord).toBe('1-1-0');
+    expect(allGames['NHL-BOS'][1].awayTeamRecord).toBe('1-1-0');
   });
 
   it('leaves the per-game tally untouched when the season is truncated', () => {
@@ -240,7 +250,7 @@ describe('applySeasonFinalRecords', () => {
     expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('42-32-7');
   });
 
-  it('clears the records while the season is still running', () => {
+  it('keeps phase-specific records while that phase is in progress', () => {
     const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const allGames = {
       'NHL-BOS': [
@@ -253,18 +263,41 @@ describe('applySeasonFinalRecords', () => {
 
     applySeasonFinalRecords(allGames);
 
-    // Cleared so that readers fall back on the up-to-date `team.record`.
-    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('');
-    expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('');
+    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('5-2-0');
+    expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('4-3-0');
   });
 
-  it('clears every record as soon as one game of the season is still upcoming', () => {
+  it('keeps playoff match records distinct as a series progresses', () => {
+    const allGames: Record<string, any[]> = {
+      'NFL-CHI': [
+        {
+          ...pastGame('NFL-CHI', 'NFL-DET', '1-0-0', '0-1-0', 'playoff-1', 3),
+          seriesSummary: 'CHI leads 2-0',
+        },
+        pastGame('NFL-CHI', 'NFL-DET', '2-0-0', '0-2-0', 'playoff-2', 3),
+      ],
+      'NFL-SF': [
+        pastGame('NFL-SF', 'NFL-LA', '1-0-0', '0-1-0', 'single-playoff', 3),
+      ],
+    };
+
+    applySeasonFinalRecords(allGames);
+
+    expect(allGames['NFL-CHI'][0].homeTeamRecord).toBe('1-0-0');
+    expect(allGames['NFL-CHI'][0].awayTeamRecord).toBe('0-1-0');
+    expect(allGames['NFL-CHI'][0].seriesSummary).toBe('CHI leads 2-0');
+    expect(allGames['NFL-CHI'][1].homeTeamRecord).toBe('2-0-0');
+    expect(allGames['NFL-CHI'][1].awayTeamRecord).toBe('0-2-0');
+    expect(allGames['NFL-SF'][0].homeTeamRecord).toBe('1-0-0');
+  });
+
+  it('sets an unstarted phase to zero even when other phases have records', () => {
     const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const allGames = {
       'NHL-BOS': [
-        pastGame('NHL-BOS', 'NHL-TOR', '33-39-10', '42-32-7'),
+        pastGame('NHL-BOS', 'NHL-TOR', '33-39-10', '42-32-7', 'regular', 2),
         {
-          ...pastGame('NHL-BOS', 'NHL-TOR', '0-0-0', '0-0-0'),
+          ...pastGame('NHL-BOS', 'NHL-TOR', '0-0-0', '0-0-0', 'pre', 1),
           startTimeUTC: future,
         },
       ],
@@ -272,8 +305,10 @@ describe('applySeasonFinalRecords', () => {
 
     applySeasonFinalRecords(allGames);
 
-    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('');
-    expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('');
+    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('33-39-10');
+    expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('42-32-7');
+    expect(allGames['NHL-BOS'][1].homeTeamRecord).toBe('0-0-0');
+    expect(allGames['NHL-BOS'][1].awayTeamRecord).toBe('0-0-0');
   });
 
   it('is a no-op when there is nothing to process', () => {

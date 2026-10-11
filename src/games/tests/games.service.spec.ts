@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TeamService } from '../../teams/teams.service';
 import { Colors, DEFAULT_TEAM_COLORS } from '../../utils/Colors';
 import { League } from '../../utils/enum';
+import { HockeyData } from '../../utils/fetchData/hockeyData';
 import * as utils from '../../utils/utils';
 import { GameService } from '../games.service';
 import { RefreshTimestampService } from '../refresh-timestamps.service';
@@ -137,6 +138,39 @@ describe('GameService', () => {
       );
 
       expect(colors).toEqual(DEFAULT_TEAM_COLORS);
+    });
+  });
+
+  describe('syncGameWithScore — PWHL historical records', () => {
+    it('persists the season record without replacing the current team record', async () => {
+      const save = jest.fn().mockResolvedValue(undefined);
+      const game: any = {
+        league: League.PWHL,
+        gameStatus: 'SCHEDULED',
+        homeTeamId: 'PWHL-BOS',
+        awayTeamId: 'PWHL-MIN',
+        homeTeamScore: 3,
+        awayTeamScore: 1,
+        startTimeUTC: '2024-05-29T23:00:00.000Z',
+        save,
+      };
+
+      await (service as any).syncGameWithScore(
+        {
+          gameStatus: 'FINISHED',
+          isFinal: true,
+          homeTeamScore: 3,
+          awayTeamScore: 1,
+          homeTeamRecord: '19-6-3',
+          awayTeamRecord: '16-8-4',
+        },
+        game,
+      );
+
+      expect(game.homeTeamRecord).toBe('19-6-3');
+      expect(game.awayTeamRecord).toBe('16-8-4');
+      expect(mockTeamService.updateRecord).not.toHaveBeenCalled();
+      expect(save).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -395,6 +429,49 @@ describe('GameService', () => {
       expect(enriched.homeTeamLogoDark).toBe(game.homeTeamLogoDark);
       expect(enriched.awayTeamLogo).toBe(game.awayTeamLogo);
       expect(enriched.awayTeamLogoDark).toBe(game.awayTeamLogoDark);
+    });
+  });
+
+  describe('_enrichGameWithTeamData playoff status and records', () => {
+    it('keeps records for a single-game playoff round without series progression', () => {
+      const game = {
+        homeTeamId: 'NFL-CHI',
+        awayTeamId: 'NFL-DET',
+        homeTeamRecord: '1-0-0',
+        awayTeamRecord: '0-1-0',
+        seriesSummary: 'NFC Wild Card',
+        seriesStatus: '',
+      };
+
+      const enriched = (service as any)._enrichGameWithTeamData(
+        game,
+        new Map(),
+      );
+
+      expect(enriched.homeTeamRecord).toBe('1-0-0');
+      expect(enriched.awayTeamRecord).toBe('0-1-0');
+      expect(enriched.seriesSummary).toBe('NFC Wild Card');
+    });
+
+    it('keeps series progression in status fields and team tallies in record fields', () => {
+      const game = {
+        homeTeamId: 'NHL-CHI',
+        awayTeamId: 'NHL-DET',
+        homeTeamRecord: '2-0-0',
+        awayTeamRecord: '0-2-0',
+        seriesSummary: 'CHI leads 2-0',
+        seriesStatus: 'Series tied 1-1',
+      };
+
+      const enriched = (service as any)._enrichGameWithTeamData(
+        game,
+        new Map(),
+      );
+
+      expect(enriched.homeTeamRecord).toBe('2-0-0');
+      expect(enriched.awayTeamRecord).toBe('0-2-0');
+      expect(enriched.seriesSummary).toBe('CHI leads 2-0');
+      expect(enriched.seriesStatus).toBe('Series tied 1-1');
     });
   });
 
@@ -1072,6 +1149,131 @@ describe('GameService', () => {
   });
 
   describe('getLeagueGames addMissingOnly (oldies recovery)', () => {
+    it('corrects stored PWHL game records from the date-specific regular-season standings', async () => {
+      const recordsSpy = jest
+        .spyOn(HockeyData.prototype, 'getPWHLRecordsForDates')
+        .mockResolvedValue(
+          new Map([
+            [
+              '2024-05-29',
+              { BOS: '21-5-4', MIN: '16-9-5' },
+            ],
+          ]),
+        );
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+      const fetchedGame = {
+        uniqueId: 'PWHL-BOS-2024-05-29-98',
+        league: League.PWHL,
+        gameDate: '2024-05-29',
+        startTimeUTC: '2024-05-29T23:00:00.000Z',
+        homeTeamId: 'PWHL-BOS',
+        awayTeamId: 'PWHL-MIN',
+        homeTeamShort: 'BOS',
+        awayTeamShort: 'MIN',
+        homeTeamScore: 0,
+        awayTeamScore: 3,
+      };
+      (service as any)._fetchUniqueGames = jest
+        .fn()
+        .mockResolvedValue([fetchedGame]);
+      (service as any)._persistMissingHistoricalGameTeams = jest
+        .fn()
+        .mockResolvedValue(0);
+      (service as any)._backfillSeasonRecords = jest
+        .fn()
+        .mockResolvedValue(0);
+      mockTeamService.findAll.mockResolvedValue([]);
+      mockGameModel.exec.mockResolvedValue([
+        {
+          uniqueId: fetchedGame.uniqueId,
+          homeTeamScore: 0,
+          awayTeamScore: 3,
+          homeTeamRecord: 'stale-record',
+          awayTeamRecord: 'stale-record',
+        },
+      ]);
+
+      await service.getLeagueGames({
+        league: League.PWHL,
+        forceUpdate: true,
+        skipCascade: true,
+        season: 2024,
+        addMissingOnly: true,
+      });
+
+      expect(recordsSpy).toHaveBeenCalledWith(['2024-05-29']);
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          uniqueId: fetchedGame.uniqueId,
+          homeTeamRecord: '21-5-4',
+          awayTeamRecord: '16-9-5',
+        }),
+      );
+      expect(mockTeamService.updateRecord).not.toHaveBeenCalled();
+      recordsSpy.mockRestore();
+    });
+
+    it('persists the final records supplied by ESPN when oldies refreshes an existing game', async () => {
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+      const fetchedGame = {
+        uniqueId: 'NHL-BOS-2024-10-08-1',
+        league: League.NHL,
+        gameDate: '2024-10-08',
+        startTimeUTC: '2024-10-08T23:00:00.000Z',
+        homeTeamId: 'NHL-BOS',
+        awayTeamId: 'NHL-FLA',
+        homeTeamScore: 4,
+        awayTeamScore: 3,
+        homeTeamRecord: '1-0-0',
+        awayTeamRecord: '0-1-0',
+      };
+      (service as any)._fetchUniqueGames = jest
+        .fn()
+        .mockResolvedValue([fetchedGame]);
+      (service as any)._persistMissingHistoricalGameTeams = jest
+        .fn()
+        .mockResolvedValue(0);
+      (service as any)._backfillSeasonRecords = jest
+        .fn()
+        .mockResolvedValue(0);
+      mockTeamService.findAll.mockResolvedValue([]);
+      mockGameModel.exec.mockResolvedValue([
+        {
+          uniqueId: fetchedGame.uniqueId,
+          homeTeamScore: 4,
+          awayTeamScore: 3,
+          homeTeamRecord: 'old-home',
+          awayTeamRecord: 'old-away',
+        },
+      ]);
+      const recordsSpy = jest.spyOn(
+        HockeyData.prototype,
+        'getPWHLRecordsForDates',
+      );
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+        season: 2024,
+        addMissingOnly: true,
+      });
+
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          uniqueId: fetchedGame.uniqueId,
+          homeTeamRecord: '1-0-0',
+          awayTeamRecord: '0-1-0',
+        }),
+      );
+      expect(recordsSpy).not.toHaveBeenCalled();
+      recordsSpy.mockRestore();
+    });
+
     it('should only create missing games, skipping existing ones and those without home/away team data', async () => {
       const currentYear = new Date().getFullYear();
       const createSpy = jest
@@ -1398,6 +1600,63 @@ describe('GameService', () => {
       );
 
       createSpy.mockRestore();
+    });
+
+    it('backfills each playoff game with its own evolving record', async () => {
+      mockGameModel.exec.mockResolvedValue([
+        {
+          uniqueId: 'playoff-game-1',
+          homeTeamId: 'NHL-BOS',
+          awayTeamId: 'NHL-TOR',
+          homeTeamRecord: '',
+          awayTeamRecord: '',
+        },
+        {
+          uniqueId: 'playoff-game-2',
+          homeTeamId: 'NHL-BOS',
+          awayTeamId: 'NHL-TOR',
+          homeTeamRecord: '',
+          awayTeamRecord: '',
+        },
+      ]);
+      mockGameModel.updateOne.mockImplementation(() => ({
+        exec: jest.fn().mockResolvedValue({}),
+      }));
+
+      const updated = await (service as any)._backfillSeasonRecords(
+        League.NHL,
+        [
+          {
+            uniqueId: 'playoff-game-1',
+            homeTeamId: 'NHL-BOS',
+            awayTeamId: 'NHL-TOR',
+            homeTeamRecord: '1-0-0',
+            awayTeamRecord: '0-1-0',
+            recordSeasonType: 3,
+          },
+          {
+            uniqueId: 'playoff-game-2',
+            homeTeamId: 'NHL-BOS',
+            awayTeamId: 'NHL-TOR',
+            homeTeamRecord: '2-0-0',
+            awayTeamRecord: '0-2-0',
+            recordSeasonType: 3,
+          },
+        ],
+      );
+
+      expect(updated).toBe(2);
+      expect(mockGameModel.updateOne).toHaveBeenNthCalledWith(
+        1,
+        { uniqueId: 'playoff-game-1' },
+        { $set: { homeTeamRecord: '1-0-0', awayTeamRecord: '0-1-0' } },
+      );
+      expect(mockGameModel.updateOne).toHaveBeenNthCalledWith(
+        2,
+        { uniqueId: 'playoff-game-2' },
+        { $set: { homeTeamRecord: '2-0-0', awayTeamRecord: '0-2-0' } },
+      );
+      mockGameModel.updateOne.mockReset();
     });
 
     it('never overwrites a record that is already stored', async () => {

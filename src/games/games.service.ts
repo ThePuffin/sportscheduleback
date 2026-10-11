@@ -20,6 +20,7 @@ import {
   getESPNScores,
   getOlympicTeamLogo,
   getOlympicSeasonTeams,
+  getRecordSeasonType,
   getSeasonFinals,
   getTeamRecordFromSchedule,
   getTeamsSchedule,
@@ -207,22 +208,16 @@ export class GameService {
       teamsMap.get(game.homeTeamId) ?? HistoricalTeams[game.homeTeamId];
     const awayTeam =
       teamsMap.get(game.awayTeamId) ?? HistoricalTeams[game.awayTeamId];
-    const isPlayoffs =
-      (game.seriesSummary || game.seriesStatus) &&
-      !game.seriesSummary?.toLowerCase().includes('regular season');
-
     const homeTeamColors = this._resolveTeamColors(homeTeam, game.homeTeamId);
     const awayTeamColors = this._resolveTeamColors(awayTeam, game.awayTeamId);
 
     return {
       ...game,
       homeTeamRecord:
-        (isPlayoffs ? game.seriesSummary : null) ||
         game.homeTeamRecord ||
         homeTeam?.record ||
         '',
       awayTeamRecord:
-        (isPlayoffs ? game.seriesStatus || game.seriesSummary : null) ||
         game.awayTeamRecord ||
         awayTeam?.record ||
         '',
@@ -597,11 +592,11 @@ export class GameService {
    * records existed (both sides empty) if the freshly fetched season carries no
    * `record` for that team. Such a game would then keep an empty record forever.
    *
-   * `applySeasonFinalRecords()` has already turned every game of a finished season
-   * into the season's final tally, so the value to restore is simply the one held
-   * by the games of this fetch, per team. Only games whose stored record is empty
-   * are written: a record already present is never overwritten, so this pass can
-   * only fill gaps, never destroy data.
+   * `applySeasonFinalRecords()` has already normalized completed preseason and
+   * regular-season phases to their final tallies. Playoff records remain
+   * game-specific, so this pass restores them by game instead of by team. Only
+   * games whose stored record is empty are written: a record already present is
+   * never overwritten, so this pass can only fill gaps, never destroy data.
    *
    * Returns the number of games updated.
    */
@@ -613,16 +608,47 @@ export class GameService {
       const games = (fetchedGames || []).filter((g) => !!g);
       if (!games.length) return 0;
 
-      // Only tallies verified as complete season finals are restored: a truncated
-      // fetch yields intermediate numbers, and writing them would freeze a wrong
-      // record on the stored games. Such a team is simply left for a later run.
-      // This check is NOT redundant with `applySeasonFinalRecords()`: that pass
-      // deliberately leaves a truncated team's games holding their own cumulative
-      // value, so without this filter the tally rebuilt below would pick an
-      // arbitrary intermediate number for it. No warning is logged here —
-      // `applySeasonFinalRecords()` already reported the truncation for this batch.
-      const tally = getSeasonFinals(games).verified;
-      if (!tally.size) return 0;
+      const gamesByPhase = new Map<number, any[]>();
+      for (const game of games) {
+        const phase = getRecordSeasonType(game);
+        if (!gamesByPhase.has(phase)) gamesByPhase.set(phase, []);
+        gamesByPhase.get(phase)!.push(game);
+      }
+
+      const recordsByGame = new Map<
+        string,
+        { homeTeamRecord?: string; awayTeamRecord?: string }
+      >();
+      for (const [phase, phaseGames] of gamesByPhase) {
+        if (phase === 3) {
+          // A playoff series evolves from game to game; never stamp a later
+          // game's record onto an earlier match during backfill.
+          for (const game of phaseGames) {
+            if (!game?.uniqueId) continue;
+            recordsByGame.set(game.uniqueId, {
+              homeTeamRecord: game.homeTeamRecord || undefined,
+              awayTeamRecord: game.awayTeamRecord || undefined,
+            });
+          }
+          continue;
+        }
+
+        // Only tallies verified as complete phase finals are restored: a
+        // truncated fetch yields intermediate numbers, which must not be frozen
+        // on stored games. No warning is needed here; the schedule pass already
+        // reports truncation for this batch.
+        const tally = getSeasonFinals(phaseGames).verified;
+        for (const game of phaseGames) {
+          if (!game?.uniqueId) continue;
+          recordsByGame.set(game.uniqueId, {
+            homeTeamRecord:
+              tally.get(game.homeTeamId) || game.homeTeamRecord || undefined,
+            awayTeamRecord:
+              tally.get(game.awayTeamId) || game.awayTeamRecord || undefined,
+          });
+        }
+      }
+      if (!recordsByGame.size) return 0;
 
       // Restrict the sweep to the season being processed, so a concurrent refresh
       // of the current season is never touched.
@@ -648,10 +674,11 @@ export class GameService {
       for (const game of stored as any[]) {
         const set: Record<string, string> = {};
 
-        const home = tally.get(game?.homeTeamId);
+        const records = recordsByGame.get(game?.uniqueId);
+        const home = records?.homeTeamRecord;
         if (home && !game?.homeTeamRecord) set.homeTeamRecord = home;
 
-        const away = tally.get(game?.awayTeamId);
+        const away = records?.awayTeamRecord;
         if (away && !game?.awayTeamRecord) set.awayTeamRecord = away;
 
         if (!Object.keys(set).length) continue;
@@ -829,6 +856,36 @@ export class GameService {
         season,
         teamRecords,
       );
+      if (
+        normalizedLeague === League.PWHL &&
+        season !== undefined &&
+        addMissingOnly &&
+        uniqueGames.length > 0
+      ) {
+        const pwhlRecords = await new HockeyData().getPWHLRecordsForDates(
+          uniqueGames.map((game: any) => game.gameDate).filter(Boolean),
+        );
+        let gamesWithRecords = 0;
+        for (const game of uniqueGames as any[]) {
+          const records = pwhlRecords.get(game.gameDate);
+          if (!records) continue;
+
+          const homeCode =
+            game.homeTeamId?.replace(`${League.PWHL}-`, '').toUpperCase() ||
+            game.homeTeamShort?.toUpperCase();
+          const awayCode =
+            game.awayTeamId?.replace(`${League.PWHL}-`, '').toUpperCase() ||
+            game.awayTeamShort?.toUpperCase();
+          const homeRecord = records[homeCode];
+          const awayRecord = records[awayCode];
+          if (homeRecord) game.homeTeamRecord = homeRecord;
+          if (awayRecord) game.awayTeamRecord = awayRecord;
+          if (homeRecord || awayRecord) gamesWithRecords++;
+        }
+        console.info(
+          `[Oldies] PWHL ${season}: official standings or schedule replay provided records for ${gamesWithRecords}/${uniqueGames.length} fetched game(s).`,
+        );
+      }
       if (season && addMissingOnly && uniqueGames.length > 0) {
         await this._persistMissingHistoricalGameTeams(
           normalizedLeague,
@@ -2675,22 +2732,23 @@ export class GameService {
     game.seriesStatus = matchedScore.seriesStatus;
 
     // Update team records.
-    // Scoreboard `records` are a *pre-game* snapshot: the just-finished game is
-    // not included in them yet. Deriving `team.record` from them would therefore
-    // freeze e.g. `0-0-0` forever on the opening game. Instead, when the game is
-    // final and its score is known, the post-game tally is computed from the
-    // current DB tally + this game's outcome — exactly once per game (guarded by
-    // the previous `gameStatus`, since this sync runs on every score cycle).
-    // Leagues such as college hockey expose no `records` on the scoreboard nor
-    // on the summary (`records: []`) and no `record.items` on the team detail,
-    // so the team's season schedule is used there as a fallback source.
+    // Most scoreboards expose a pre-game snapshot, so the post-game tally is
+    // derived from the current team record + this game's outcome. PWHL scores
+    // instead provide records for the resolved regular season; preserve those
+    // on the game without copying a historical season tally onto the current
+    // team record. Leagues with no scoreboard or team-detail records use the
+    // team's season schedule as a fallback source.
     const isFinalGame =
       resolvedStatus === 'FINISHED' || matchedScore.isFinal === true;
     const wasAlreadyFinal = previousStatus === 'FINISHED';
     let homeTeamRecord = matchedScore.homeTeamRecord;
     let awayTeamRecord = matchedScore.awayTeamRecord;
+    const hasPWHLSeasonRecords =
+      game.league === League.PWHL &&
+      Boolean(homeTeamRecord) &&
+      Boolean(awayTeamRecord);
 
-    if (isFinalGame && !wasAlreadyFinal) {
+    if (isFinalGame && !wasAlreadyFinal && !hasPWHLSeasonRecords) {
       const homeScore = game.homeTeamScore;
       const awayScore = game.awayTeamScore;
       const scoresKnown =
@@ -2735,11 +2793,15 @@ export class GameService {
 
     if (homeTeamRecord && game.homeTeamId) {
       game.homeTeamRecord = homeTeamRecord;
-      await this.teamService.updateRecord(game.homeTeamId, homeTeamRecord);
+      if (!hasPWHLSeasonRecords) {
+        await this.teamService.updateRecord(game.homeTeamId, homeTeamRecord);
+      }
     }
     if (awayTeamRecord && game.awayTeamId) {
       game.awayTeamRecord = awayTeamRecord;
-      await this.teamService.updateRecord(game.awayTeamId, awayTeamRecord);
+      if (!hasPWHLSeasonRecords) {
+        await this.teamService.updateRecord(game.awayTeamId, awayTeamRecord);
+      }
     }
 
     // Propagate series info to future games in the same series

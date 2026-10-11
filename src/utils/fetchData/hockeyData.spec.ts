@@ -12,12 +12,16 @@ describe('HockeyData.getHockeySchedule — PWHL team records', () => {
 
   let hockeyData: HockeyData;
   let getPWHLStandingsSpy: jest.SpyInstance;
+  let getPWHLSeasonsForDateSpy: jest.SpyInstance;
   let consoleInfoSpy: jest.SpyInstance;
   let consoleWarnSpy: jest.SpyInstance;
   let consoleErrorSpy: jest.SpyInstance;
 
   beforeEach(() => {
     hockeyData = new HockeyData();
+    getPWHLSeasonsForDateSpy = jest
+      .spyOn(hockeyData as any, 'getPWHLSeasonsForDate')
+      .mockResolvedValue({ recordSeason: { season_id: 'current' } });
     // No team fetch at all: the records collection must not depend on the teams.
     getPWHLStandingsSpy = jest
       .spyOn(hockeyData, 'getPWHLStandings')
@@ -31,6 +35,7 @@ describe('HockeyData.getHockeySchedule — PWHL team records', () => {
   afterEach(() => {
     global.fetch = originalFetch;
     getPWHLStandingsSpy.mockRestore();
+    getPWHLSeasonsForDateSpy.mockRestore();
     consoleInfoSpy.mockRestore();
     consoleWarnSpy.mockRestore();
     consoleErrorSpy.mockRestore();
@@ -88,6 +93,81 @@ describe('HockeyData.getHockeySchedule — PWHL team records', () => {
 
     expect(getPWHLStandingsSpy).not.toHaveBeenCalled();
     expect(teamRecords.size).toBe(0);
+  });
+
+  it('calculates NHL records by phase and preserves playoff progression', () => {
+    const games: any[] = [
+      {
+        uniqueId: 'pre-season-game',
+        startTimeUTC: '2025-09-01T18:00:00.000Z',
+        homeTeamId: 'NHL-BOS',
+        awayTeamId: 'NHL-TOR',
+        recordSeasonType: 1,
+        scheduleGameState: 'OFF',
+        scheduleHomeScore: 3,
+        scheduleAwayScore: 1,
+        scheduleLastPeriodType: 'REG',
+      },
+      {
+        uniqueId: 'regular-game-1',
+        startTimeUTC: '2025-10-01T18:00:00.000Z',
+        homeTeamId: 'NHL-BOS',
+        awayTeamId: 'NHL-TOR',
+        recordSeasonType: 2,
+        scheduleGameState: 'OFF',
+        scheduleHomeScore: 3,
+        scheduleAwayScore: 1,
+        scheduleLastPeriodType: 'REG',
+      },
+      {
+        uniqueId: 'regular-game-2',
+        startTimeUTC: '2025-10-02T18:00:00.000Z',
+        homeTeamId: 'NHL-BOS',
+        awayTeamId: 'NHL-TOR',
+        recordSeasonType: 2,
+        scheduleGameState: 'OFF',
+        scheduleHomeScore: 1,
+        scheduleAwayScore: 2,
+        scheduleLastPeriodType: 'OT',
+      },
+      {
+        uniqueId: 'playoff-game-1',
+        startTimeUTC: '2026-04-01T18:00:00.000Z',
+        homeTeamId: 'NHL-BOS',
+        awayTeamId: 'NHL-TOR',
+        recordSeasonType: 3,
+        scheduleGameState: 'OFF',
+        scheduleHomeScore: 3,
+        scheduleAwayScore: 1,
+        scheduleLastPeriodType: 'REG',
+      },
+      {
+        uniqueId: 'playoff-game-2',
+        startTimeUTC: '2026-04-03T18:00:00.000Z',
+        homeTeamId: 'NHL-BOS',
+        awayTeamId: 'NHL-TOR',
+        recordSeasonType: 3,
+        scheduleGameState: 'OFF',
+        scheduleHomeScore: 1,
+        scheduleAwayScore: 2,
+        scheduleLastPeriodType: 'OT',
+      },
+    ];
+    const allGames = {
+      'NHL-BOS': games,
+      'NHL-TOR': games.map((game) => ({ ...game, teamSelectedId: 'NHL-TOR' })),
+    };
+
+    (hockeyData as any).applyNHLHistoricalRecords(allGames);
+
+    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('1-0-0');
+    expect(allGames['NHL-BOS'][1].homeTeamRecord).toBe('1-0-1');
+    expect(allGames['NHL-BOS'][2].homeTeamRecord).toBe('1-0-1');
+    expect(allGames['NHL-BOS'][2].awayTeamRecord).toBe('1-1-0');
+    expect(allGames['NHL-BOS'][3].homeTeamRecord).toBe('1-0-0');
+    expect(allGames['NHL-BOS'][4].homeTeamRecord).toBe('1-0-1');
+    expect(allGames['NHL-BOS'][4].awayTeamRecord).toBe('1-1-0');
+    expect(allGames['NHL-BOS'][4].scheduleGameState).toBeUndefined();
   });
 
   it('logs each team schedule count and the distinct league total', async () => {
@@ -245,6 +325,18 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
       start_date: '2024-11-25',
       end_date: '2025-05-05',
     },
+    {
+      season_id: '4',
+      season_name: '2024 Playoffs',
+      start_date: '2024-04-24',
+      end_date: '2024-05-29',
+    },
+    {
+      season_id: '3',
+      season_name: '2023-24 Regular Season',
+      start_date: '2023-11-30',
+      end_date: '2024-05-05',
+    },
   ];
 
   const game = (over: Record<string, unknown> = {}) => ({
@@ -266,13 +358,33 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
 
   let hockeyData: HockeyData;
 
-  const mockFeed = (schedules: Record<string, any[]>) => {
+  const mockFeed = (
+    schedules: Record<string, any[]>,
+    standings: Record<string, Record<string, string>> = {},
+  ) => {
     global.fetch = jest.fn(async (url: string) => {
-      const isSeasons = String(url).includes('view=seasons');
-      const seasonId = new URL(String(url)).searchParams.get('season_id');
-      const body = isSeasons
-        ? { SiteKit: { Seasons: SEASONS } }
-        : { SiteKit: { Schedule: schedules[seasonId ?? 'default'] ?? [] } };
+      const parsedUrl = new URL(String(url));
+      const seasonId = parsedUrl.searchParams.get('season_id') ?? 'default';
+      let body;
+      if (parsedUrl.searchParams.get('view') === 'seasons') {
+        body = { SiteKit: { Seasons: SEASONS } };
+      } else if (parsedUrl.searchParams.get('view') === 'statviewtype') {
+        const Statviewtype = Object.entries(standings[seasonId] ?? {}).map(
+          ([team_code, record]) => {
+            const [wins, losses, ot_losses] = record.split('-').map(Number);
+            return {
+              team_code,
+              wins: String(wins),
+              losses: String(losses),
+              ot_losses: String(ot_losses),
+              games_played: String(wins + losses + ot_losses),
+            };
+          },
+        );
+        body = { SiteKit: { Statviewtype } };
+      } else {
+        body = { SiteKit: { Schedule: schedules[seasonId] ?? [] } };
+      }
       return { json: async () => body } as any;
     }) as any;
   };
@@ -299,6 +411,66 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
     expect(requestedSeasonIds()).toContain('5');
     expect(requestedSeasonIds()).not.toContain(null);
     expect(scores).toHaveLength(1);
+    expect(scores[0].homeTeamRecord).toBe('1-0-0');
+    expect(scores[0].awayTeamRecord).toBe('0-1-0');
+  });
+
+  it('starts pre-season with zero records without reusing regular-season standings', async () => {
+    mockFeed({
+      '10': [
+        game({
+          id: 'pre-1',
+          date_played: '2026-10-15',
+          GameDateISO8601: '2026-10-15T00:00:00',
+          home_team_code: 'BOS',
+          visiting_team_code: 'MIN',
+          final: '0',
+          status: '1',
+          game_status: 'Scheduled',
+        }),
+      ],
+    }, {
+      '11': { BOS: '12-3-1', MIN: '10-4-2' },
+    });
+
+    const scores = await hockeyData.getPWHLScores('2026-10-15');
+
+    expect(scores[0].homeTeamRecord).toBe('0-0-0');
+    expect(scores[0].awayTeamRecord).toBe('0-0-0');
+    expect(
+      (global.fetch as jest.Mock).mock.calls.some(([url]) =>
+        String(url).includes('view=statviewtype'),
+      ),
+    ).toBe(false);
+  });
+
+  it('prefers official standings for the regular season resolved from the game date', async () => {
+    mockFeed(
+      {
+        '5': [
+          game({
+            home_team_code: 'BOS',
+            visiting_team_code: 'MIN',
+          }),
+        ],
+      },
+      {
+        '5': {
+          BOS: '21-5-4',
+          MIN: '16-9-5',
+        },
+      },
+    );
+
+    const scores = await hockeyData.getPWHLScores('2025-02-15');
+
+    expect(scores[0].homeTeamRecord).toBe('21-5-4');
+    expect(scores[0].awayTeamRecord).toBe('16-9-5');
+    expect(
+      (global.fetch as jest.Mock).mock.calls.some(([url]) =>
+        String(url).includes('view=statviewtype&stat=conference'),
+      ),
+    ).toBe(true);
   });
 
   it('computes the record from the regular season, not from the playoffs feed', async () => {
@@ -355,6 +527,282 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
     mockFeed({ '5': [game()] });
 
     await expect(hockeyData.getPWHLScores('2025-02-16')).resolves.toEqual([]);
+  });
+
+  it('keeps historical records tied to the regular season for each game date', async () => {
+    mockFeed({
+      '4': [
+        game({
+          id: '2024-playoff',
+          date_played: '2024-05-29',
+          GameDateISO8601: '2024-05-29T00:00:00',
+          home_team_code: 'BOS',
+          visiting_team_code: 'MIN',
+        }),
+      ],
+      '3': [
+        game({
+          id: '2023-24-final',
+          date_played: '2024-01-01',
+          GameDateISO8601: '2024-01-01T00:00:00',
+          home_team_code: 'BOS',
+          visiting_team_code: 'MIN',
+          home_goal_count: '19',
+          visiting_goal_count: '6',
+        }),
+        game({
+          id: '2023-24-second-win',
+          date_played: '2024-01-02',
+          GameDateISO8601: '2024-01-02T00:00:00',
+          home_team_code: 'BOS',
+          visiting_team_code: 'MTL',
+        }),
+      ],
+      '5': [
+        game({
+          id: '2024-25-opening',
+          date_played: '2024-11-30',
+          GameDateISO8601: '2024-11-30T00:00:00',
+          home_team_code: 'BOS',
+          visiting_team_code: 'MIN',
+        }),
+      ],
+      'default': [
+        game({
+          id: '2024-25-final',
+          date_played: '2025-01-01',
+          GameDateISO8601: '2025-01-01T00:00:00',
+          home_team_code: 'BOS',
+          visiting_team_code: 'MIN',
+          home_goal_count: '21',
+          visiting_goal_count: '5',
+        }),
+      ],
+    });
+
+    const playoffScores = await hockeyData.getPWHLScores('2024-05-29');
+    const regularSeasonScores = await hockeyData.getPWHLScores('2024-11-30');
+
+    expect(playoffScores[0].homeTeamRecord).toBe('2-0-0');
+    expect(regularSeasonScores[0].homeTeamRecord).toBe('1-0-0');
+    expect(playoffScores[0].homeTeamRecord).not.toBe(
+      regularSeasonScores[0].homeTeamRecord,
+    );
+    expect(requestedSeasonIds()).toEqual(
+      expect.arrayContaining(['4', '3', '5']),
+    );
+  });
+});
+
+describe('HockeyData.getPWHLStandings — current regular season resolution', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('requests standings for the regular season covering today', async () => {
+    const seasons = [
+      {
+        season_id: '11',
+        season_name: '2026-27 Regular Season',
+        start_date: '2026-12-04',
+        end_date: '2027-04-19',
+      },
+      {
+        season_id: '10',
+        season_name: '2026-27 Pre-Season',
+        start_date: '2026-10-01',
+        end_date: '2026-11-30',
+      },
+      {
+        season_id: '8',
+        season_name: '2025-26 Regular Season',
+        start_date: '2025-11-21',
+        end_date: '2026-04-27',
+      },
+      {
+        season_id: '5',
+        season_name: '2024-25 Regular Season',
+        start_date: '2024-11-25',
+        end_date: '2025-05-05',
+      },
+    ];
+    global.fetch = jest.fn(async (url: string) => ({
+      json: async () =>
+        String(url).includes('view=seasons')
+          ? { SiteKit: { Seasons: seasons } }
+          : {
+              SiteKit: {
+                Statviewtype: [
+                  {
+                    team_code: 'BOS',
+                    wins: '20',
+                    losses: '5',
+                    ot_losses: '4',
+                    games_played: '29',
+                  },
+                ],
+              },
+            },
+    })) as any;
+
+    const records = await new HockeyData().getPWHLStandings();
+
+    expect(records).toEqual({ BOS: '20-5-4' });
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('view=statviewtype'),
+    );
+    const standingsUrl = (global.fetch as jest.Mock).mock.calls
+      .map(([url]) => String(url))
+      .find((url) => url.includes('view=statviewtype'));
+    const today = new Date().toISOString().slice(0, 10);
+    const expectedSeasonId =
+      today >= '2026-12-04'
+        ? '11'
+        : today >= '2026-10-01'
+          ? '10'
+          : today >= '2025-11-21'
+            ? '8'
+            : '5';
+    expect(standingsUrl).toContain(`season_id=${expectedSeasonId}`);
+  });
+});
+
+describe('HockeyData.getPWHLRecordsForDates — oldies records', () => {
+  const originalFetch = global.fetch;
+  let hockeyData: HockeyData;
+
+  beforeEach(() => {
+    hockeyData = new HockeyData();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.restoreAllMocks();
+  });
+
+  it('loads official standings once per regular season and maps records to dates', async () => {
+    global.fetch = jest.fn(async (url: string) => ({
+      json: async () => {
+        if (String(url).includes('view=seasons')) {
+          return {
+            SiteKit: {
+              Seasons: [
+                {
+                  season_id: '5',
+                  season_name: '2024-25 Regular Season',
+                  start_date: '2024-11-25',
+                  end_date: '2025-05-05',
+                },
+                {
+                  season_id: '4',
+                  season_name: '2024 Playoffs',
+                  start_date: '2024-04-24',
+                  end_date: '2024-05-29',
+                },
+                {
+                  season_id: '3',
+                  season_name: '2023-24 Regular Season',
+                  start_date: '2023-11-30',
+                  end_date: '2024-05-05',
+                },
+              ],
+            },
+          };
+        }
+        return {
+          SiteKit: {
+            Schedule: [
+              {
+                GameDateISO8601: '2024-01-01T00:00:00',
+                home_team_code: 'BOS',
+                visiting_team_code: 'VGS',
+                home_goal_count: '2',
+                visiting_goal_count: '1',
+                final: '1',
+                status: '4',
+                game_status: 'FINAL',
+              },
+            ],
+          },
+        };
+      },
+    })) as any;
+    const standingsSpy = jest
+      .spyOn(hockeyData, 'getPWHLStandings')
+      .mockImplementation(async (seasonId?: string) =>
+        seasonId === '3'
+          ? { BOS: '19-5-4', VGS: '16-9-3' }
+          : { BOS: '21-5-4', VGS: '18-8-4' },
+      );
+
+    const records = await hockeyData.getPWHLRecordsForDates([
+      '2024-05-29',
+      '2024-11-30',
+      '2024-05-29',
+    ]);
+
+    expect(standingsSpy).toHaveBeenCalledTimes(2);
+    expect(standingsSpy).toHaveBeenCalledWith('3');
+    expect(standingsSpy).toHaveBeenCalledWith('5');
+    expect(records.get('2024-05-29')).toEqual({
+      BOS: '19-5-4',
+      VGS: '16-9-3',
+      VEG: '16-9-3',
+      LV: '16-9-3',
+    });
+    expect(records.get('2024-11-30')?.BOS).toBe('21-5-4');
+  });
+
+  it('replays the matching regular-season schedule when standings are unavailable', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      json: async () => ({
+        SiteKit: {
+          Seasons: [
+            {
+              season_id: '3',
+              season_name: '2023-24 Regular Season',
+              start_date: '2023-11-30',
+              end_date: '2024-05-05',
+            },
+          ],
+        },
+      }),
+    }) as any;
+    jest.spyOn(hockeyData, 'getPWHLStandings').mockResolvedValue({});
+    const scheduleSpy = jest
+      .spyOn(hockeyData, 'getPWHLSchedule' as any)
+      .mockResolvedValue([
+        {
+          GameDateISO8601: '2024-01-01T00:00:00',
+          home_team_code: 'BOS',
+          visiting_team_code: 'MIN',
+          home_goal_count: '3',
+          visiting_goal_count: '1',
+          final: '1',
+          status: '4',
+          game_status: 'FINAL',
+        },
+        {
+          GameDateISO8601: '2024-01-02T00:00:00',
+          home_team_code: 'MIN',
+          visiting_team_code: 'BOS',
+          home_goal_count: '2',
+          visiting_goal_count: '1',
+          final: '1',
+          status: '4',
+          game_status: 'FINAL',
+        },
+      ]);
+
+    const records = await hockeyData.getPWHLRecordsForDates(['2024-05-29']);
+
+    expect(scheduleSpy).toHaveBeenCalledWith('3');
+    expect(records.get('2024-05-29')).toEqual({
+      BOS: '1-1-0',
+      MIN: '1-1-0',
+    });
   });
 });
 

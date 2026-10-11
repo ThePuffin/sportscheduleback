@@ -2,6 +2,44 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: records are isolated by preseason, regular season, and playoffs
+
+ESPN schedule requests retain the `seasontype` for every event, and historical record normalization
+runs independently for preseason, regular season, and playoffs. HockeyTech pre-season, regular
+season, and playoff feeds use their separate `season_id`s; NHL historical schedules are replayed by
+their `gameType`. A phase with no completed game displays `0-0-0`; completed preseason and
+regular-season games receive that phase's verified final tally. Playoff records stay attached to
+their individual games. Series progression (such as “CHI leads 2-0”) remains in the separate
+`seriesSummary` / `seriesStatus` fields and is never written into the record fields. Oldies backfill
+follows the same phase rules and never copies a later playoff record onto an earlier game.
+
+- **`src/utils/fetchData/espnAllData.ts`** — tags scoreboard/team-schedule events with season type and
+  applies phase-specific zero, in-progress, final, and playoff record behavior.
+- **`src/utils/fetchData/hockeyData.ts`** — separates PWHL phase standings/replays and calculates
+  NHL historical records independently from `gameType` schedule results.
+- **`src/games/games.service.ts`** — backfills only verified preseason/regular-season finals and
+  uses each game's own record for playoff backfills; series status remains separate from team records.
+- Added coverage for separate phase totals, unstarted phases, and playoff record progression.
+
+## Fixed: PWHL historical game records no longer reuse the current team record
+
+The oldies recovery now corrects historical PWHL game records from HockeyTech standings for each
+game date's regular season, falling back to a replay of that season's schedule. ESPN-backed oldies
+already obtain and normalize each completed season's final records from the ESPN team schedules;
+the same oldies insert/update comparison rewrites stale stored values when they differ.
+`syncGameWithScore()` also previously could replace a supplied PWHL season-specific value with the
+team's current tally and write that historical tally back to `team.record`.
+
+- **`src/games/games.service.ts`** — PWHL oldies fetches retrieve records once per season and apply
+  them before oldies inserts or corrects stored games. Completed-season PWHL records supplied with
+  a score are persisted on that game as-is and are not written to the current team record.
+- **`src/utils/fetchData/hockeyData.ts`** — game scores request standings with the date-resolved
+  regular-season `season_id` and calculate a season-specific fallback from that schedule. Standings
+  without an explicit `season_id` resolve the current or most recently completed regular season by
+  date, rather than relying on feed order.
+- Added regression tests for PWHL standings/replay batch recovery, PWHL and ESPN oldies updates,
+  distinct date-to-season record selection, and current standings resolution.
+
 ## Fixed: Olympic team selections include hockey and basketball across screens
 
 Team ids in the Olympic aggregate leagues are sport-specific even when the country and gender
