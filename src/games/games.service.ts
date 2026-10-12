@@ -298,12 +298,29 @@ export class GameService {
           // never wipe a stored one. This happens on the oldies path when a game is
           // refreshed because its scores changed while the freshly fetched season
           // carried no `record` for that team (ESPN omits it on some seasons).
+          //
+          // EXCEPTION — upcoming games: `applySeasonFinalRecords()` deliberately
+          // clears the per-game record of an unstarted fixture so the reader
+          // (`_enrichGameWithTeamData`) falls back to the team's current
+          // `team.record`. That intentional clear must be allowed to overwrite a
+          // stale `0-0-0` (or a pre-game tally) left by an earlier fetch,
+          // otherwise a scheduled game would never stop showing `0-0-0`.
           ['homeTeamRecord', 'awayTeamRecord'].forEach((field) => {
             const incoming = gameDto[field];
             const isEmpty =
               incoming === null || incoming === undefined || incoming === '';
             if (isEmpty && existingGame[field]) {
-              delete gameDto[field];
+              const startMs = gameDto.startTimeUTC
+                ? new Date(gameDto.startTimeUTC).getTime()
+                : NaN;
+              const isUpcoming =
+                Number.isFinite(startMs) && startMs > Date.now();
+              if (isUpcoming) {
+                // Intentional clear for an unstarted game → store ''.
+                gameDto[field] = '';
+              } else {
+                delete gameDto[field];
+              }
             }
           });
 

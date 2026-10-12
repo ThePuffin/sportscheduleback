@@ -2,6 +2,40 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: `POST /games/refresh/records` was swallowed by `POST /games/refresh/:league`
+
+### Problem
+
+Calling `POST /games/refresh/records` produced the ghost-league logs
+`Data for RECORDS is stale…` / `[Schedule] RECORDS: fetched schedules for 0 team(s)` /
+`[Games] RECORDS refresh complete: 0 distinct game(s) fetched` — and no team
+record was ever refreshed. Root cause: NestJS matches routes **in declaration
+order**, and the parameterized `@Post('/refresh/:league')` was declared **before**
+the concrete `@Post('refresh/records')`. So `refresh/records` was consumed as
+`league = 'records'`, `getLeagueGames()` normalized it to `RECORDS`, found no
+teams, fetched nothing, and returned — while the real `refreshCurrentSeasonRecords()`
+handler was unreachable.
+
+### Fix
+
+- **`src/games/games.controller.ts`**
+  - Moved `refresh/records` and `refresh/finalize-season` **above**
+    `/refresh/:league`, with a `NOTE` comment explaining the ordering
+    constraint so a future addition cannot re-break it.
+  - `refreshByLeague()` now validates the param against the `League` enum and
+    throws `404 League <X> not found` for unknown names (belt and braces: a
+    typo'd league can no longer silently run a 0-team ghost refresh).
+- **`src/games/tests/games.controller.spec.ts`** — regression tests: unknown
+  league (`'records'`) rejected with 404 without calling `getLeagueGames`;
+  lowercase league still accepted.
+- **`docs/games/games.controller.ts.md`** — documents the 404 validation and
+  the declaration-order constraint.
+
+> ⚠️ This was only reproducible on the deployed backend: you must redeploy (or
+> restart the local server) for the fix to take effect. Then re-run
+> `POST /games/refresh/records` — it will finally hit
+> `refreshCurrentSeasonRecords()` and update `team.record`.
+
 ## Changed: a college game is kept as soon as ONE side is Division 1
 
 ### Problem

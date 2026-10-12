@@ -1934,6 +1934,33 @@ describe('GameService', () => {
       expect(existingGame.homeTeamRecord).toBe('33-39-10');
       expect(existingGame.awayTeamRecord).toBe('42-32-7');
     });
+
+    it('clears a stale 0-0-0 on an UPCOMING game so the reader falls back to team.record', async () => {
+      const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const existingGame: any = {
+        uniqueId: 'NHL-BOS-NHL-TOR-upcoming',
+        homeTeamScore: null,
+        awayTeamScore: null,
+        // A stale placeholder left by a fetch before the upcoming-game fix.
+        homeTeamRecord: '0-0-0',
+        awayTeamRecord: '0-0-0',
+        save: jest.fn().mockResolvedValue(undefined),
+      };
+      jest.spyOn(service, 'findOne').mockResolvedValue(existingGame as any);
+
+      // The schedule cleared the unstarted game's record (incoming is empty).
+      await service.create({
+        uniqueId: 'NHL-BOS-NHL-TOR-upcoming',
+        startTimeUTC: future,
+        homeTeamRecord: '',
+        awayTeamRecord: '',
+      } as any);
+
+      // The intentional clear must overwrite the stale 0-0-0 so
+      // `_enrichGameWithTeamData()` falls back to the team's current record.
+      expect(existingGame.homeTeamRecord).toBe('');
+      expect(existingGame.awayTeamRecord).toBe('');
+    });
   });
 
   describe('create: capacity guard (no-space retry)', () => {

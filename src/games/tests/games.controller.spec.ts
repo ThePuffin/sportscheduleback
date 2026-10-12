@@ -329,6 +329,26 @@ describe('GamesController', () => {
         skipCascade: true,
       });
     });
+
+    it('should accept a lowercase league name', async () => {
+      await controller.refreshByLeague('nhl');
+      expect(service.getLeagueGames).toHaveBeenCalledWith({
+        forceUpdate: true,
+        league: 'nhl',
+        skipCascade: true,
+      });
+    });
+
+    // Regression: POST /games/refresh/records was swallowed by
+    // POST /games/refresh/:league (NestJS matches in declaration order), so
+    // the records refresh ran getLeagueGames({ league: 'records' }) — a ghost
+    // "RECORDS" league with 0 teams and 0 games.
+    it('should reject an unknown league instead of refreshing a ghost league', async () => {
+      await expect(controller.refreshByLeague('records')).rejects.toThrow(
+        'League RECORDS not found',
+      );
+      expect(service.getLeagueGames).not.toHaveBeenCalled();
+    });
   });
 
   describe('fetchScores', () => {

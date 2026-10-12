@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpException,
   Param,
   ParseBoolPipe,
   ParseIntPipe,
@@ -193,8 +194,32 @@ export class GamesController {
     }
   }
 
+  @Post('refresh/records')
+  @UseGuards(ApiKeyGuard)
+  async refreshRecords() {
+    return await this.GameService.refreshCurrentSeasonRecords();
+  }
+
+  @Post('refresh/finalize-season')
+  @UseGuards(ApiKeyGuard)
+  async finalizeSeasonRecords() {
+    return await this.GameService.finalizeFinishedSeasonRecords();
+  }
+
+  // NOTE: this parameterized route MUST stay after every concrete
+  // `refresh/<action>` route above. NestJS matches routes in declaration
+  // order, so declaring it first would swallow POSTs like
+  // `/games/refresh/records` with `league = 'records'` and `getLeagueGames`
+  // would then refresh a ghost "RECORDS" league (0 teams, 0 games).
   @Post('/refresh/:league')
   async refreshByLeague(@Param('league') league: string) {
+    const normalizedLeague = league.toUpperCase().trim();
+    if (!Object.values(League).includes(normalizedLeague as League)) {
+      throw new HttpException(
+        `League ${normalizedLeague} not found. Did you mean one of: ${Object.values(League).join(', ')}?`,
+        404,
+      );
+    }
     return this.GameService.getLeagueGames({
       league,
       forceUpdate: true,
@@ -248,18 +273,6 @@ export class GamesController {
   @UseGuards(ApiKeyGuard)
   async purgeStaleTeams() {
     return this.GameService.purgeStaleTeamsWithoutGames();
-  }
-
-  @Post('refresh/records')
-  @UseGuards(ApiKeyGuard)
-  async refreshRecords() {
-    return await this.GameService.refreshCurrentSeasonRecords();
-  }
-
-  @Post('refresh/finalize-season')
-  @UseGuards(ApiKeyGuard)
-  async finalizeSeasonRecords() {
-    return await this.GameService.finalizeFinishedSeasonRecords();
   }
 
   @Post('capacity/check')

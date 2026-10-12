@@ -41,7 +41,7 @@ This controller exposes the HTTP API for game data operations.
   (except after the last one) to let disk usage settle. The `force: true` flag bypasses the 1-hour check
   guard and invalidates the 60s disk-usage cache so each retry re-measures real usage. Long-running
   request (minutes per league), returns `void`.
-- `POST /games/refresh/:league` — refreshes one league
+- `POST /games/refresh/:league` — refreshes one league (unknown names are rejected with 404 — never refresh a ghost league). **Must stay declared after every concrete `refresh/<action>` route**: NestJS matches routes in declaration order, so declaring it first would swallow e.g. `POST /games/refresh/records` as `league = 'records'`.
 - `POST /games/sync/recent` — syncs recent games from external sources
 - `POST /games/scores` — recovers missing scores
 - `POST /games/refresh/records` — refreshes `team.record` for leagues whose season (regular season or playoffs) covers today; **writes no game**. Run twice a day by the `refreshTeamRecordsMorning()` / `refreshTeamRecordsAfternoon()` crons

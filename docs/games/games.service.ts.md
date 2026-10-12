@@ -52,6 +52,15 @@ deleting another month. This prevents a tight insert loop (`getLeagueGames` / `g
 `create()` repeatedly) whose disk stays full from purging a month on every failed write and wiping
 the whole history within seconds.
 
+**Record guard (empty fetched record):** when the game already exists, an incoming empty
+`homeTeamRecord` / `awayTeamRecord` (`''` / `null` / `undefined`) is dropped so a refreshed fetch that
+carried no record for that team can never wipe a stored one (the oldies "season with no `records`"
+case). **Exception — upcoming games** (`startTimeUTC` in the future): the schedule has deliberately
+cleared the record of an unstarted fixture so the reader falls back to `team.record`
+(`_enrichGameWithTeamData()`), so the clear **is** applied and overwrites a stale `0-0-0` (or pre-game
+tally) left by an earlier fetch. Without this exception a scheduled game would never stop showing
+`0-0-0`.
+
 ### `getLeagueGames(params)`
 
 Refreshes a specific league’s game data. It:
