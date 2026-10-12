@@ -843,19 +843,28 @@ const leaguesData = Object.fromEntries(
 );
 
 /**
- * Division-1 parent group ids per college league, as exposed by ESPN's
- * per-team detail endpoint (`groups: { id, parent: { id }, isConference }`).
- * A team is Division 1 when its group sits under one of these parents.
- * Football covers both FBS (80) and FCS (81), which are both D1.
+ * Division-1 root group ids per college league, as exposed by ESPN's group
+ * hierarchy (`groups: { id, parent: { id } }` on the per-team detail endpoint):
+ * NCAAF `80/81` (FBS + FCS, both D1), NCAAB/WNCAAB `50` ("NCAA Division I"),
+ * NCCABB `26` ("NCAA Division I" of college-baseball — note `27` is the SEC
+ * conference, not a division).
+ *
+ * ESPN does NOT always parent a team to its division: a program can be parented
+ * to its conference instead (e.g. every Sun Belt team reports
+ * `groups.parent.id = 37` and every SWAC team `31`), so the direct parent id
+ * alone is not a reliable verdict. `resolveD1FromGroups()` therefore walks the
+ * group hierarchy up to one of these roots (see `getGroupParentId()`), and a
+ * team is D1 when its hierarchy passes through one of them.
+ *
  * `isConference` is intentionally NOT part of the test: ESPN sets it to
  * `false` for legitimate D1 teams (e.g. every NCCABB team, LSU included)
- * and for independent D1 programs, so only the parent id is reliable.
+ * and for independent D1 programs, so only the group hierarchy is reliable.
  * Women's college hockey (NCAAWH) is intentionally absent: ESPN exposes no
  * such marker there, so it is kept as-is.
  *
  * Men's college hockey (NCAAMH) is a special case: ESPN's `parent.id = 51`
  * there lumps D1, D3 and even non-NCAA (U Sports) programs together, and its
- * `isConference` flag is unreliable too, so the parent id alone would admit
+ * `isConference` flag is unreliable too, so the hierarchy alone would admit
  * non-D1 teams (Adrian, Middlebury, SUNY Cortland, Laurentian…). NCAAMH is
  * therefore filtered by an explicit allowlist (`NCAAMH_D1_TEAMS`) instead —
  * see `isD1Groups()`.
@@ -864,7 +873,7 @@ export const D1_PARENT_IDS: Record<string, string[]> = {
   [CollegeLeague.NCAAF]: ['80', '81'],
   [CollegeLeague.NCAAB]: ['50'],
   [CollegeLeague.WNCAAB]: ['50'],
-  [CollegeLeague.NCCABB]: ['27'],
+  [CollegeLeague.NCCABB]: ['26'],
 };
 
 /**
@@ -928,7 +937,12 @@ export const NCAAWH_D1_TEAM_IDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Whether an ESPN team-detail `groups` object marks a Division 1 team.
+ * Whether an ESPN team-detail `groups` object marks a Division 1 team by its
+ * DIRECT group parent id. Synchronous and network-free, so it only decides
+ * the hockey allowlists and reports `true` on missing info: the parent-id
+ * leagues are actually decided by `resolveD1FromGroups()` (same allowlist
+ * delegation, but the group hierarchy is walked because ESPN parents many
+ * teams to their conference instead of their division).
  * Returns `true` when there is no `groups` info (transient fetch failure):
  * a team must never be dropped on a network error, only on positive proof
  * that it plays outside D1.
@@ -1010,7 +1024,10 @@ const getTeamRecord = async (
  * Full ESPN roster of a college league (`teams?limit=1000`), keyed by ESPN
  * team id with each team's `groups`. Second source of truth used when the
  * per-team detail endpoint cannot verify an opponent (it answers 404 for ids
- * it does not know). The roster is cached for six hours; a failed fetch is
+ * it does not know). NOTE: ESPN stopped shipping `groups` on this endpoint
+ * (0/762 NCAAF entries in late 2026), so callers must treat a fetched roster
+ * whose entries all lack `groups` as unproven (fail-open), not as proof of
+ * non-D1. The roster is cached for six hours; a failed fetch is
  * remembered for one minute so a whole crawl does not storm ESPN during an
  * outage. Returns `null` when the roster could not be fetched, so callers can
  * tell "the roster says the id is unknown" from "the roster was unavailable".
@@ -1078,6 +1095,170 @@ const getLeagueTeamGroups = async (
   }
 };
 
+// ESPN's core API exposes the group hierarchy of a league
+// (`.../v2/sports/{sport}/leagues/{league}/seasons/{year}/types/2/groups/{id}`
+// → `{ id, name, parent: { $ref: ".../groups/{parentId}" } }`), which the
+// site.api team detail does not: the roster (`teams?limit=1000`) no longer
+// carries any `groups` field at all (0/762 entries in late 2026) and the
+// detail endpoint parents many teams to their conference instead of their
+// division (Sun Belt `37`, SWAC `31`, SEC `27`, …). Walking this hierarchy is
+// therefore the only way to tell "conference-parented D1 team" from "D2/D3/
+// NAIA program" — e.g. `167 (Sun Belt East) → 37 (Sun Belt) → 80 (FBS)`.
+const ESPN_CORE_API = 'https://sports.core.api.espn.com/v2/sports';
+
+const ESPN_GROUP_META_TTL_MS = 6 * 60 * 60 * 1000;
+const ESPN_GROUP_META_RETRY_AFTER_FAILURE_MS = 60 * 1000;
+// Safety bound: real chains are at most 4 hops long (division → conference →
+// FBS/FCS → NCAA Division I). Anything deeper (or cyclic) is unverifiable.
+const ESPN_GROUP_CHAIN_MAX_HOPS = 8;
+const espnGroupMetaCache = new Map<
+  string,
+  { ok: boolean; parentId: string | null; checkedAt: number }
+>();
+
+/**
+ * Parent group id of one ESPN group, via the core API's group hierarchy.
+ * Resolves `string` (has a parent), `null` (the group is a root, e.g. NAIA
+ * `186` or "NCAA Football" `99`) or `undefined` (could not verify — ESPN
+ * unreachable, unknown league or unusable payload; callers must fail open).
+ * Successful answers are cached six hours, failures sixty seconds so an
+ * outage does not storm ESPN during a crawl. The current and previous season
+ * are tried because the season-ful path is the only stable one and its year
+ * must exist for the league.
+ */
+const getGroupParentId = async (
+  leagueName: string,
+  groupId: string,
+): Promise<string | null | undefined> => {
+  const config = leagueConfigs[leagueName];
+  if (!config) return undefined;
+
+  const cacheKey = `${leagueName}:${groupId}`;
+  const cached = espnGroupMetaCache.get(cacheKey);
+  if (cached) {
+    const ttl = cached.ok
+      ? ESPN_GROUP_META_TTL_MS
+      : ESPN_GROUP_META_RETRY_AFTER_FAILURE_MS;
+    if (Date.now() - cached.checkedAt < ttl) {
+      return cached.ok ? cached.parentId : undefined;
+    }
+  }
+
+  const year = new Date().getFullYear();
+  for (const season of [String(year), String(year - 1)]) {
+    const url = `${ESPN_CORE_API}/${config.sport}/leagues/${config.league}/seasons/${season}/types/2/groups/${groupId}`;
+    try {
+      const res = await fetchWithRetry(url);
+      if (!res.ok) continue;
+      const data = await res.json();
+      // A usable group payload always carries its own id; anything else (e.g.
+      // an error body with HTTP 200) proves nothing.
+      if (String(data?.id ?? '') !== groupId) continue;
+      const parentRef = data?.parent?.$ref;
+      const parentId =
+        data?.parent?.id ??
+        (typeof parentRef === 'string'
+          ? parentRef.match(/\/groups\/(\d+)/)?.[1]
+          : undefined);
+      espnGroupMetaCache.set(cacheKey, {
+        ok: true,
+        parentId: parentId ?? null,
+        checkedAt: Date.now(),
+      });
+      return parentId ?? null;
+    } catch {
+      // Try the other season before giving up.
+    }
+  }
+
+  espnGroupMetaCache.set(cacheKey, {
+    ok: false,
+    parentId: null,
+    checkedAt: Date.now(),
+  });
+  return undefined;
+};
+
+/**
+ * Walks a team's group hierarchy up to a D1 root (`D1_PARENT_IDS[league]`).
+ * Resolves `true` / `false` when the hierarchy proves the verdict — a team is
+ * D1 when any node on the path `groups.id → groups.parent → …` is a D1 root —
+ * and `undefined` when ESPN could not supply the hierarchy (fail open
+ * upstream: never drop a team on missing info). Starting at `groups.id`
+ * matters: ESPN reports the division as the group id for some leagues (e.g.
+ * baseball Tennessee `{ id: 26 (D1), parent: 25 }`) and as the parent for
+ * others (e.g. basketball `{ id: 2, parent: 50 }`); the id's chain always
+ * contains the parent chain, so it covers both shapes.
+ */
+const resolveD1ViaGroupHierarchy = async (
+  leagueName: string,
+  startGroupId: string,
+): Promise<boolean | undefined> => {
+  const d1Parents = D1_PARENT_IDS[leagueName];
+  if (!d1Parents) return true;
+
+  const seen = new Set<string>();
+  let currentId: string | undefined = startGroupId;
+  for (
+    let hops = 0;
+    currentId && hops < ESPN_GROUP_CHAIN_MAX_HOPS;
+    hops++
+  ) {
+    if (d1Parents.includes(currentId)) return true;
+    if (seen.has(currentId)) return undefined;
+    seen.add(currentId);
+    const parentId = await getGroupParentId(leagueName, currentId);
+    if (parentId === undefined) return undefined;
+    if (parentId === null) return false; // reached a non-D1 root
+    currentId = parentId;
+  }
+  // Pathologically deep or cyclic hierarchy: unverifiable, not non-D1.
+  return undefined;
+};
+
+/**
+ * Division verdict from an ESPN team `groups` payload (detail endpoint or a
+ * roster entry that still carries one). Delegates the hockey allowlists and
+ * leagues without a division marker to `isD1Groups()` (always decisive);
+ * for the parent-id leagues it answers `true`/`false` when the group
+ * hierarchy proves the verdict and `undefined` when it cannot (no `groups`
+ * at all, or ESPN's hierarchy unreachable — callers fail open on `undefined`).
+ */
+const resolveD1FromGroups = async (
+  leagueName: string,
+  groups?: ESPNTeamGroups,
+  teamAbbrev?: string,
+  teamId?: string,
+): Promise<boolean | undefined> => {
+  if (
+    leagueName === CollegeLeague.NCAAMH ||
+    leagueName === CollegeLeague.NCAAWH ||
+    !D1_PARENT_IDS[leagueName]
+  ) {
+    return isD1Groups(leagueName, groups, teamAbbrev, teamId);
+  }
+  if (!groups) return undefined;
+
+  const d1Parents = D1_PARENT_IDS[leagueName];
+  // Fast path: the direct parent (or the group itself) already is a D1 root —
+  // the common case (every NCAAB team, FBS/FCS-parented football teams), no
+  // hierarchy fetch needed.
+  if (groups.parent?.id && d1Parents.includes(groups.parent.id)) {
+    return true;
+  }
+  if (groups.id && d1Parents.includes(groups.id)) {
+    return true;
+  }
+  const startGroupId = groups.id ?? groups.parent?.id;
+  if (!startGroupId) return undefined;
+  return resolveD1ViaGroupHierarchy(leagueName, startGroupId);
+};
+
+/** Whether a fetched league roster carries `groups` for at least one team. */
+const rosterCarriesGroupInfo = (
+  rosterGroups: Map<string, ESPNTeamGroups>,
+): boolean => [...rosterGroups.values()].some((entry) => entry !== undefined);
+
 /**
  * Test hook: clears the module-level division / roster caches so each spec can
  * start from a known state. NEVER call from production code.
@@ -1085,28 +1266,36 @@ const getLeagueTeamGroups = async (
 export const resetESPNDivisionCachesForTests = (): void => {
   espnDivisionCache.clear();
   espnRosterGroupsCache.clear();
+  espnGroupMetaCache.clear();
 };
+
 
 /**
  * Division-1 verdict for one team, cached for six hours once it has been
- * actually verified (ESPN's detail endpoint, the league roster fallback, or an
- * allowlist decided).
+ * actually verified (ESPN's detail endpoint, the group hierarchy, the league
+ * roster fallback, or an allowlist decided).
  *
  * Never throws when ESPN cannot verify the team: the per-team detail endpoint
  * answers HTTP 404 for ids it does not know (small non-D1 opponents such as
  * St. Francis IL, or programs too recent for the endpoint such as Little Rock)
  * and a transient fetch failure is indistinguishable downstream. Throwing there
  * aborted the WHOLE league refresh and lost every valid schedule of that
- * league. Instead the verification degrades in three steps:
- *   1. detail endpoint has a `groups.parent.id` → decided (D1 or not);
- *   2. detail fails → the league roster (`teams?limit=1000`, also carrying
- *      `groups`) is consulted: found there, the roster's groups decide;
- *      absent from a successfully fetched roster the team is treated as
- *      non-D1 (no D1 program of a college league is unknown to both ESPN
- *      sources) and its games are excluded;
- *   3. even the roster is unreachable (network outage) → the team is kept
- *      (fail-open: never dropped on missing info) and nothing is cached, so
- *      the next refresh re-verifies it.
+ * league. Instead the verification degrades in four steps:
+ *   1. detail endpoint has `groups` → the group hierarchy is walked to a D1
+ *      root (a team can be parented to its conference — Sun Belt `37`, SWAC
+ *      `31` — so the direct parent id alone is not decisive) via the core
+ *      API's group metadata, cached six hours;
+ *   2. detail inconclusive (fetch failed / no `groups`) → the league roster
+ *      (`teams?limit=1000`) is consulted as a second source: a roster entry
+ *      that still carries `groups` decides the same way; an id absent from a
+ *      successfully fetched roster that carries division info is non-D1 (no
+ *      D1 program of a college league is unknown to both ESPN sources);
+ *   3. the roster is fetched but carries no `groups` for ANY team (its actual
+ *      state since ESPN removed the field) → it proves nothing, so the team is
+ *      kept fail-open with a warning and nothing is cached;
+ *   4. even the roster is unreachable (network outage) → same fail-open.
+ * One unverifiable team never aborts the league refresh and is re-verified on
+ * the next refresh.
  */
 export const isD1ScheduleTeam = async (
   leagueName: string,
@@ -1126,32 +1315,47 @@ export const isD1ScheduleTeam = async (
     isD1 = isD1Groups(leagueName, undefined, undefined, id);
   } else {
     const { groups, fetchFailed } = await getTeamRecord(leagueName, id);
-    if (groups?.parent?.id) {
-      isD1 = isD1Groups(leagueName, groups, abbrev, id);
-    } else {
-      // Detail endpoint inconclusive: consult the league roster.
-      const rosterGroups = await getLeagueTeamGroups(leagueName);
+    let verdict = await resolveD1FromGroups(leagueName, groups, abbrev, id);
+    let rosterGroups: Map<string, ESPNTeamGroups> | null = null;
+
+    if (verdict === undefined) {
+      // Detail inconclusive (fetch failed, payload without `groups`, or the
+      // group hierarchy unreachable). Consult the league roster as a second
+      // source of truth.
+      rosterGroups = await getLeagueTeamGroups(leagueName);
       const rosterEntry = rosterGroups?.get(id);
-      if (rosterEntry?.parent?.id) {
-        isD1 = isD1Groups(leagueName, rosterEntry, abbrev, id);
-      } else if (rosterGroups) {
-        // The league-level exclusion summary reports this once per refresh.
-        isD1 = false;
-      } else {
-        // Only a genuine ESPN outage reaches here (both sources unreachable).
-        // ESPN's `/teams?limit=1000` roster does NOT carry `groups` any more,
-        // so a fetchable roster still leaves `parent.id` undefined — that is
-        // handled by the `else if (rosterGroups)` branch above, which classifies
-        // the team without blaming a network failure. Do not claim the detail
-        // endpoint failed unless it really did.
-        console.warn(
-          `[Schedule] ${leagueName} team ${id}${abbrev ? ` (${abbrev})` : ''}: ESPN returned no group parent` +
-            (fetchFailed ? ' (team detail fetch failed)' : '') +
-            ' and the league roster was unavailable; assuming Division I (fail-open) and not caching the verdict.',
+      if (rosterEntry) {
+        verdict = await resolveD1FromGroups(
+          leagueName,
+          rosterEntry,
+          abbrev,
+          id,
         );
-        return true;
+      } else if (rosterGroups && rosterCarriesGroupInfo(rosterGroups)) {
+        // The roster was fetched, carries division info for other teams, but
+        // knows nothing about this id: no D1 program of a college league is
+        // unknown to both ESPN sources, so the team is provably non-D1.
+        verdict = false;
       }
     }
+
+    if (verdict === undefined) {
+      // Neither ESPN source could prove anything (the roster carries no
+      // `groups` at all these days, or was unreachable). Fail open so no team
+      // is dropped on missing info, and do not cache the verdict so the next
+      // refresh re-verifies.
+      console.warn(
+        `[Schedule] ${leagueName} team ${id}${abbrev ? ` (${abbrev})` : ''}: ESPN returned no resolvable group hierarchy` +
+          (fetchFailed ? ' (team detail fetch failed)' : '') +
+          ` and the league roster was ${
+            rosterGroups
+              ? 'fetched but carries no division info'
+              : 'unavailable'
+          }; assuming Division I (fail-open) and not caching the verdict.`,
+      );
+      return true;
+    }
+    isD1 = verdict;
   }
 
   espnDivisionCache.set(cacheKey, { isD1, checkedAt: Date.now() });
@@ -1414,9 +1618,13 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
       });
 
     // College leagues: keep Division 1 teams only. `getTeamRecord()` hits the
-    // per-team detail endpoint, which exposes `groups`; a team is dropped only
-    // on positive proof it plays outside D1 (see `isD1Groups()`). NCAAWH is
-    // excluded (ESPN exposes no D1 marker there) and non-college leagues are
+    // per-team detail endpoint, which exposes `groups`; the verdict walks the
+    // ESPN group hierarchy (a team can be parented to its conference — Sun
+    // Belt `37`, SWAC `31` — so the direct parent id alone is not decisive).
+    // A team is dropped only on positive proof it plays outside D1 (see
+    // `resolveD1FromGroups()`); an unverifiable team stays fail-open during
+    // discovery so a transient outage does not erase it. NCAAWH is excluded
+    // (ESPN exposes no D1 marker there) and non-college leagues are
     // unaffected.
     const filteredTeams: TeamType[] = [];
     for (const team of activeTeams) {
@@ -1429,7 +1637,13 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
           (team as any).otLosses = record.otLosses;
         }
       }
-      if (isD1Groups(leagueName, groups, team.abbrev, team.id)) {
+      const verdict = await resolveD1FromGroups(
+        leagueName,
+        groups,
+        team.abbrev,
+        team.id,
+      );
+      if (verdict !== false) {
         filteredTeams.push(team);
       } else {
         console.info(

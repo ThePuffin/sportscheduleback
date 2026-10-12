@@ -881,6 +881,14 @@ describe('isD1Groups', () => {
         async (input) => {
           const url = String(input);
           const isSchedule = url.includes('/schedule?');
+          // Group-hierarchy lookup (core API): group 200 is a non-D1 root, so
+          // the walk from the D2 team's `groups.id` proves it non-D1.
+          if (url.includes('/groups/')) {
+            return new Response(
+              JSON.stringify({ id: '200', name: 'Non-D1 Conference' }),
+              { headers: { 'content-type': 'application/json' } },
+            );
+          }
           const teamId = url.match(/\/teams\/(\d+)/)?.[1];
           const payload = isSchedule
             ? { events: [] }
@@ -1310,6 +1318,26 @@ describe('isD1Groups', () => {
         if (url.includes('/teams?limit=1000')) {
           return new Response(JSON.stringify({ code: 500 }), { status: 500 });
         }
+        // Group-hierarchy lookups: group 1 sits under non-D1 root 49, so both
+        // sides walk to a root that is not `50` → provably non-D1.
+        if (url.includes('/groups/1')) {
+          return new Response(
+            JSON.stringify({
+              id: '1',
+              name: 'Some Conference',
+              parent: {
+                $ref: 'https://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/types/2/groups/49',
+              },
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        if (url.includes('/groups/49')) {
+          return new Response(
+            JSON.stringify({ id: '49', name: 'Non-D1 Division' }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
         const teamId = url.match(/\/teams\/(\d+)$/)?.[1];
         if (teamId === '99401') {
           // First lookup (pre-filter): ESPN is down → fail-open. Later
@@ -1590,18 +1618,47 @@ describe('isD1ScheduleTeam', () => {
     expect(await isD1ScheduleTeam('NCAAB', '99102')).toBe(true);
   });
 
-  it('caches a verified verdict for 6h and honors the group parent id', async () => {
+  it('caches a verified verdict for 6h and walks the group hierarchy', async () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockImplementation(async (input) => {
-        const id = String(input).match(/\/teams\/(\d+)$/)?.[1];
+        const url = String(input);
+        // Group hierarchy (core API): the real D2 chain of Bowie State
+        // (CIAA 104 → D2 57 → D2/D3 35 → NCAA Football 99, a non-D1 root).
+        const groupParents: Record<string, string | undefined> = {
+          '104': '57',
+          '57': '35',
+          '35': '99',
+          '99': undefined,
+        };
+        const groupId = url.match(/\/groups\/(\d+)/)?.[1];
+        if (groupId) {
+          const parentId = groupParents[groupId];
+          return new Response(
+            JSON.stringify({
+              id: groupId,
+              name: `Group ${groupId}`,
+              ...(parentId
+                ? {
+                    parent: {
+                      $ref: `https://sports.core.api.espn.com/v2/sports/football/leagues/college-football/seasons/2026/types/2/groups/${parentId}`,
+                    },
+                  }
+                : {}),
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        const id = url.match(/\/teams\/(\d+)$/)?.[1];
         return new Response(
           JSON.stringify({
             team: {
-              groups: {
-                id: '1',
-                parent: { id: id === '99103' ? '80' : '35' },
-              },
+              groups:
+                id === '99103'
+                  ? // FBS independent: direct FBS parent → fast path, no walk.
+                    { id: '18', parent: { id: '80' } }
+                  : // CIAA (D2) program: hierarchy walk to a non-D1 root.
+                    { id: '104', parent: { id: '57' } },
             },
           }),
           { headers: { 'content-type': 'application/json' } },
@@ -1613,8 +1670,9 @@ describe('isD1ScheduleTeam', () => {
     expect(await isD1ScheduleTeam('NCAAF', '99104')).toBe(false);
     expect(await isD1ScheduleTeam('NCAAF', '99104')).toBe(false);
 
-    // One fetch per team: both verdicts come from the cache afterwards.
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // One detail fetch per team plus one hierarchy lookup per group id
+    // (104/57/35/99); both verdicts come from the cache afterwards.
+    expect(fetchSpy).toHaveBeenCalledTimes(6);
     expect(console.warn).not.toHaveBeenCalled();
   });
 
@@ -1669,8 +1727,15 @@ describe('isD1ScheduleTeam', () => {
         .spyOn(global, 'fetch')
         .mockImplementation(async (input) => {
           const url = String(input);
+          // Group hierarchy (core API): group 777 is a non-D1 root.
+          if (url.includes('/groups/777')) {
+            return new Response(
+              JSON.stringify({ id: '777', name: 'Non-D1 Root Group' }),
+              { headers: { 'content-type': 'application/json' } },
+            );
+          }
           if (url.includes('/teams?limit=1000')) {
-            // 99503 is listed with a non-D1 parent; 99502 is absent entirely.
+            // 99503 is listed with a non-D1 group; 99502 is absent entirely.
             return new Response(
               JSON.stringify({
                 sports: [
@@ -1681,7 +1746,7 @@ describe('isD1ScheduleTeam', () => {
                           {
                             team: {
                               id: '99503',
-                              groups: { id: '200', parent: { id: '28' } },
+                              groups: { id: '777' },
                             },
                           },
                         ],
@@ -1702,12 +1767,16 @@ describe('isD1ScheduleTeam', () => {
       expect(await isD1ScheduleTeam('NCCABB', id)).toBe(false);
       expect(await isD1ScheduleTeam('NCCABB', id)).toBe(false);
 
-      // The negative verdict is cached (6h): exactly one detail fetch and one
-      // roster fetch across both calls, whatever the order.
+      // The negative verdict is cached (6h): one detail fetch per call to
+      // `isD1ScheduleTeam`… except the second call hits the cache, plus one
+      // hierarchy lookup for 99503's group — and one roster fetch (cached).
       expect(
-        fetchSpy.mock.calls.filter(
-          ([url]) => !String(url).includes('/teams?limit=1000'),
-        ),
+        fetchSpy.mock.calls.filter(([url]) => {
+          const target = String(url);
+          return (
+            !target.includes('/teams?limit=1000') && !target.includes('/groups/')
+          );
+        }),
       ).toHaveLength(1);
     },
   );
@@ -1723,4 +1792,175 @@ describe('isD1ScheduleTeam', () => {
       expect(fetchSpy).not.toHaveBeenCalled();
     },
   );
+  it('keeps conference-parented teams (Sun Belt / SWAC) by walking the group hierarchy', async () => {
+    // Regression for the reported bug: ESPN parents these programs to their
+    // CONFERENCE instead of FBS/FCS (`groups.parent.id` is 37 for every Sun
+    // Belt team and 31 for every SWAC team), so the direct-parent test
+    // wrongly classified them as non-D1 and dropped their games.
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        const groupParents: Record<string, string | undefined> = {
+          '167': '37', // Sun Belt - East
+          '37': '80', // Sun Belt Conference → FBS
+          '33': '31', // SWAC - East
+          '31': '81', // Southwestern Athletic Conference → FCS
+        };
+        const groupId = url.match(/\/groups\/(\d+)/)?.[1];
+        if (groupId) {
+          const parentId = groupParents[groupId];
+          return new Response(
+            JSON.stringify({
+              id: groupId,
+              name: `Group ${groupId}`,
+              ...(parentId
+                ? {
+                    parent: {
+                      $ref: `https://sports.core.api.espn.com/v2/sports/football/leagues/college-football/seasons/2026/types/2/groups/${parentId}`,
+                    },
+                  }
+                : {}),
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        const teamId = url.match(/\/teams\/(\d+)$/)?.[1];
+        return new Response(
+          JSON.stringify({
+            team: {
+              groups:
+                teamId === '99701'
+                  ? { id: '167', parent: { id: '37' } }
+                  : { id: '33', parent: { id: '31' } },
+            },
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        );
+      });
+
+    expect(await isD1ScheduleTeam('NCAAF', '99701')).toBe(true); // Sun Belt
+    expect(await isD1ScheduleTeam('NCAAF', '99702')).toBe(true); // SWAC
+
+    // 2 detail fetches + 4 hierarchy lookups (167 → 37 and 33 → 31); the
+    // roster is never consulted and nothing is warned about.
+    expect(fetchSpy).toHaveBeenCalledTimes(6);
+    expect(
+      fetchSpy.mock.calls.filter(([url]) =>
+        String(url).includes('/teams?limit=1000'),
+      ),
+    ).toHaveLength(0);
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('classifies a NAIA team (group 186, no parent) non-D1 from the detail payload alone', async () => {
+    // Real shape of Virginia Lynchburg / UFTL:
+    // `groups: { id: '186', isConference: false }` with no parent — 186
+    // ("NAIA") is a non-D1 root of the hierarchy, so the walk decides
+    // without ever consulting the roster.
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.includes('/groups/186')) {
+          return new Response(JSON.stringify({ id: '186', name: 'NAIA' }), {
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            team: { groups: { id: '186', isConference: false } },
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        );
+      });
+
+    expect(await isD1ScheduleTeam('NCAAF', '99777')).toBe(false);
+    expect(await isD1ScheduleTeam('NCAAF', '99777')).toBe(false);
+
+    // One detail fetch + one hierarchy lookup; the negative verdict is
+    // cached (6h) and the roster is never consulted.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(
+      fetchSpy.mock.calls.filter(([url]) =>
+        String(url).includes('/teams?limit=1000'),
+      ),
+    ).toHaveLength(0);
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('fails open without caching when the roster was fetched but carries no groups', async () => {
+    // The real ESPN state: the roster answers but every entry lacks
+    // `groups` (0/762 NCAAF entries in late 2026), so it can neither
+    // confirm nor refute anything. A team whose detail fetch fails (here a
+    // transient 404) must be kept, warned about, and re-verified next
+    // refresh — NOT classified non-D1 on missing info.
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.includes('/teams/99888')) {
+          return new Response(JSON.stringify({ code: 404 }), { status: 404 });
+        }
+        if (url.includes('/teams?limit=1000')) {
+          // ESPN answered, but the roster carries no `groups` for any team.
+          return new Response(
+            JSON.stringify({
+              sports: [
+                {
+                  leagues: [
+                    {
+                      teams: [{ team: { id: '99889' } }],
+                    },
+                  ],
+                },
+              ],
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        return new Response('{}');
+      });
+
+    expect(await isD1ScheduleTeam('NCAAF', '99888')).toBe(true);
+    expect(await isD1ScheduleTeam('NCAAF', '99888')).toBe(true);
+
+    // 1st call: detail + roster (2 fetches). The verdict is NOT cached, but
+    // the roster answer is (6h), so the 2nd call only re-tries the detail.
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(console.warn).toHaveBeenCalledTimes(2);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'the league roster was fetched but carries no division info',
+      ),
+    );
+  });
+
+  it('fails open when the group hierarchy itself is unreachable', async () => {
+    // The hierarchy lookup (core API) answers 404 for every group id: the
+    // verdict stays unproven, the team is kept fail-open twice and nothing
+    // is cached.
+    jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.includes('/groups/')) {
+          return new Response(JSON.stringify({ code: 404 }), { status: 404 });
+        }
+        if (url.includes('/teams/99701')) {
+          return new Response(
+            JSON.stringify({
+              team: { groups: { id: '167', parent: { id: '37' } } },
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        // Roster unreachable too.
+        return new Response(JSON.stringify({ code: 404 }), { status: 404 });
+      });
+
+    expect(await isD1ScheduleTeam('NCAAF', '99701')).toBe(true);
+    expect(await isD1ScheduleTeam('NCAAF', '99701')).toBe(true);
+    expect(console.warn).toHaveBeenCalledTimes(2);
+  });
 });

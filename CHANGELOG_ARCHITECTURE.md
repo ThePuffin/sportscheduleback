@@ -2,6 +2,64 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: conference-parented college teams (Sun Belt, SWAC, …) were classified non-D1
+
+### Problem
+
+ESPN no longer parents every college team to its division: all Sun Belt programs
+report `groups.parent.id = 37` (the Sun Belt Conference itself), all SWAC programs
+`31`, SEC-baseball teams `27`, etc. The D1 check only tested the **direct** parent id
+against `D1_PARENT_IDS` (`NCAAF 80/81`, …), so those programs — Arkansas State,
+Appalachian State, Coastal Carolina, Georgia Southern/State, James Madison, Louisiana
+Tech, Marshall, ODU, South Alabama, Southern Miss, Troy, Louisiana, Charlotte, Texas
+State, plus every SWAC school (Alabama A&M, Alabama State, Alcorn, Florida A&M,
+Jackson State, Texas Southern…) — were classified non-D1: skipped at team discovery
+and excluded from schedule crawls ("vu en autre division que division 1"). The same
+staleness hit `NCCABB` (baseball): `D1_PARENT_IDS` said `27`, which is now the SEC
+conference id — the D1 division root is `26` — so D1 baseball teams such as Tennessee
+(parent `25`) were dropped too. Two fallbacks were also wrong: the league roster
+(`teams?limit=1000`) no longer carries any `groups` field at all (0/762 NCAAF
+entries), yet a fetched-but-groupless roster was treated as proof of non-D1 (wrongly
+dropping any team whose detail fetch failed), and a payload whose `groups` had no
+parent (NAIA programs) could not be resolved at all.
+
+### Fix
+
+- **`src/utils/fetchData/espnAllData.ts`**
+  - `getGroupParentId()`: reads a group's parent from ESPN's core API
+    (`.../v2/sports/{sport}/leagues/{league}/seasons/{year}/types/2/groups/{id}`,
+    current then previous season), cached six hours, failures remembered for 60s.
+  - `resolveD1ViaGroupHierarchy()` / `resolveD1FromGroups()`: a team is D1 when any
+    node of its `groups.id → parent → …` chain is a `D1_PARENT_IDS` root (NCAAF
+    `80/81`, NCAAB/WNCAAB `50`, NCCABB `26`). A direct D1 parent short-circuits
+    without a hierarchy fetch; an unresolvable chain is "unverifiable", never
+    non-D1.
+  - `isD1ScheduleTeam()`: four-step degradation — detail + hierarchy walk → league
+    roster entry (same walk; an id absent from a fetched roster that carries
+    division info is provably non-D1) → fail-open (team kept, warning, nothing
+    cached) when the roster carries no `groups` at all or is unreachable. The warn
+    message distinguishes "fetched but carries no division info" from "unavailable".
+  - `getESPNTeams()`: the discovery filter uses the same hierarchy walk and stays
+    fail-open on unverifiable teams.
+  - `D1_PARENT_IDS[NCCABB]` `27` → `26` ("NCAA Division I" of college-baseball).
+  - `resetESPNDivisionCachesForTests()` also clears the hierarchy cache.
+- **`src/utils/fetchData/espnAllData.spec.ts`** — regression suite: Sun Belt / SWAC
+  conference-parented teams kept via the hierarchy walk; NAIA (`186`, no parent)
+  proven non-D1 from the detail payload; D2 chain (CIAA `104 → 57 → 35 → 99`)
+  excluded and cached; roster fallback updated (NCCABB groupless entry); fail-open +
+  no caching when the roster carries no groups or the hierarchy is unreachable;
+  schedule-filter mocks updated for the hierarchy lookups.
+- **`docs/utils/fetchData/espnAllData.ts.md`** — documents the hierarchy walk and
+  the updated fail-open rules.
+
+### Live validation
+
+`isD1ScheduleTeam()` probed against the real ESPN APIs: Arkansas State, JMU, Troy
+(Sun Belt), Alabama A&M, Jackson State (SWAC), Notre Dame → D1; Bowie State
+(CIAA/D2), Virginia Lynchburg and UFTL (NAIA) → non-D1; Tennessee, Vanderbilt and
+Dallas Baptist baseball (NCCABB `26` chains) → D1. All 363 backend tests pass.
+
+
 ## Fixed: `POST /games/refresh/records` was swallowed by `POST /games/refresh/:league`
 
 ### Problem
