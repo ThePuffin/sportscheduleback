@@ -1138,8 +1138,14 @@ export const isD1ScheduleTeam = async (
         // The league-level exclusion summary reports this once per refresh.
         isD1 = false;
       } else {
+        // Only a genuine ESPN outage reaches here (both sources unreachable).
+        // ESPN's `/teams?limit=1000` roster does NOT carry `groups` any more,
+        // so a fetchable roster still leaves `parent.id` undefined — that is
+        // handled by the `else if (rosterGroups)` branch above, which classifies
+        // the team without blaming a network failure. Do not claim the detail
+        // endpoint failed unless it really did.
         console.warn(
-          `[Schedule] ${leagueName} team ${id}: ESPN returned no group parent` +
+          `[Schedule] ${leagueName} team ${id}${abbrev ? ` (${abbrev})` : ''}: ESPN returned no group parent` +
             (fetchFailed ? ' (team detail fetch failed)' : '') +
             ' and the league roster was unavailable; assuming Division I (fail-open) and not caching the verdict.',
         );
