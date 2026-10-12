@@ -554,6 +554,23 @@ export class TeamService {
     return map;
   }
 
+  private teamColorLuminance(hex: string): number {
+    let h = hex.trim().replace(/^#/, '');
+    if (/^[0-9a-fA-F]{3}$/.test(h)) {
+      h = h
+        .split('')
+        .map((c) => c + c)
+        .join('');
+    }
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return NaN;
+    const r = parseInt(h.slice(0, 2), 16) / 255;
+    const g = parseInt(h.slice(2, 4), 16) / 255;
+    const b = parseInt(h.slice(4, 6), 16) / 255;
+    const linear = (c: number) =>
+      c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+  }
+
   private mergeColorsContent(
     existingContent: string,
     newEntries: Array<{
@@ -565,28 +582,129 @@ export class TeamService {
     const map = this.parseExistingColorBlocks(existingContent);
 
     for (const item of newEntries) {
-      const generatedColors = {
-        color: item.color ?? '#000000',
-        backgroundColor: item.backgroundColor ?? '#ffffff',
+      // Placeholder = the exact default PAIR (`#ffffff` on `#000000`),
+      // a degenerate pair (both sides identical), or two empty sides —
+      // all mean "no information". A lone `#000000` (or lone `#ffffff`)
+      // next to a real color CAN be a genuine team color (e.g. Boston gold
+      // on black), so only the full default pair — or two empty sides —
+      // means "no information" for a NEW team.
+      const normSide = (side?: string): string =>
+        !!side && side.trim().length > 0 ? side.trim().toLowerCase() : '';
+      const isMissingSide = (side?: string): boolean => {
+        const n = normSide(side);
+        return n === '' || n === '#null' || n === 'null';
       };
-      const hasNoGeneratedColors = !item.color && !item.backgroundColor;
-      const generatedColorsArePlaceholder =
-        hasNoGeneratedColors ||
-        (generatedColors.color.trim().toLowerCase() === '#ffffff' &&
-          generatedColors.backgroundColor.trim().toLowerCase() === '#000000');
+      const isNonEmptySide = (side?: string): boolean => !isMissingSide(side);
+      const isDefaultPair = (color?: string, bg?: string): boolean => {
+        if (!isNonEmptySide(color) && !isNonEmptySide(bg)) return true;
+        if (!isNonEmptySide(color) || !isNonEmptySide(bg)) return false;
+        return (
+          color!.trim().toLowerCase() === '#ffffff' &&
+          bg!.trim().toLowerCase() === '#000000'
+        );
+      };
+      const newColorRaw = isNonEmptySide(item.color) ? item.color!.trim() : '';
+      const newBackgroundRaw = isNonEmptySide(item.backgroundColor)
+        ? item.backgroundColor!.trim()
+        : '';
+      const generatedColorsArePlaceholder = isDefaultPair(
+        newColorRaw || undefined,
+        newBackgroundRaw || undefined,
+      );
+      // NOTE: `isDefaultPair` requires both sides non-empty for the exact
+      // comparison, so pass the raw stored values ('' when missing).
       const existingColors = map.get(item.uniqueId);
+      const existingColorRaw = existingColors?.color?.trim() ?? '';
+      const existingBackgroundRaw = existingColors?.backgroundColor?.trim() ?? '';
       const existingColorsArePlaceholder =
         !existingColors ||
-        (existingColors.color.trim().toLowerCase() === '#ffffff' &&
-          existingColors.backgroundColor.trim().toLowerCase() === '#000000');
+        (!existingColorRaw &&
+          !existingBackgroundRaw) ||
+        (existingColorRaw.toLowerCase() === '#ffffff' &&
+          existingBackgroundRaw.toLowerCase() === '#000000');
 
       if (generatedColorsArePlaceholder && !existingColorsArePlaceholder) {
         continue;
       }
 
-      map.set(item.uniqueId, {
-        ...generatedColors,
-      });
+      // Positional defaults must never overwrite a real stored side: an
+      // incoming '#ffffff' color (resp. '#000000' background) next to a
+      // stored non-default side is the "no information" marker, not a
+      // genuine team color — keep the stored side. Symmetrically, a
+      // '#ffffff' background (the default *foreground* value showing up in
+      // the background slot) or a '#000000' color (default *background*
+      // value in the color slot — the fetch pipeline always swaps the
+      // darkest side to the background, so a genuine '#000000' foreground
+      // never survives it) is also "no information": ESPN emits those when
+      // it only knows one of the two colors. A lone '#000000' background
+      // or '#ffffff' color next to a real color CAN still be genuine
+      // (Boston gold on black), so only these "no information" markers are
+      // filtered, and only when a real stored side exists to preserve.
+      let newColorEff = newColorRaw;
+      let newBackgroundEff = newBackgroundRaw;
+      if (
+        normSide(newColorEff) === '#ffffff' &&
+        normSide(existingColorRaw) !== '' &&
+        normSide(existingColorRaw) !== '#ffffff'
+      ) {
+        newColorEff = '';
+      }
+      if (
+        normSide(newColorEff) === '#000000' &&
+        normSide(existingColorRaw) !== '' &&
+        normSide(existingColorRaw) !== '#000000'
+      ) {
+        newColorEff = '';
+      }
+      if (
+        // Only strip a '#000000' background when the stored color is not
+        // pure black too — otherwise ESPN's "background known, color
+        // unknown" marker would wipe a genuine black background that the
+        // caller explicitly sent (e.g. updating BOS to gold on black).
+        normSide(newBackgroundEff) === '#000000' &&
+        normSide(existingColorRaw) !== '#000000' &&
+        normSide(existingColorRaw) !== '' &&
+        normSide(existingBackgroundRaw) !== '#000000'
+      ) {
+        newBackgroundEff = '';
+      }
+      if (
+        normSide(newBackgroundEff) === '#ffffff' &&
+        normSide(existingBackgroundRaw) !== '' &&
+        normSide(existingBackgroundRaw) !== '#ffffff'
+      ) {
+        newBackgroundEff = '';
+      }
+
+      // Merge per side: a non-empty incoming side wins (even `#000000` /
+      // `#ffffff` — next to a real color they can be genuine team colors,
+      // e.g. Boston gold on black); a missing side keeps the stored value.
+      // Only the exact default pair is ever treated as "no information".
+      let color = newColorEff || existingColorRaw;
+      let backgroundColor = newBackgroundEff || existingBackgroundRaw;
+
+      // Never write the default placeholder: fill a still-empty side from
+      // the other side of the pair when possible.
+      if (!color && backgroundColor) color = backgroundColor;
+      if (!backgroundColor && color) backgroundColor = color;
+      if (!color && !backgroundColor) {
+        if (existingColors) continue;
+        color = '#ffffff';
+        backgroundColor = '#000000';
+      }
+
+      // Darkest side is always the background.
+      const colorLum = this.teamColorLuminance(color);
+      const backgroundLum = this.teamColorLuminance(backgroundColor);
+      if (
+        Number.isFinite(colorLum) &&
+        Number.isFinite(backgroundLum) &&
+        colorLum < backgroundLum
+      ) {
+        [color, backgroundColor] = [backgroundColor, color];
+      }
+
+      map.set(item.uniqueId, { color, backgroundColor });
     }
 
     const sortedKeys = Array.from(map.keys()).sort((a, b) =>
