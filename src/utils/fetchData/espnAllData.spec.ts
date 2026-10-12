@@ -961,13 +961,12 @@ describe('isD1Groups', () => {
       ).toHaveLength(1);
     });
 
-    it('excludes an opponent unknown to both ESPN sources without aborting the league', async () => {
-      // Regression: `isD1ScheduleTeam()` used to throw "Cannot verify Division I
-      // status … ESPN did not return a group parent" for opponents the detail
-      // endpoint does not know (St. Francis IL, Little Rock…), which aborted
-      // the WHOLE league refresh ("refusing to return a partial league
-      // schedule"). The league roster is now the second source of truth: an id
-      // it does not list either is excluded with proof; the league completes.
+    it('keeps a game whose only D1 side is the crawled team (opponent unknown to both ESPN sources)', async () => {
+      // A fixture belongs to a Division 1 program's schedule as soon as ONE
+      // side is D1, so a D1 team's game against a lower division (here an
+      // opponent ESPN's detail endpoint answers 404 for and the league roster
+      // does not list either) is now SAVED instead of dropped. The league
+      // refresh still completes: one unverifiable opponent never aborts it.
       jest.spyOn(console, 'warn').mockImplementation(() => undefined);
       jest.spyOn(console, 'info').mockImplementation(() => undefined);
       const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -1048,15 +1047,12 @@ describe('isD1Groups', () => {
       );
 
       // The league refresh completes (no "refusing partial schedule") and the
-      // game against the opponent unknown to both ESPN sources is excluded.
-      expect(result['NCAAB-404OPP']).toHaveLength(0);
-      expect(console.info).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'excluded 1 distinct game(s) with participant(s) not verified as D1',
-        ),
-      );
-      expect(console.info).toHaveBeenCalledWith(
-        expect.stringContaining('Unknown Opponent [99202] (1)'),
+      // D1 side is enough: the fixture against the opponent unknown to both
+      // ESPN sources is saved, and no exclusion is reported for it.
+      expect(result['NCAAB-404OPP']).toHaveLength(1);
+      expect(result['NCAAB-404OPP'][0].awayTeamId).toBe('NCAAB-SFA');
+      expect(console.info).not.toHaveBeenCalledWith(
+        expect.stringContaining('excluded 1 distinct game(s)'),
       );
     });
 
@@ -1167,7 +1163,10 @@ describe('isD1Groups', () => {
       expect(result['NCAAF-ROSTERD1'][0].awayTeamId).toBe('NCAAF-FCS');
     });
 
-    it('still excludes a game against a provably non-D1 opponent without aborting', async () => {
+    it('keeps a D1-vs-non-D1 game and still reports malformed events separately', async () => {
+      // One D1 side is enough: the FBS program's game against the provably D3
+      // opponent (parent 35) is saved, because it belongs to a D1 schedule.
+      // The malformed event (empty competitors) is skipped and logged apart.
       jest.spyOn(console, 'info').mockImplementation(() => undefined);
       const warnSpy = jest
         .spyOn(console, 'warn')
@@ -1244,14 +1243,286 @@ describe('isD1Groups', () => {
         false,
       );
 
-      // The non-D1 game is excluded, but the league refresh itself completes.
-      expect(result['NCAAF-D3OPP']).toHaveLength(0);
-      expect(console.info).toHaveBeenCalledWith(
-        '[Schedule] NCAAF: excluded 1 distinct game(s) with participant(s) not verified as D1 across 1 team schedule(s); opponents: D3 University [99302] (1).',
+      // The D1-vs-D3 game is saved, and no exclusion is reported for it.
+      expect(result['NCAAF-D3OPP']).toHaveLength(1);
+      expect(result['NCAAF-D3OPP'][0].awayTeamId).toBe('NCAAF-D3');
+      expect(console.info).not.toHaveBeenCalledWith(
+        expect.stringContaining('excluded 1 distinct game(s)'),
       );
       expect(warnSpy).toHaveBeenCalledWith(
         '[Schedule] NCAAF: skipped 1 game occurrence(s) with invalid or missing competitor data across 1 team schedule(s).',
       );
+    });
+
+    it('excludes a game where NEITHER side is D1', async () => {
+      // Safety net of the per-game filter: a fixture between two provably
+      // non-D1 programs is dropped even though it surfaced while crawling a
+      // team the pre-filter had to keep fail-open (ESPN was unreachable at
+      // that moment, so no verdict was cached and no schedule was skipped).
+      jest.spyOn(console, 'info').mockImplementation(() => undefined);
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const futureDate = new Date(
+        Date.now() + 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const homeDetailCalls = { count: 0 };
+      jest.spyOn(global, 'fetch').mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.includes('/teams/99401/schedule?')) {
+          const hasGame = url.includes('seasontype=2');
+          return new Response(
+            JSON.stringify({
+              events: hasGame
+                ? [
+                    {
+                      date: futureDate,
+                      id: '99400',
+                      competitions: [
+                        {
+                          competitors: [
+                            {
+                              homeAway: 'home',
+                              team: {
+                                id: '99401',
+                                abbreviation: 'NON1',
+                                displayName: 'Non D1 Home',
+                              },
+                            },
+                            {
+                              homeAway: 'away',
+                              team: {
+                                id: '99402',
+                                abbreviation: 'NON2',
+                                displayName: 'Non D1 Away',
+                              },
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ]
+                : [],
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        // The league roster stays unreachable for the whole run, so the
+        // pre-filter keeps the home team fail-open (nothing cached).
+        if (url.includes('/teams?limit=1000')) {
+          return new Response(JSON.stringify({ code: 500 }), { status: 500 });
+        }
+        const teamId = url.match(/\/teams\/(\d+)$/)?.[1];
+        if (teamId === '99401') {
+          // First lookup (pre-filter): ESPN is down → fail-open. Later
+          // lookups (per-game filter): ESPN answers, proving D3 (parent 35).
+          homeDetailCalls.count++;
+          if (homeDetailCalls.count === 1) {
+            return new Response(JSON.stringify({ code: 500 }), {
+              status: 500,
+            });
+          }
+          return new Response(
+            JSON.stringify({
+              team: { groups: { id: '1', parent: { id: '35' } } },
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        // The opponent is provably non-D1 (parent 49).
+        return new Response(
+          JSON.stringify({
+            team: { groups: { id: '1', parent: { id: '49' } } },
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        );
+      });
+
+      const result = await getTeamsSchedule(
+        [
+          {
+            id: '99401',
+            abbrev: 'NON1',
+            uniqueId: 'NCAAB-NOND1BOTH',
+            label: 'Non D1 Home',
+          },
+        ],
+        'NCAAB',
+        {},
+        false,
+      );
+
+      expect(result['NCAAB-NOND1BOTH']).toHaveLength(0);
+      expect(console.info).toHaveBeenCalledWith(
+        '[Schedule] NCAAB: excluded 1 distinct game(s) with no participant verified as D1 across 1 team schedule(s); opponents: Non D1 Away [99402] (1), Non D1 Home [99401] (1).',
+      );
+    });
+
+    it('applies the same per-game rule on the oldies (season) path', async () => {
+      // The per-game filter sits after the date cutoff and is independent of
+      // `season`, so historical recovery (`getLeagueGames({ season })`) follows
+      // the same rule as the live refresh: a past D1-vs-D3 fixture of a
+      // followed program is inserted, not dropped.
+      jest.spyOn(console, 'info').mockImplementation(() => undefined);
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const pastDate = new Date('2024-02-10T19:00:00.000Z').toISOString();
+      jest.spyOn(global, 'fetch').mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.includes('/teams/99511/schedule?')) {
+          const hasGame = url.includes('seasontype=2');
+          return new Response(
+            JSON.stringify({
+              events: hasGame
+                ? [
+                    {
+                      date: pastDate,
+                      id: '99510',
+                      competitions: [
+                        {
+                          competitors: [
+                            {
+                              homeAway: 'home',
+                              team: {
+                                id: '99511',
+                                abbreviation: 'D1',
+                                displayName: 'D1 University',
+                              },
+                            },
+                            {
+                              homeAway: 'away',
+                              team: {
+                                id: '99512',
+                                abbreviation: 'D3',
+                                displayName: 'D3 University',
+                              },
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ]
+                : [],
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        const teamId = url.match(/\/teams\/(\d+)$/)?.[1];
+        return new Response(
+          JSON.stringify({
+            team: {
+              groups: {
+                id: '1',
+                parent: { id: teamId === '99512' ? '35' : '80' },
+              },
+            },
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        );
+      });
+
+      // `season` + `forceUpdate` is exactly how the oldies crawl calls it.
+      const result = await getTeamsSchedule(
+        [
+          {
+            id: '99511',
+            abbrev: 'D1',
+            uniqueId: 'NCAAF-OLDIESD3',
+            label: 'D1 University',
+          },
+        ],
+        'NCAAF',
+        {},
+        true,
+        2024,
+      );
+
+      expect(result['NCAAF-OLDIESD3']).toHaveLength(1);
+      expect(result['NCAAF-OLDIESD3'][0].awayTeamId).toBe('NCAAF-D3');
+      expect(console.info).not.toHaveBeenCalledWith(
+        expect.stringContaining('excluded 1 distinct game(s)'),
+      );
+    });
+
+    it('keeps every game of a college hockey league whose division ESPN cannot verify', async () => {
+      // NCAAMH has no usable ESPN division marker: the per-game D1 filter is
+      // skipped, so a game against an opponent the `NCAAMH_D1_TEAMS` allowlist
+      // does not know is kept. Only the allowlist decides which teams are
+      // crawled (MICH is listed, so its schedule is requested).
+      jest.spyOn(console, 'info').mockImplementation(() => undefined);
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const futureDate = new Date(
+        Date.now() + 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockImplementation(async (input) => {
+          const url = String(input);
+          if (url.includes('/teams/130/schedule?')) {
+            const hasGame = url.includes('seasontype=2');
+            return new Response(
+              JSON.stringify({
+                events: hasGame
+                  ? [
+                      {
+                        date: futureDate,
+                        id: '99600',
+                        competitions: [
+                          {
+                            competitors: [
+                              {
+                                homeAway: 'home',
+                                team: {
+                                  id: '130',
+                                  abbreviation: 'MICH',
+                                  displayName: 'Michigan Wolverines',
+                                },
+                              },
+                              {
+                                homeAway: 'away',
+                                team: {
+                                  id: '2399',
+                                  abbreviation: 'MIDB',
+                                  displayName: 'Middlebury Panthers',
+                                },
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    ]
+                  : [],
+              }),
+              { headers: { 'content-type': 'application/json' } },
+            );
+          }
+          return new Response(JSON.stringify({}), {
+            headers: { 'content-type': 'application/json' },
+          });
+        });
+
+      const result = await getTeamsSchedule(
+        [
+          {
+            id: '130',
+            abbrev: 'MICH',
+            uniqueId: 'NCAAMH-MICH',
+            label: 'Michigan Wolverines',
+          },
+        ],
+        'NCAAMH',
+        {},
+        false,
+      );
+
+      expect(result['NCAAMH-MICH']).toHaveLength(1);
+      expect(result['NCAAMH-MICH'][0].awayTeamId).toBe('NCAAMH-MIDB');
+      expect(console.info).not.toHaveBeenCalledWith(
+        expect.stringContaining('excluded 1 distinct game(s)'),
+      );
+      // No per-game division lookup: only the schedule requests hit the network.
+      expect(
+        fetchSpy.mock.calls.filter(([url]) =>
+          String(url).includes('/schedule?'),
+        ),
+      ).toHaveLength(3);
     });
   });
 });

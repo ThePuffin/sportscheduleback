@@ -868,6 +868,22 @@ export const D1_PARENT_IDS: Record<string, string[]> = {
 };
 
 /**
+ * College leagues whose division ESPN cannot verify: every team — D1, D3 and
+ * non-NCAA (U Sports) alike — reports the same group parent, so a per-game
+ * Division 1 verdict would be a guess. The per-game filter is therefore
+ * skipped for these leagues and **every fetched game is kept**.
+ *
+ * The teams to follow are still restricted by the explicit allowlists
+ * (`NCAAMH_D1_TEAMS` / `NCAAWH_D1_TEAM_IDS`), so a schedule is only requested
+ * for known D1 programs — but a fixture against an opponent the allowlist does
+ * not know is kept instead of being dropped.
+ */
+export const UNVERIFIABLE_DIVISION_LEAGUES: ReadonlySet<string> = new Set([
+  CollegeLeague.NCAAMH,
+  CollegeLeague.NCAAWH,
+]);
+
+/**
  * The 64 Division-1 men's college hockey programs, by ESPN abbreviation.
  *
  * ESPN exposes no reliable D1 marker for men's college hockey: every team —
@@ -1638,7 +1654,7 @@ export const getTeamsSchedule = async (
       topOpponents.join(', ') +
       (omittedOpponents > 0 ? `, and ${omittedOpponents} more` : '');
     console.info(
-      `[Schedule] ${leagueName}: excluded ${excludedGames.length} distinct game(s) with participant(s) not verified as D1 across ${sourceSchedules.size} team schedule(s); opponents: ${opponentSummary}.`,
+      `[Schedule] ${leagueName}: excluded ${excludedGames.length} distinct game(s) with no participant verified as D1 across ${sourceSchedules.size} team schedule(s); opponents: ${opponentSummary}.`,
     );
   }
   if (d1Diagnostics.invalidGames.size > 0) {
@@ -1814,7 +1830,13 @@ const getEachTeamSchedule = async (
       }
     }
 
-    if (d1TeamIds) {
+    // Leagues whose division ESPN cannot verify (NCAAMH / NCAAWH) skip the
+    // per-game filter entirely: every fetched game is kept (the allowlist
+    // upstream already restricts which teams have a schedule requested).
+    const applyPerGameDivisionFilter =
+      !!d1TeamIds && !UNVERIFIABLE_DIVISION_LEAGUES.has(leagueName);
+
+    if (applyPerGameDivisionFilter) {
       const d1Games = [];
       let invalidCompetitorCount = 0;
       for (const game of games) {
@@ -1832,7 +1854,10 @@ const getEachTeamSchedule = async (
             ),
           ),
         );
-        if (teamDivisionResults.every(Boolean)) {
+        // A fixture is kept as soon as ONE side is Division 1: a D1 program's
+        // game against a lower division belongs to its schedule. Only a game
+        // between two teams that are both provably non-D1 is excluded.
+        if (teamDivisionResults.some(Boolean)) {
           d1Games.push(game);
           continue;
         }

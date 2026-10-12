@@ -2,6 +2,62 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Changed: a college game is kept as soon as ONE side is Division 1
+
+### Problem
+
+The per-game Division 1 filter kept a college fixture only when **both**
+participants were D1 (`teamDivisionResults.every(Boolean)`), so a D1 program's
+game against a lower division (D2/D3) was silently dropped from its schedule.
+Those fixtures are part of a D1 program's calendar and must be stored: a D1
+team's buy game against a small D3 school is a legitimate game of the followed
+team.
+
+Only a fixture between two teams that are **both** provably non-D1 has no place
+in the database.
+
+College hockey is the standing exception: ESPN reports the same group parent
+(`51`) for D1, D3 and non-NCAA (U Sports) programs, so no per-game division
+verdict is possible. Every game of `NCAAMH` / `NCAAWH` is kept.
+
+### Fix
+
+- **`src/utils/fetchData/espnAllData.ts`**
+  - Per-game filter now uses `some(Boolean)` instead of `every(Boolean)`: one
+    D1 participant is enough. This makes it a safety net, since the upstream
+    `getD1ScheduleTeamIds()` pre-filter already only requests schedules for D1
+    teams — a non-D1-vs-non-D1 fixture only reaches it when a team had to be
+    kept fail-open during an ESPN outage.
+  - New exported **`UNVERIFIABLE_DIVISION_LEAGUES`** (`ReadonlySet<string>` =
+    `NCAAMH`, `NCAAWH`): for those leagues the per-game filter is skipped
+    entirely, so every fetched game is kept. The `NCAAMH_D1_TEAMS` /
+    `NCAAWH_D1_TEAM_IDS` allowlists still decide **which teams** have their
+    schedule requested — unchanged.
+  - The league exclusion summary log now reads
+    `excluded N distinct game(s) with no participant verified as D1 …`.
+- **`src/utils/fetchData/espnAllData.spec.ts`** — the two cases that used to
+  assert exclusion now assert the game is saved (D1 side only, whether the
+  opponent is unknown to both ESPN sources or provably D3); new cases cover a
+  non-D1-vs-non-D1 exclusion through the fail-open path, the identical behavior
+  on the oldies (`season`) path, and an `NCAAMH` game against an
+  allowlist-unknown opponent being kept with no per-game lookup.
+- **`docs/utils/fetchData/espnAllData.ts.md`** — documents the per-game rule,
+  its safety-net role, and the hockey keep-everything exception.
+
+### Notes / non-regression
+
+- **Both fetch paths behave identically**: the per-game check runs after the
+  date cutoff and is independent of `season`, so the live/forced refresh and
+  the historical oldies recovery (`getLeagueGames({ season })`,
+  `addMissingOnly`) apply the same rule — a past D1-vs-D3 fixture is recovered
+  just like an upcoming one. Covered by a dedicated test.
+- Team-level D1 filtering (`getESPNTeams()`, `purgeNonD1Teams()`) is unchanged:
+  only D1 teams are stored and crawled, including the hockey allowlists.
+- Malformed competitor events are still skipped and logged separately.
+- An incomplete schedule payload still fails the league refresh explicitly.
+- Per-team fetched-game logs, the league distinct-game summary, and the final
+  saved/upserted count in `GameService.getLeagueGames()` are untouched.
+
 ## Added: finished-season records finalization cron (every ~15 days)
 
 Upcoming games now show the current `team.record` (see the entry below), so once a
