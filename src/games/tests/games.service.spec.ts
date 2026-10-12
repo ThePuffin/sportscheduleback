@@ -14,7 +14,9 @@ describe('GameService', () => {
 
   const mockGameModel = {
     find: jest.fn().mockReturnThis(),
+    findOne: jest.fn().mockReturnThis(),
     sort: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     lean: jest.fn().mockReturnThis(),
@@ -37,6 +39,7 @@ describe('GameService', () => {
     purgeStaleTeamsWithoutGames: jest.fn(),
     updateRecord: jest.fn().mockResolvedValue(undefined),
     updateRecords: jest.fn().mockResolvedValue(undefined),
+    resetLeagueRecords: jest.fn().mockResolvedValue(0),
   };
 
   const mockRefreshTimestampService = {
@@ -611,6 +614,160 @@ describe('GameService', () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       expect(createSpy).not.toHaveBeenCalled();
       expect(mockGameModel.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('finalizeFinishedSeasonRecords', () => {
+    // Helper: build a chainable query mock whose terminal `exec` resolves `value`.
+    const chain = (value: any) => {
+      const q: any = {
+        sort: jest.fn(() => q),
+        select: jest.fn(() => q),
+        lean: jest.fn(() => q),
+        exec: jest.fn().mockResolvedValue(value),
+      };
+      return q;
+    };
+
+    const monthsAgoIso = (months: number) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - months);
+      return d.toISOString();
+    };
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('finalizes a league whose last game started more than 2 months ago', async () => {
+      // The most recent game of the league is 3 months old → season is over.
+      // Only NHL has a stored game; every other league's lookup returns null.
+      mockGameModel.findOne.mockImplementation((filter: any) =>
+        filter.league === League.NHL
+          ? chain({ startTimeUTC: monthsAgoIso(3) })
+          : chain(null),
+      );
+      // Two past games, same phase. g1 is missing its record; g2 carries the
+      // tally. Tallies stay consistent with the 2 games held so `getSeasonFinals`
+      // verifies them (a 40-30-12 tally would imply 82 games → truncated).
+      mockGameModel.find.mockReturnValue(
+        chain([
+          {
+            uniqueId: 'g1',
+            homeTeamId: 'NHL-BOS',
+            awayTeamId: 'NHL-TOR',
+            homeTeamRecord: '',
+            awayTeamRecord: '',
+            recordSeasonType: 2,
+          },
+          {
+            uniqueId: 'g2',
+            homeTeamId: 'NHL-BOS',
+            awayTeamId: 'NHL-TOR',
+            homeTeamRecord: '1-0-0',
+            awayTeamRecord: '0-1-0',
+            recordSeasonType: 2,
+          },
+        ]),
+      );
+      mockGameModel.updateOne.mockReturnValue(chain({ modifiedCount: 1 }));
+      const resetSpy = jest
+        .spyOn(mockTeamService as any, 'resetLeagueRecords')
+        .mockResolvedValue(2);
+
+      const result = await service.finalizeFinishedSeasonRecords();
+
+      // Only NHL has a stored game; the other leagues have none (findOne → null).
+      expect(result.leagues).toEqual([League.NHL]);
+      // BOS/TOR final tallies are frozen onto the game that was missing one.
+      expect(mockGameModel.updateOne).toHaveBeenCalledWith(
+        { uniqueId: 'g1' },
+        { $set: { homeTeamRecord: '1-0-0', awayTeamRecord: '0-1-0' } },
+      );
+      expect(resetSpy).toHaveBeenCalledWith(League.NHL);
+      expect(result.teamsReset).toBe(2);
+    });
+
+    it('leaves a league alone when its last game started within 2 months', async () => {
+      // Season still considered running: last game 1 month ago.
+      mockGameModel.findOne.mockReturnValue(
+        chain({ startTimeUTC: monthsAgoIso(1) }),
+      );
+      const resetSpy = jest
+        .spyOn(mockTeamService as any, 'resetLeagueRecords')
+        .mockResolvedValue(0);
+
+      const result = await service.finalizeFinishedSeasonRecords();
+
+      expect(result.leagues).toEqual([]);
+      expect(result.gamesUpdated).toBe(0);
+      expect(result.teamsReset).toBe(0);
+      expect(mockGameModel.find).not.toHaveBeenCalled();
+      expect(resetSpy).not.toHaveBeenCalled();
+    });
+
+    it('skips a league with no games at all', async () => {
+      mockGameModel.findOne.mockReturnValue(chain(null));
+      const resetSpy = jest
+        .spyOn(mockTeamService as any, 'resetLeagueRecords')
+        .mockResolvedValue(0);
+
+      const result = await service.finalizeFinishedSeasonRecords();
+
+      expect(result).toEqual({ leagues: [], gamesUpdated: 0, teamsReset: 0 });
+      expect(resetSpy).not.toHaveBeenCalled();
+    });
+
+    it('keeps processing other leagues when one throws', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      // NHL is over (finalize), NBA lookup throws.
+      mockGameModel.findOne.mockImplementation((filter: any) => {
+        if (filter.league === League.NBA) throw new Error('db down');
+        return chain({ startTimeUTC: monthsAgoIso(5) });
+      });
+      mockGameModel.find.mockReturnValue(chain([]));
+      const resetSpy = jest
+        .spyOn(mockTeamService as any, 'resetLeagueRecords')
+        .mockResolvedValue(0);
+
+      const result = await service.finalizeFinishedSeasonRecords();
+
+      // Every league except NBA (and the ones with no games) got finalized.
+      expect(result.leagues).toContain(League.NHL);
+      expect(result.leagues).not.toContain(League.NBA);
+      expect(resetSpy).toHaveBeenCalledWith(League.NHL);
+      expect(resetSpy).not.toHaveBeenCalledWith(League.NBA);
+    });
+
+    it('keeps a playoff game-specific tally when freezing a finished season', async () => {
+      mockGameModel.findOne.mockReturnValue(
+        chain({ startTimeUTC: monthsAgoIso(4) }),
+      );
+      // A single playoff game already carrying its own tally: phase 3 keeps the
+      // game-specific record (never stamped with a later game's number).
+      mockGameModel.find.mockReturnValue(
+        chain([
+          {
+            uniqueId: 'p1',
+            homeTeamId: 'NFL-CHI',
+            awayTeamId: 'NFL-DET',
+            homeTeamRecord: '1-0-0',
+            awayTeamRecord: '0-1-0',
+            recordSeasonType: 3,
+          },
+        ]),
+      );
+      mockGameModel.updateOne.mockReturnValue(chain({ modifiedCount: 1 }));
+      jest
+        .spyOn(mockTeamService as any, 'resetLeagueRecords')
+        .mockResolvedValue(1);
+
+      await service.finalizeFinishedSeasonRecords();
+
+      expect(mockGameModel.updateOne).toHaveBeenCalledWith(
+        { uniqueId: 'p1' },
+        { $set: { homeTeamRecord: '1-0-0', awayTeamRecord: '0-1-0' } },
+      );
     });
   });
 

@@ -256,6 +256,12 @@ export class GamesController {
     return await this.GameService.refreshCurrentSeasonRecords();
   }
 
+  @Post('refresh/finalize-season')
+  @UseGuards(ApiKeyGuard)
+  async finalizeSeasonRecords() {
+    return await this.GameService.finalizeFinishedSeasonRecords();
+  }
+
   @Post('capacity/check')
   @UseGuards(ApiKeyGuard)
   async checkCapacity() {

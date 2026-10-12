@@ -317,7 +317,19 @@ describe('applySeasonFinalRecords', () => {
     expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('42-32-7');
   });
 
-  it('keeps phase-specific records while that phase is in progress', () => {
+  it('keeps phase-specific records for a played game while that phase is in progress', () => {
+    const allGames = {
+      'NHL-BOS': [pastGame('NHL-BOS', 'NHL-TOR', '5-2-0', '4-3-0')],
+      'NHL-TOR': [pastGame('NHL-TOR', 'NHL-BOS', '4-3-0', '5-2-0')],
+    };
+
+    applySeasonFinalRecords(allGames);
+
+    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('5-2-0');
+    expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('4-3-0');
+  });
+
+  it('clears the per-game record of an upcoming game so the reader uses team.record', () => {
     const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const allGames = {
       'NHL-BOS': [
@@ -330,8 +342,10 @@ describe('applySeasonFinalRecords', () => {
 
     applySeasonFinalRecords(allGames);
 
-    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('5-2-0');
-    expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('4-3-0');
+    // An unstarted game has no pre-game tally: the empty record makes
+    // `_enrichGameWithTeamData()` fall back to the team's current `team.record`.
+    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('');
+    expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('');
   });
 
   it('keeps playoff match records distinct as a series progresses', () => {
@@ -358,7 +372,7 @@ describe('applySeasonFinalRecords', () => {
     expect(allGames['NFL-SF'][0].homeTeamRecord).toBe('1-0-0');
   });
 
-  it('sets an unstarted phase to zero even when other phases have records', () => {
+  it('keeps an unstarted past phase at zero but clears an unstarted upcoming phase', () => {
     const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const allGames = {
       'NHL-BOS': [
@@ -372,10 +386,12 @@ describe('applySeasonFinalRecords', () => {
 
     applySeasonFinalRecords(allGames);
 
+    // Played regular season keeps its verified tally.
     expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('33-39-10');
     expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('42-32-7');
-    expect(allGames['NHL-BOS'][1].homeTeamRecord).toBe('0-0-0');
-    expect(allGames['NHL-BOS'][1].awayTeamRecord).toBe('0-0-0');
+    // An upcoming preseason game falls back to the team's current record.
+    expect(allGames['NHL-BOS'][1].homeTeamRecord).toBe('');
+    expect(allGames['NHL-BOS'][1].awayTeamRecord).toBe('');
   });
 
   it('is a no-op when there is nothing to process', () => {

@@ -16,6 +16,8 @@ export class CronService implements OnModuleInit {
   private rotationDayKey: string = '';
   // Team records refresh (see refreshTeamRecordsMorning/Afternoon)
   private isRefreshingTeamRecords: boolean = false;
+  // Finished-season records finalization (see finalizeFinishedSeasonRecords)
+  private isFinalizingSeasonRecords: boolean = false;
 
   constructor(
     private readonly teamService: TeamService,
@@ -439,6 +441,51 @@ export class CronService implements OnModuleInit {
       console.error('[Cron] Error running team records refresh:', err);
     } finally {
       this.isRefreshingTeamRecords = false;
+    }
+  }
+
+  /**
+   * Every ~15 days (1st and 16th of the month, 5 AM UTC) finalizes the records
+   * of any league whose season — regular season **and** playoffs — is over:
+   * `GameService.finalizeFinishedSeasonRecords()` freezes each finished game's
+   * end-of-season tally onto the game, then resets `team.record` to zero so the
+   * next season's upcoming games start from a blank tally instead of showing the
+   * previous season's final record.
+   *
+   * Guarded like the other crons: it never overlaps a heavy refresh (league
+   * rotation / oldies / score recovery) and never overlaps itself.
+   */
+  @Cron('0 5 1,16 * *') // 1ST AND 16TH OF THE MONTH AT 5AM (UTC) — ~every 15 days
+  async finalizeFinishedSeasonRecords() {
+    if (this.isHeavyRefreshRunning) {
+      console.info(
+        '[Cron] Skipping finished-season finalization — heavy league refresh in progress.',
+      );
+      return;
+    }
+    if (this.isFinalizingSeasonRecords) {
+      console.info(
+        '[Cron] Skipping finished-season finalization — previous run still in progress.',
+      );
+      return;
+    }
+
+    this.isFinalizingSeasonRecords = true;
+    try {
+      console.info(
+        '[Cron] Running finished-season records finalization...',
+      );
+      const result = await this.gameService.finalizeFinishedSeasonRecords();
+      console.info(
+        `[Cron] Finished-season finalization done: ${result.leagues.length} league(s) (${result.leagues.join(', ') || 'none'}), ${result.gamesUpdated} game record(s) frozen, ${result.teamsReset} team record(s) reset.`,
+      );
+    } catch (err) {
+      console.error(
+        '[Cron] Error running finished-season finalization:',
+        err,
+      );
+    } finally {
+      this.isFinalizingSeasonRecords = false;
     }
   }
 

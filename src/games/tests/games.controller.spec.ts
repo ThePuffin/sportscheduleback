@@ -39,6 +39,12 @@ const mockGameService = {
   getAllGames: jest.fn().mockResolvedValue(mockGames),
   getLeagueGames: jest.fn().mockResolvedValue(mockGames),
   fetchGamesScores: jest.fn().mockResolvedValue([{ success: true }]),
+  refreshCurrentSeasonRecords: jest.fn().mockResolvedValue({ leagues: [], updatedTeams: 0 }),
+  finalizeFinishedSeasonRecords: jest.fn().mockResolvedValue({
+    leagues: ['NHL'],
+    gamesUpdated: 10,
+    teamsReset: 32,
+  }),
   update: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
   removeLeague: jest.fn().mockResolvedValue({ deletedCount: 10 }),
   removeAll: jest.fn().mockResolvedValue({ deletedCount: 100 }),
@@ -359,6 +365,18 @@ describe('GamesController', () => {
     it('should remove duplicates and old games', async () => {
       await controller.removeDuplicate();
       expect(service.removeDuplicatesAndOlds).toHaveBeenCalled();
+    });
+  });
+
+  describe('finalizeSeasonRecords', () => {
+    it('delegates to GameService.finalizeFinishedSeasonRecords and returns its result', async () => {
+      const result = await controller.finalizeSeasonRecords();
+      expect(service.finalizeFinishedSeasonRecords).toHaveBeenCalled();
+      expect(result).toEqual({
+        leagues: ['NHL'],
+        gamesUpdated: 10,
+        teamsReset: 32,
+      });
     });
   });
 

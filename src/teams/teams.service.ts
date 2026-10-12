@@ -354,6 +354,30 @@ export class TeamService {
     await this.teamModel.updateOne({ uniqueId }, { $set: updateData }).exec();
   }
 
+  /**
+   * Resets the current-season tally (`wins` / `losses` / `ties` / `otLosses`) of
+   * every team of a league back to zero.
+   *
+   * Called once a league's season — regular season **and** playoffs — is over
+   * (no game started for two months, see `GameService.finalizeFinishedSeasonRecords()`),
+   * right after the end-of-season tally has been frozen onto that league's games.
+   * Because upcoming games have no per-game record and therefore display
+   * `team.record` (the `_enrichGameWithTeamData()` fallback), zeroing it makes the
+   * next season's fixtures start from a blank tally again instead of showing the
+   * previous season's final record.
+   *
+   * Returns the number of team documents modified.
+   */
+  async resetLeagueRecords(league: string): Promise<number> {
+    const res = await this.teamModel
+      .updateMany(
+        { league },
+        { $set: { wins: 0, losses: 0, ties: 0, otLosses: 0 } },
+      )
+      .exec();
+    return (res as any)?.modifiedCount ?? 0;
+  }
+
   private addRecord(team: any) {
     const ties = team.otLosses ?? team.ties;
     const record = `${team.wins ?? 0}-${team.losses ?? 0}${

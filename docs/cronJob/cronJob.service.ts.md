@@ -27,6 +27,7 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 | `checkLeagueGamesAvailability()` | Every 12 min, offset :07 (`7-59/12`) | Availability checks (LA early hours 0-11 AM); **skips while the rotation/oldies run** |
 | **`refreshTeamRecordsMorning()`** | **Daily (`0 6 * * *` = 3 AM Pacific / 6 AM New York, 9 AM NY in DST)** | **Refreshes `team.record` for in-season leagues only (regular season or playoffs); no game is written** |
 | **`refreshTeamRecordsAfternoon()`** | **Daily (`0 15 * * *` = 9 AM Pacific / 12 PM New York, 3 PM NY in DST)** | **Same midday safety net, so a failed or skipped morning run is caught the same U.S. day** |
+| **`finalizeFinishedSeasonRecords()`** | **Every ~15 days (`0 5 1,16 * *` = 1st & 16th, 5 AM UTC)** | **For leagues with no game started in 2 months: freeze the end-of-season tally onto their games, then reset `team.record` to zero** |
 | **`purgeStaleTeams()`**           | **Weekly Sunday 4AM UTC**       | **Refresh teams, then delete teams stale for more than 2 months with no active game** |
 | **`monitorDiskCapacity()`**      | **Every hour (`0 */1 * * *`)** | **Disk usage check & purge of the oldest month**     |
 
@@ -46,6 +47,17 @@ Both call `GameService.refreshCurrentSeasonRecords()`, which:
 **Guards:** never runs while `isHeavyRefreshRunning` (league rotation / oldies), never overlaps itself (`isRefreshingTeamRecords` flag, released in `finally`), and a failing league is logged without aborting the others.
 
 **Manual trigger:** `POST /games/refresh/records` (API key).
+
+## Finished-season records finalization (`finalizeFinishedSeasonRecords`)
+
+Every ~15 days (`0 5 1,16 * *` = 1st and 16th of the month, 5 AM UTC), delegates to `GameService.finalizeFinishedSeasonRecords()`, which for any league that has gone **two months without a game starting** (regular season **and** playoffs over):
+
+1. freezes each team's verified end-of-season tally onto every game of the league missing one (`_freezeSeasonRecords()`, same per-phase logic as the schedule fetch), so finished games keep their final record independently of `team.record`;
+2. resets every team's `team.record` to `0-0-0` (`TeamService.resetLeagueRecords()`), so the next season's upcoming games — which display `team.record` via the `_enrichGameWithTeamData()` fallback — start blank instead of showing the previous season's final tally.
+
+Returns `{ leagues, gamesUpdated, teamsReset }`. **Guards:** never runs while `isHeavyRefreshRunning`, never overlaps itself (`isFinalizingSeasonRecords`, released in `finally`), a failing league is logged without aborting the others.
+
+**Manual trigger:** `POST /games/refresh/finalize-season` (API key).
 
 ## New: `monitorDiskCapacity()`
 

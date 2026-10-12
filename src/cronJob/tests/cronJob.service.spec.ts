@@ -21,6 +21,11 @@ describe('CronService', () => {
     refreshCurrentSeasonRecords: jest
       .fn()
       .mockResolvedValue({ leagues: [League.NHL], updatedTeams: 2 }),
+    finalizeFinishedSeasonRecords: jest.fn().mockResolvedValue({
+      leagues: [League.NHL],
+      gamesUpdated: 10,
+      teamsReset: 32,
+    }),
     getAllGames: jest.fn().mockResolvedValue([]),
     purgeStaleTeamsWithoutGames: jest.fn(),
     getLastRecoveryTimestamp: jest.fn().mockResolvedValue(null),
@@ -212,6 +217,59 @@ describe('CronService', () => {
         1,
       );
       expect((service as any).isRefreshingTeamRecords).toBe(false);
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('finalizeFinishedSeasonRecords cron', () => {
+    beforeEach(() => {
+      (service as any).isFinalizingSeasonRecords = false;
+      (service as any).isRotatingLeagueInProgress = false;
+      (service as any).isFetchingOldiesInProgress = false;
+      mockGameService.isScoreRecoveryRunning = false;
+    });
+
+    it('delegates to GameService.finalizeFinishedSeasonRecords', async () => {
+      await service.finalizeFinishedSeasonRecords();
+
+      expect(
+        mockGameService.finalizeFinishedSeasonRecords,
+      ).toHaveBeenCalledTimes(1);
+      expect((service as any).isFinalizingSeasonRecords).toBe(false);
+    });
+
+    it('does nothing when a heavy league refresh is running', async () => {
+      (service as any).isRotatingLeagueInProgress = true;
+
+      await service.finalizeFinishedSeasonRecords();
+
+      expect(
+        mockGameService.finalizeFinishedSeasonRecords,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('does not overlap itself', async () => {
+      (service as any).isFinalizingSeasonRecords = true;
+
+      await service.finalizeFinishedSeasonRecords();
+
+      expect(
+        mockGameService.finalizeFinishedSeasonRecords,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('releases the reentrancy flag when the run throws', async () => {
+      mockGameService.finalizeFinishedSeasonRecords.mockRejectedValueOnce(
+        new Error('db down'),
+      );
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      await service.finalizeFinishedSeasonRecords();
+
+      expect(
+        mockGameService.finalizeFinishedSeasonRecords,
+      ).toHaveBeenCalledTimes(1);
+      expect((service as any).isFinalizingSeasonRecords).toBe(false);
       consoleSpy.mockRestore();
     });
   });

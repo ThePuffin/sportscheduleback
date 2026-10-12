@@ -32,6 +32,8 @@ const mockTeamModel = {
   deleteMany: jest.fn(),
   find: jest.fn(),
   countDocuments: jest.fn(),
+  updateOne: jest.fn(),
+  updateMany: jest.fn(),
 };
 
 describe('TeamService', () => {
@@ -133,6 +135,32 @@ describe('TeamService', () => {
       const teamWithUndefined = { wins: 10, losses: 5, ties: undefined };
       const resultWithUndefined = service['addRecord'](teamWithUndefined);
       expect(resultWithUndefined.record).toBe('10-5');
+    });
+  });
+
+  describe('resetLeagueRecords', () => {
+    it('zeroes wins/losses/ties/otLosses for every team of the league', async () => {
+      mockTeamModel.updateMany.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ modifiedCount: 32 }),
+      });
+
+      const modified = await service.resetLeagueRecords('NHL');
+
+      expect(mockTeamModel.updateMany).toHaveBeenCalledWith(
+        { league: 'NHL' },
+        { $set: { wins: 0, losses: 0, ties: 0, otLosses: 0 } },
+      );
+      expect(modified).toBe(32);
+    });
+
+    it('returns 0 when nothing was modified', async () => {
+      mockTeamModel.updateMany.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
+      });
+
+      const modified = await service.resetLeagueRecords('PWHL');
+
+      expect(modified).toBe(0);
     });
   });
 

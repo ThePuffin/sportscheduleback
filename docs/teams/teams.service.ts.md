@@ -39,6 +39,10 @@ from a league those teams do not belong to.
 
 Updates team records such as wins/losses and ties/OT losses.
 
+### `resetLeagueRecords(league)`
+
+Zeroes the current-season tally (`wins` / `losses` / `ties` / `otLosses`) of every team of `league` in one `updateMany`, and returns the number of documents modified. Called by `GameService.finalizeFinishedSeasonRecords()` once a league's season is over (no game started in 2 months), right after the end-of-season tally has been frozen onto that league's games, so the next season's upcoming games start from a blank tally instead of the previous season's final record.
+
 ### `purgeNonD1Teams(league, espnTeams?)`
 
 Deletes the stored teams of `league` that ESPN no longer lists as Division 1 (set difference between the stored `uniqueId`s and the D1-filtered ESPN roster). This covers parent-marker leagues plus NCAAMH and NCAAWH, whose ESPN D1 roster filters use explicit allowlists. The already-fetched roster can be passed as `espnTeams` (as `getTeams()` does) so a refresh does not query ESPN twice.

@@ -45,6 +45,7 @@ This controller exposes the HTTP API for game data operations.
 - `POST /games/sync/recent` — syncs recent games from external sources
 - `POST /games/scores` — recovers missing scores
 - `POST /games/refresh/records` — refreshes `team.record` for leagues whose season (regular season or playoffs) covers today; **writes no game**. Run twice a day by the `refreshTeamRecordsMorning()` / `refreshTeamRecordsAfternoon()` crons
+- `POST /games/refresh/finalize-season` — for leagues whose season is over (no game started in 2 months), freezes the end-of-season tally onto their games then resets `team.record` to zero. Run every ~15 days by the `finalizeFinishedSeasonRecords()` cron
 - `POST /games/live` — fetches live scores for selected game IDs
 
 ### Admin mutation routes

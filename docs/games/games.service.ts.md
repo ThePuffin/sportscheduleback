@@ -112,7 +112,9 @@ games that have a complete home **and** away team. It logs added / skipped count
   - **Past games** (startTimeUTC < now): Null scores are allowed. The cron job's `fetchGamesScores()` will fill them later.
   - **Future games** (startTimeUTC ≥ now): Rejected to prevent scheduled games from polluting historical data.
 - **Per-game season records**: ESPN-backed schedules keep preseason, regular season, and playoffs
-  separate. A phase that has not started gets `0-0-0`; completed preseason/regular-season records
+  separate. An **upcoming** game (start time in the future) has its per-game record cleared so the
+  reader falls back to `team.record` — the team's current tally in the DB; only a phase that has not
+  started **and is already in the past** gets `0-0-0`. Completed preseason/regular-season records
   are normalized to that phase's verified final tally, while playoff records remain game-specific.
   Series progression (for example, a team leading 2-0) stays in `seriesSummary` / `seriesStatus` and
   is never written into `homeTeamRecord` / `awayTeamRecord`. Oldies saves/updates use those corrected
@@ -192,6 +194,19 @@ Historical recovery over leagues × years. When no `yearStr` is given, it loops 
 Refreshes `team.record` (`wins` / `losses` / `ties` / `otLosses`) for every league whose season — **regular season OR playoffs** — covers today, **without persisting any game**. Each kept league's schedule is fetched with `_fetchUniqueGames()` and the returned games are discarded; only its `teamRecords` side effect (the most recent tally per team, harvested from the schedule — the only source for leagues whose scoreboard carries no `records`, e.g. college hockey) is used, then written through `TeamService.updateRecords()`. Off-season leagues are skipped **before** any third-party call, so the pass is cheap. A failing league is logged (`[Records] Could not refresh records for <LEAGUE>:`) and does not abort the others. Returns `{ leagues, updatedTeams }`.
 
 Called by the twice-daily `refreshTeamRecordsMorning()` / `refreshTeamRecordsAfternoon()` crons and manually via `POST /games/refresh/records` (API key). The in-progress-season rule differs from `getLeagueGames()`, which skips the write only for **oldies** (`season` given): here the whole point is to refresh the live tally, and no game document is touched.
+
+### `finalizeFinishedSeasonRecords()`
+
+Finalizes the records of any league whose season — regular season **and** playoffs — is over, then resets that league's `team.record` to zero. A league counts as "over" when **no game has started in the last two months** (`SEASON_OVER_MONTHS = 2`), which is the ground truth that nothing is being played anymore (stricter than `isCurrentSeason()` / `isPlayoffsPeriod()`, which only say "today is inside the calendar window"). The newest game per league is a single indexed lookup on `{ league, startTimeUTC }`.
+
+For each finished league it runs two steps, in this order:
+
+1. **Freeze** (`_freezeSeasonRecords()`): each team's verified end-of-season tally (via `getSeasonFinals()`, with the same per-phase isolation as the schedule fetch — preseason / regular season / playoffs kept separate, a playoff series keeps its game-specific tally) is written onto every game of the league that started before the cutoff. Only empty per-game records are filled, so a game that already carries a tally keeps it. This must happen **before** the reset, otherwise a finished game would lose its record.
+2. **Reset** (`TeamService.resetLeagueRecords()`): every team's `wins` / `losses` / `ties` / `otLosses` goes back to `0-0-0`.
+
+Together with the upcoming-game behavior of `applySeasonFinalRecords()` (an unstarted game has no per-game record and therefore displays `team.record` via `_enrichGameWithTeamData()`), this means: during a season upcoming games show the live `team.record`; once the season is over and reset, the next season's fixtures start blank again instead of showing the previous season's final tally — and the twice-daily records cron repopulates `team.record` as soon as the new season plays its first game. A failing league is logged and does not abort the others. Returns `{ leagues, gamesUpdated, teamsReset }`.
+
+Run every ~15 days (1st and 16th of the month, 5 AM UTC) by the `finalizeFinishedSeasonRecords()` cron and manually via `POST /games/refresh/finalize-season` (API key). The cron is guarded like the others: it never overlaps a heavy refresh (league rotation / oldies / score recovery) and never overlaps itself (`isFinalizingSeasonRecords`, released in `finally`).
 
 ### `getAllGames(forceUpdate, date, leagueList)`
 

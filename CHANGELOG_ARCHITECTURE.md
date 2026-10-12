@@ -2,6 +2,56 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: finished-season records finalization cron (every ~15 days)
+
+Upcoming games now show the current `team.record` (see the entry below), so once a
+season is over its final tally would keep showing on the next season's fixtures
+until games are played again. A new cron closes that gap: for any league that has
+gone **two months without a game starting** (regular season **and** playoffs over),
+it (1) freezes each team's verified end-of-season tally onto every game of the
+league missing one — so finished games keep their final record independently of
+`team.record` — then (2) resets every team's `team.record` to `0-0-0`, so the next
+season's upcoming games start blank again.
+
+- **`backend/src/games/games.service.ts`** — new `finalizeFinishedSeasonRecords()`
+  (season-over = no game started in `SEASON_OVER_MONTHS = 2` months; newest game per
+  league via an indexed `{ league, startTimeUTC }` lookup) and private
+  `_freezeSeasonRecords()` (per-phase `getSeasonFinals()` isolation, only empty
+  per-game records filled). A failing league is logged without aborting the others.
+- **`backend/src/teams/teams.service.ts`** — new `resetLeagueRecords(league)`: one
+  `updateMany` zeroing `wins`/`losses`/`ties`/`otLosses`, returns `modifiedCount`.
+- **`backend/src/cronJob/cronJob.service.ts`** — `finalizeFinishedSeasonRecords()`
+  cron, `0 5 1,16 * *` (~every 15 days), guarded by `isHeavyRefreshRunning` and its
+  own `isFinalizingSeasonRecords` reentrancy flag.
+- **`backend/src/games/games.controller.ts`** — `POST /games/refresh/finalize-season`
+  (API key) for a manual run.
+- **Tests** — `games.service.spec.ts` (season-over vs still-running vs no games,
+  playoff game-specific tally, one league failing), `teams.service.spec.ts`
+  (`resetLeagueRecords`), `cronJob.service.spec.ts` (delegation + guards),
+  `games.controller.spec.ts` (endpoint).
+
+## Improved: upcoming ESPN games show the current team record from the database
+
+Upcoming games previously displayed `0-0-0` when their season phase had not
+started or ESPN supplied a zero pre-game tally. A game that has not started has
+no meaningful pre-game record, so `applySeasonFinalRecords()` now **clears** the
+per-game tally of any upcoming fixture instead of writing `0-0-0`. The reader
+(`GameService._enrichGameWithTeamData()`) then falls back to `team.record` — the
+team's current tally stored in the database, kept up to date by
+`syncGameWithScore()` and the twice-daily records cron. Played games keep their
+own game-specific records, finished seasons retain their verified final tallies,
+and a phase that has not started **and is already in the past** still shows
+`0-0-0`.
+
+- **`src/utils/fetchData/espnAllData.ts`** — `applySeasonFinalRecords()` clears the
+  per-game record of upcoming games (across every phase) so the DB `team.record`
+  is displayed.
+- **`src/utils/fetchData/espnAllData.spec.ts`** — covers an upcoming game during an
+  active phase and before a phase has started, plus the unchanged played-game path.
+- **`docs/utils/fetchData/espnAllData.ts.md`** and
+  **`docs/games/games.service.ts.md`** — document the current-record fallback for
+  upcoming games.
+
 ## Fixed: missing team palettes corrected and retained during regeneration
 
 Updated the supplied university and professional-team palettes in both

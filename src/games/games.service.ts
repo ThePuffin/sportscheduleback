@@ -377,6 +377,186 @@ export class GameService {
   }
 
   /**
+   * How long a league must have gone without a single game starting before its
+   * season — regular season **and** playoffs — is considered finished. Two
+   * months comfortably covers the longest post-season tail (a Game 7 in early
+   * summer) while staying well clear of the next season's opening fixtures.
+   */
+  private static readonly SEASON_OVER_MONTHS = 2;
+
+  /**
+   * Finalizes a league whose season is over: freezes the end-of-season record
+   * onto every game that is missing one, then resets `team.record` to zero.
+   *
+   * A league is "over" when **no game has started in the last two months**
+   * (`SEASON_OVER_MONTHS`) — i.e. both the regular season and the playoffs are
+   * done. This is deliberately stricter than `isCurrentSeason()` /
+   * `isPlayoffsPeriod()`: those only say "today is inside the calendar window",
+   * whereas a real season can be over while the calendar window still nominally
+   * covers today (a truncated schedule, an early exit). The "quiet for two
+   * months" test is the ground truth that nothing is being played anymore.
+   *
+   * The two steps work together with the upcoming-game behavior of
+   * `applySeasonFinalRecords()`:
+   *
+   * 1. **Freeze**: every finished game keeps its final tally written on the game
+   *    itself, so it no longer depends on `team.record`. This must happen BEFORE
+   *    the reset, otherwise a finished game would lose its record.
+   * 2. **Reset**: `team.record` goes back to `0-0-0`. Upcoming games of the next
+   *    season have no per-game record and therefore display `team.record` via
+   *    `_enrichGameWithTeamData()`, so they start blank instead of showing the
+   *    previous season's final tally. As soon as the new season plays its first
+   *    game, the twice-daily records cron repopulates `team.record`.
+   *
+   * Runs every ~15 days from the cron. A failing league is logged and does not
+   * abort the others. Returns the leagues finalized, how many games were updated
+   * and how many team records were reset.
+   */
+  async finalizeFinishedSeasonRecords(): Promise<{
+    leagues: string[];
+    gamesUpdated: number;
+    teamsReset: number;
+  }> {
+    const now = new Date();
+    const cutoff = new Date(now);
+    cutoff.setMonth(cutoff.getMonth() - GameService.SEASON_OVER_MONTHS);
+    const cutoffIso = cutoff.toISOString();
+
+    const finalizedLeagues: string[] = [];
+    let totalGamesUpdated = 0;
+    let totalTeamsReset = 0;
+
+    for (const league of Object.values(League)) {
+      try {
+        // The season is over only when the most recent game of the league
+        // started before the cutoff. Querying the newest game per league is a
+        // single indexed lookup on `{ league, startTimeUTC }`.
+        const latest = await this.gameModel
+          .findOne({ league })
+          .sort({ startTimeUTC: -1 })
+          .select({ startTimeUTC: 1 })
+          .lean()
+          .exec();
+        const latestStart = (latest as any)?.startTimeUTC;
+        // No game at all, or the newest game is still within the quiet window →
+        // the season is running (or not started); leave it alone.
+        if (!latestStart) continue;
+        if (new Date(latestStart).getTime() >= cutoff.getTime()) continue;
+
+        // 1. Freeze the end-of-season tally onto every game missing one.
+        const gamesUpdated = await this._freezeSeasonRecords(league, cutoffIso);
+        // 2. Reset the teams' current tally so the next season starts blank.
+        const teamsReset = await this.teamService.resetLeagueRecords(league);
+
+        finalizedLeagues.push(league);
+        totalGamesUpdated += gamesUpdated;
+        totalTeamsReset += teamsReset;
+        console.info(
+          `[Records] Finalized ${league}: season over (last game ${latestStart}), ${gamesUpdated} game record(s) frozen, ${teamsReset} team record(s) reset.`,
+        );
+      } catch (error) {
+        console.error(
+          `[Records] Could not finalize records for ${league}:`,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+
+    console.info(
+      `[Records] Finalized ${finalizedLeagues.length} finished league(s): ${finalizedLeagues.join(', ') || 'none'}.`,
+    );
+
+    return {
+      leagues: finalizedLeagues,
+      gamesUpdated: totalGamesUpdated,
+      teamsReset: totalTeamsReset,
+    };
+  }
+
+  /**
+   * Writes each team's verified end-of-season tally onto every game of `league`
+   * that is missing one, using the same per-phase logic as the schedule fetch
+   * (`getSeasonFinals`). Only games that started before `cutoffIso` are touched,
+   * so a concurrent refresh of a freshly started next season is never rewritten.
+   *
+   * A game already carrying a record keeps its own tally; only the empty ones
+   * are filled. Returns the number of games updated.
+   */
+  private async _freezeSeasonRecords(
+    normalizedLeague: string,
+    cutoffIso: string,
+  ): Promise<number> {
+    const games = (await this.gameModel
+      .find({ league: normalizedLeague, startTimeUTC: { $lt: cutoffIso } })
+      .select({
+        uniqueId: 1,
+        homeTeamId: 1,
+        awayTeamId: 1,
+        homeTeamRecord: 1,
+        awayTeamRecord: 1,
+        recordSeasonType: 1,
+      })
+      .lean()
+      .exec()) as any[];
+
+    if (!games?.length) return 0;
+
+    // Same phase isolation as `applySeasonFinalRecords`: preseason, regular
+    // season, and playoffs are finalized independently, and a playoff series
+    // keeps its per-game tally (never stamped with a later game's number).
+    const gamesByPhase = new Map<number, any[]>();
+    for (const game of games) {
+      const phase = getRecordSeasonType(game);
+      if (!gamesByPhase.has(phase)) gamesByPhase.set(phase, []);
+      gamesByPhase.get(phase)!.push(game);
+    }
+
+    const recordsByGame = new Map<
+      string,
+      { homeTeamRecord?: string; awayTeamRecord?: string }
+    >();
+    for (const [phase, phaseGames] of gamesByPhase) {
+      if (phase === 3) {
+        for (const game of phaseGames) {
+          if (!game?.uniqueId) continue;
+          recordsByGame.set(game.uniqueId, {
+            homeTeamRecord: game.homeTeamRecord || undefined,
+            awayTeamRecord: game.awayTeamRecord || undefined,
+          });
+        }
+        continue;
+      }
+
+      // Only provably complete phase finals are written: a truncated batch would
+      // otherwise freeze an intermediate number.
+      const verified = getSeasonFinals(phaseGames).verified;
+      for (const game of phaseGames) {
+        if (!game?.uniqueId) continue;
+        recordsByGame.set(game.uniqueId, {
+          homeTeamRecord:
+            verified.get(game.homeTeamId) || game.homeTeamRecord || undefined,
+          awayTeamRecord:
+            verified.get(game.awayTeamId) || game.awayTeamRecord || undefined,
+        });
+      }
+    }
+
+    let updated = 0;
+    for (const [uniqueId, records] of recordsByGame) {
+      const home = records.homeTeamRecord;
+      const away = records.awayTeamRecord;
+      if (!home && !away) continue;
+      const $set: any = {};
+      if (home) $set.homeTeamRecord = home;
+      if (away) $set.awayTeamRecord = away;
+      if (!Object.keys($set).length) continue;
+      await this.gameModel.updateOne({ uniqueId }, { $set }).exec();
+      updated++;
+    }
+    return updated;
+  }
+
+  /**
    * Fetch a league's games for a given season (or current when no season) and
    * return them flattened + deduplicated by `uniqueId`, WITHOUT persisting them.
    * Used by `getLeagueGames` (which saves), by the "dry run" season counting for

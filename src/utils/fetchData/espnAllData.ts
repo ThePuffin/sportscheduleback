@@ -530,7 +530,13 @@ export const getRecordSeasonType = (game: any): number => {
  * Rewrites the per-game records produced by `getEachTeamSchedule()` so that:
  *
  * - preseason, regular season, and playoffs are independent record phases;
- * - a phase that has not started explicitly shows `0-0-0`;
+ * - **upcoming** games have their per-game record cleared, so the reader
+ *   (`_enrichGameWithTeamData`) falls back to `team.record` — the team's current
+ *   tally stored in the database and kept up to date by `syncGameWithScore()` and
+ *   the records cron. A game that has not started has no meaningful pre-game
+ *   tally, so the current DB record is the correct thing to display (never the
+ *   placeholder `0-0-0`);
+ * - a phase that has not started and is already in the past shows `0-0-0`;
  * - completed preseason and regular-season batches use the verified final tally;
  * - playoff records remain attached to their individual games, allowing series
  *   summaries (when available) and the record to progress across the bracket.
@@ -545,6 +551,15 @@ export const applySeasonFinalRecords = (allGames: Record<string, any[]>) => {
   if (!games.length) return;
 
   const now = Date.now();
+  // A game that has not started yet must display the team's *current* record,
+  // which lives on the team document (`team.record`), not on this game. Clearing
+  // the per-game tally makes `_enrichGameWithTeamData()` fall back to it.
+  const isUpcoming = (game: any) => {
+    const start = game.startTimeUTC
+      ? new Date(game.startTimeUTC).getTime()
+      : NaN;
+    return Number.isFinite(start) && start > now;
+  };
   const gamesByPhase = new Map<number, any[]>();
   for (const game of games) {
     const phase = getRecordSeasonType(game);
@@ -565,8 +580,13 @@ export const applySeasonFinalRecords = (allGames: Record<string, any[]>) => {
 
     if (!phaseStarted) {
       for (const game of phaseGames) {
-        game.homeTeamRecord = '0-0-0';
-        game.awayTeamRecord = '0-0-0';
+        if (isUpcoming(game)) {
+          game.homeTeamRecord = '';
+          game.awayTeamRecord = '';
+        } else {
+          game.homeTeamRecord = '0-0-0';
+          game.awayTeamRecord = '0-0-0';
+        }
       }
       continue;
     }
@@ -576,8 +596,13 @@ export const applySeasonFinalRecords = (allGames: Record<string, any[]>) => {
     // progression where ESPN provides it (for example, "CHI leads 2-0").
     if (phase === 3) {
       for (const game of phaseGames) {
-        game.homeTeamRecord ||= '0-0-0';
-        game.awayTeamRecord ||= '0-0-0';
+        if (isUpcoming(game)) {
+          game.homeTeamRecord = '';
+          game.awayTeamRecord = '';
+        } else {
+          game.homeTeamRecord ||= '0-0-0';
+          game.awayTeamRecord ||= '0-0-0';
+        }
       }
       continue;
     }
@@ -612,11 +637,18 @@ export const applySeasonFinalRecords = (allGames: Record<string, any[]>) => {
       continue;
     }
 
-    // Keep ESPN's phase-specific in-progress tally. Missing records mean this
-    // team has not yet played in the phase; never fall back to a prior phase.
+    // Keep ESPN's phase-specific in-progress tally for games already played.
+    // Upcoming games clear their tally so the reader falls back to the team's
+    // current `team.record`; a missing record on a played game means the team
+    // has not yet played in this phase (never fall back to a prior phase).
     for (const game of phaseGames) {
-      game.homeTeamRecord ||= '0-0-0';
-      game.awayTeamRecord ||= '0-0-0';
+      if (isUpcoming(game)) {
+        game.homeTeamRecord = '';
+        game.awayTeamRecord = '';
+      } else {
+        game.homeTeamRecord ||= '0-0-0';
+        game.awayTeamRecord ||= '0-0-0';
+      }
     }
   }
 };
