@@ -372,7 +372,7 @@ describe('applySeasonFinalRecords', () => {
     expect(allGames['NFL-SF'][0].homeTeamRecord).toBe('1-0-0');
   });
 
-  it('keeps an unstarted past phase at zero but clears an unstarted upcoming phase', () => {
+  it('keeps the played regular-season tally and initializes an unstarted phase at 0-0-0', () => {
     const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const allGames = {
       'NHL-BOS': [
@@ -389,9 +389,31 @@ describe('applySeasonFinalRecords', () => {
     // Played regular season keeps its verified tally.
     expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('33-39-10');
     expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('42-32-7');
-    // An upcoming preseason game falls back to the team's current record.
-    expect(allGames['NHL-BOS'][1].homeTeamRecord).toBe('');
-    expect(allGames['NHL-BOS'][1].awayTeamRecord).toBe('');
+    // First recording of the preseason: the upcoming game starts at the
+    // season's initial `0-0-0`, replaced by the record propagation as soon
+    // as the tally evolves.
+    expect(allGames['NHL-BOS'][1].homeTeamRecord).toBe('0-0-0');
+    expect(allGames['NHL-BOS'][1].awayTeamRecord).toBe('0-0-0');
+  });
+
+  it('initializes a not-yet-started phase to 0-0-0 on past and upcoming games alike', () => {
+    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const allGames = {
+      'NHL-BOS': [
+        pastGame('NHL-BOS', 'NHL-TOR', '0-0-0', '0-0-0', 'new-past', 2),
+        {
+          ...pastGame('NHL-BOS', 'NHL-TOR', '0-0-0', '0-0-0', 'new-future', 2),
+          startTimeUTC: future,
+        },
+      ],
+    };
+
+    applySeasonFinalRecords(allGames);
+
+    expect(allGames['NHL-BOS'][0].homeTeamRecord).toBe('0-0-0');
+    expect(allGames['NHL-BOS'][0].awayTeamRecord).toBe('0-0-0');
+    expect(allGames['NHL-BOS'][1].homeTeamRecord).toBe('0-0-0');
+    expect(allGames['NHL-BOS'][1].awayTeamRecord).toBe('0-0-0');
   });
 
   it('is a no-op when there is nothing to process', () => {

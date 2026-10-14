@@ -42,7 +42,8 @@ Both call `GameService.refreshCurrentSeasonRecords()`, which:
 
 - keeps only leagues where `isCurrentSeason()` **or** `isPlayoffsPeriod()` covers today (off-season leagues are skipped before any third-party call, so they cost nothing);
 - fetches each kept league's schedule through `_fetchUniqueGames()` **without persisting anything** — the games are discarded, only the per-team tallies are harvested;
-- writes the result through `TeamService.updateRecords()` and returns `{ leagues, updatedTeams }`.
+- writes the result through `TeamService.updateRecords()` and returns `{ leagues, updatedTeams }`;
+- mirrors each fresh tally onto every current-season game of the team (past and upcoming games alike) through `GameService._propagateTeamRecordToSeasonGames()`, so stale stored game records (e.g. a frozen `0-0-0`) self-heal on every run — the only case where this "no game saved" cron writes to the games collection.
 
 **Guards:** never runs while `isHeavyRefreshRunning` (league rotation / oldies), never overlaps itself (`isRefreshingTeamRecords` flag, released in `finally`), and a failing league is logged without aborting the others.
 

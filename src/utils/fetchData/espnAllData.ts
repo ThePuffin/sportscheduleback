@@ -536,7 +536,10 @@ export const getRecordSeasonType = (game: any): number => {
  *   the records cron. A game that has not started has no meaningful pre-game
  *   tally, so the current DB record is the correct thing to display (never the
  *   placeholder `0-0-0`);
- * - a phase that has not started and is already in the past shows `0-0-0`;
+ * - a phase that has not started shows the initial `0-0-0` on **every** of its
+ *   games (past and upcoming alike): it is the season's starting record, then
+ *   replaced everywhere by the propagation of `GameService._propagateTeamRecordToSeasonGames()`
+ *   as soon as the tally evolves;
  * - completed preseason and regular-season batches use the verified final tally;
  * - playoff records remain attached to their individual games, allowing series
  *   summaries (when available) and the record to progress across the bracket.
@@ -579,14 +582,13 @@ export const applySeasonFinalRecords = (allGames: Record<string, any[]>) => {
     });
 
     if (!phaseStarted) {
+      // First recording of a season: every game starts at `0-0-0` (past and
+      // upcoming alike) — the record propagation
+      // (`GameService._propagateTeamRecordToSeasonGames`) then replaces it
+      // everywhere as soon as the tally evolves.
       for (const game of phaseGames) {
-        if (isUpcoming(game)) {
-          game.homeTeamRecord = '';
-          game.awayTeamRecord = '';
-        } else {
-          game.homeTeamRecord = '0-0-0';
-          game.awayTeamRecord = '0-0-0';
-        }
+        game.homeTeamRecord = '0-0-0';
+        game.awayTeamRecord = '0-0-0';
       }
       continue;
     }

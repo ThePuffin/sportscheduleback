@@ -8,7 +8,7 @@ This is the core business logic module for games. It fetches schedules and score
 
 - **Game import and refresh** — pulls schedule data for leagues and stores it in MongoDB.
 - **Live score updates** — updates ongoing games with score and status data
-- **Data enrichment** — attaches team names, logos, records and colors
+- **Data enrichment** — attaches team names, logos, records and colors (during the playoffs the series label is displayed in priority of the season record, see `_enrichGameWithTeamData()`)
 - **Olympic logo enrichment** — derives a missing country flag from the Olympic team code at response time, including for legacy game records whose stored logo is empty
 - **Query helpers** — returns upcoming games, results, date-range data and hour-grouped schedules
 - **Maintenance logic** — removes duplicates, old games and invalid score records, and purges stale
@@ -30,6 +30,41 @@ unless they are the generic placeholder (`#ffffff` on `#000000`) **or degenerate
 (from `utils/Colors.ts`) borrows the colors of the same university in another college league, or
 falls back to the default placeholder. Non-college leagues simply keep the default placeholder, so
 already-stored teams display the correct colors without waiting for a re-fetch.
+
+### `_enrichGameWithTeamData()` (private)
+
+Attaches team names, logos, colors and the **displayed** record to every game returned by the
+read routes (`findAll`, `findByDate`, `findByDateHour` / `findByDateLeague`, team views…). The
+stored document is spread as-is; only the display fields are rewritten.
+
+**Record display priority (read-time only — the persisted records are never modified):**
+
+1. **Playoff series label** (`_playoffSeriesDisplay()`): a game whose stored phase is
+   `recordSeasonType === 3` shows `seriesStatus` (e.g. `MIL leads 2-1`), falling back to
+   `seriesSummary` (e.g. `NLCS - Game 2` when ESPN leaves the status empty on a finished game)
+   **in priority of the season record**, in *both* the home and away record slots. A playoff
+   game that carries no series info at all keeps its record.
+2. Otherwise the stored `homeTeamRecord` / `awayTeamRecord`, then `team.record` (the live team
+   tally), then `''`. During an in-progress season the stored values themselves are kept up to
+   date by `_propagateTeamRecordToSeasonGames()` (every game of the season, past and upcoming),
+   so the chain normally resolves on the first term with the team's latest tally; a finished
+   phase shows its verified final tally (or `0-0-0`), and a brand-new season starts from the
+   initial `0-0-0`.
+
+Documents stored before `recordSeasonType` was persisted decide from the label content
+(`nonSeriesLabelPattern`): a regular-season note (`Regular Season`, `Game 2 of 3`,
+`Doubleheader …`, bare `Game N` — the PWHL mapping labels every game that way) never replaces
+the record, while a playoff-shaped label (`ALCS - Game 2`, `NFC Wild Card`, `MIL leads 2-1`)
+does. A stored phase ≠ 3 always wins over the label, so a regular-season game can never display
+a series string.
+
+The stored series fields themselves are protected in `syncGameWithScore()`: a score sync whose
+fresh payload carries an empty `seriesSummary` / `seriesStatus` (common once a playoff game is
+finished) no longer wipes the stored value — only a non-empty fresh value overwrites it.
+
+This restores the historical "series status first, season record otherwise" display for playoff
+games (day views, schedule, results) while keeping the phase isolation of the **stored** records
+introduced by the record-isolation fix untouched.
 
 ### `create()`
 
@@ -121,12 +156,15 @@ games that have a complete home **and** away team. It logs added / skipped count
   - **Past games** (startTimeUTC < now): Null scores are allowed. The cron job's `fetchGamesScores()` will fill them later.
   - **Future games** (startTimeUTC ≥ now): Rejected to prevent scheduled games from polluting historical data.
 - **Per-game season records**: ESPN-backed schedules keep preseason, regular season, and playoffs
-  separate. An **upcoming** game (start time in the future) has its per-game record cleared so the
-  reader falls back to `team.record` — the team's current tally in the DB; only a phase that has not
-  started **and is already in the past** gets `0-0-0`. Completed preseason/regular-season records
+  separate. A **phase that has not started** records the season's initial `0-0-0` on every game
+  (past and upcoming alike); an **upcoming** game of a phase already in progress has its per-game
+  record cleared so the reader falls back to `team.record`, and the record propagation
+  (`_propagateTeamRecordToSeasonGames()`) keeps every current-season game — past and upcoming —
+  aligned with the team's latest tally. Completed preseason/regular-season records
   are normalized to that phase's verified final tally, while playoff records remain game-specific.
   Series progression (for example, a team leading 2-0) stays in `seriesSummary` / `seriesStatus` and
-  is never written into `homeTeamRecord` / `awayTeamRecord`. Oldies saves/updates use those corrected
+  is never written into the **stored** `homeTeamRecord` / `awayTeamRecord` (the read routes may
+  still *display* the series label in the record slots — see `_enrichGameWithTeamData()`). Oldies saves/updates use those corrected
   values. PWHL oldies fetches load
   HockeyTech standings once per regular season, with a schedule replay fallback, and apply those
   season-specific records before the same save/update step. These historical per-game records never
@@ -198,9 +236,36 @@ Historical recovery over leagues × years. When no `yearStr` is given, it loops 
 
 **Steps are never skipped by an unrelated refresh (`ignoreOtherManualRefresh`):** each step calls `getLeagueGames` with `ignoreOtherManualRefresh: true`, which bypasses the cross-league "another manual refresh is in progress" bail-out. That bail-out is keyed on `manualRefreshInProgress`, and because a single foreign league holding the flag made **every remaining step** of a 144-step run return immediately, a recovery could log 100% and `[Oldies] History data recovery completed!` in about a second having fetched nothing, while still reporting `completed — no new games were added (all years already up to date)`. The bypass is safe because oldies walks the leagues strictly one at a time and only *adds* missing games (`addMissingOnly: true`), so the same-league `isFetchingGames[league]` guard already prevents the only real conflict (two concurrent fetches for one league).
 
+### `_currentSeasonStart()` / `_propagateTeamRecordToSeasonGames()` (private)
+
+Keeps the stored record of **every game of a team's current regular season** (past and upcoming)
+aligned with the team's latest tally, so every view displays the current record instead of a
+frozen or initial `0-0-0` value.
+
+- `_currentSeasonStart(league)` derives the `YYYY-MM-DD` first day of the current season from the
+  static month window of `getLeagueConfig()` (spanning seasons such as NHL Oct-Apr resolve to
+  October 1st of the season-start year); an unusable window (unknown league, the `99` off-year
+  placeholder) returns `null` and the caller skips the update.
+- `_propagateTeamRecordToSeasonGames(league, teamUniqueId, record)` writes the record with a
+  single `updateMany`:
+  - **when**: only while the league's regular-season window covers today and the playoffs window
+    does not (from the playoffs on the phase-2 tally is frozen and playoff records stay
+    game-specific). Called from `syncGameWithScore()` (on every fresh team tally) and from
+    `refreshCurrentSeasonRecords()` (twice-daily cron — this self-heals stale stored values such
+    as a frozen `0-0-0` on the next run);
+  - **which games**: `league` + `isActive` + `gameDate >= season start` +
+    `recordSeasonType: { $in: [2, null] }` (regular-season phase, also matching documents stored
+    before the phase was persisted) + the team on either side;
+  - **how**: an aggregation-pipeline `$set` with `$cond` rewrites only the team's own side of
+    each game, and an `$expr` guard skips rows whose value already matches, keeping the
+    twice-daily bulk run cheap and avoiding useless writes.
+
+  Returns the number of modified games; a write failure is logged
+  (`[Records] Could not propagate <record> of <team> …`) and never breaks the caller.
+
 ### `refreshCurrentSeasonRecords()`
 
-Refreshes `team.record` (`wins` / `losses` / `ties` / `otLosses`) for every league whose season — **regular season OR playoffs** — covers today, **without persisting any game**. Each kept league's schedule is fetched with `_fetchUniqueGames()` and the returned games are discarded; only its `teamRecords` side effect (the most recent tally per team, harvested from the schedule — the only source for leagues whose scoreboard carries no `records`, e.g. college hockey) is used, then written through `TeamService.updateRecords()`. Off-season leagues are skipped **before** any third-party call, so the pass is cheap. A failing league is logged (`[Records] Could not refresh records for <LEAGUE>:`) and does not abort the others. Returns `{ leagues, updatedTeams }`.
+Refreshes `team.record` (`wins` / `losses` / `ties` / `otLosses`) for every league whose season — **regular season OR playoffs** — covers today, **without saving any fetched game** (its only game writes are the record propagation described above). Each kept league's schedule is fetched with `_fetchUniqueGames()` and the returned games are discarded; only its `teamRecords` side effect (the most recent tally per team, harvested from the schedule — the only source for leagues whose scoreboard carries no `records`, e.g. college hockey) is used, then written through `TeamService.updateRecords()`. Each fresh tally is then mirrored onto every current-season game of the team (past and upcoming alike) by `_propagateTeamRecordToSeasonGames()` — logged as `[Records] Propagated fresh tallies to N season game(s).` — so stale stored records self-heal on every run. Off-season leagues are skipped **before** any third-party call, so the pass is cheap. A failing league is logged (`[Records] Could not refresh records for <LEAGUE>:`) and does not abort the others. Returns `{ leagues, updatedTeams }`.
 
 Called by the twice-daily `refreshTeamRecordsMorning()` / `refreshTeamRecordsAfternoon()` crons and manually via `POST /games/refresh/records` (API key). The in-progress-season rule differs from `getLeagueGames()`, which skips the write only for **oldies** (`season` given): here the whole point is to refresh the live tally, and no game document is touched.
 

@@ -100,6 +100,18 @@ export class Game extends Document {
   seriesStatus: string;
 
   /**
+   * Season phase of the fixture as reported by the provider: 1 = preseason,
+   * 2 = regular season, 3 = playoffs (ESPN `seasonType` / NHL `gameType`).
+   * Every schedule mapping already computes it; persisting it here lets read
+   * paths decide whether the playoff series label may replace the season
+   * record in the response (`_enrichGameWithTeamData()` / the phase grouping
+   * of `_freezeSeasonRecords()`). Documents stored before this prop existed
+   * fall back to a content check on the series label.
+   */
+  @Prop()
+  recordSeasonType?: number;
+
+  /**
    * ISO-8601 string (UTC) of when `gameClock` / `gamePeriod` / scores / status last
    * actually **changed value**, as opposed to `updateDate`, which is rewritten on
    * every live sync whether or not anything moved. The frontend needs this to tell

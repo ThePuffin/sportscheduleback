@@ -2,6 +2,112 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: season records propagate to every game of the current season (past and upcoming)
+
+### Context
+
+An upcoming NHL game of an already-started season displayed `0-0-0` (e.g. `NHL-OTT-401892507`,
+2026-10-15) while finished games of the same team already carried real tallies (`5-2-0`). The
+stored per-game record is written at fetch time and only loosely maintained afterwards, so a
+game could keep its initial `0-0-0` (or any frozen value) forever while `team.record` evolved —
+and the reader shows `game.homeTeamRecord || team.record`, i.e. the stale stored value wins.
+
+### Behavior
+
+- **In-progress regular season**: every game of the season — **past and upcoming** — carries the
+  team's **latest** record, refreshed on each record evolution (result of a game, twice-daily
+  cron), so all views (day views, schedule, results) always show the current tally.
+- **First recording of a season**: every game of a not-yet-started phase is initialized to
+  `0-0-0` (past and upcoming alike) — the season's starting record, replaced by the propagation
+  as soon as the tally evolves.
+- **Playoffs / finished seasons / off-season**: untouched — playoff records stay game-specific
+  and a finished season keeps its verified final tally.
+
+### Solution
+
+- **`GameService._propagateTeamRecordToSeasonGames(league, teamUniqueId, record)`** (new, with
+  `_currentSeasonStart()`): one `updateMany` limited to the current season
+  (`gameDate >= season start` from `getLeagueConfig()`, `recordSeasonType: { $in: [2, null] }`
+  — regular-season phase, also matching documents stored before the phase was persisted),
+  rewriting only the team's own side via an aggregation-pipeline `$set` + `$cond`, with an
+  `$expr` guard so unchanged rows are never touched. Guard rails: only while the league's
+  regular-season window covers today and the playoffs window does not; unusable window
+  (unknown league / `99` placeholder) → skip; write failures logged, fail-soft.
+- **Call sites**: `syncGameWithScore()` (each fresh team tally — immediate propagation) and
+  `refreshCurrentSeasonRecords()` (twice-daily cron — bulk propagation that **self-heals**
+  stale stored values such as a frozen `0-0-0`, logged as
+  `[Records] Propagated fresh tallies to N season game(s).`).
+- **`applySeasonFinalRecords()`** (`espnAllData.ts`) — the `!phaseStarted` branch now writes
+  `0-0-0` on **every** game of the phase instead of clearing upcoming games to `''`.
+
+### Files changed
+
+- `backend/src/games/games.service.ts` — helpers, both call sites, updated
+  `refreshCurrentSeasonRecords()` JSDoc.
+- `backend/src/utils/fetchData/espnAllData.ts` — initial `0-0-0` for a not-started phase.
+- `backend/src/games/tests/games.service.spec.ts` — shared `updateMany` mock now resolves an
+  exec-able result; new `_propagateTeamRecordToSeasonGames` suite (correct filter/pipeline,
+  off-season skip, playoffs skip, unusable window, fail-soft); sync propagation test; cron
+  propagation test.
+- `backend/src/utils/fetchData/espnAllData.spec.ts` — unstarted-phase expectations switched
+  from `''` to `0-0-0` + new past/upcoming initialization test.
+- Docs: `backend/docs/games/games.service.ts.md` (new helper section, enrichment chain, cron
+  wording), `backend/docs/utils/fetchData/espnAllData.ts.md`, `backend/docs/cronJob/cronJob.service.ts.md`.
+
+## Restored: playoff series status displayed in priority of the season record (read routes)
+
+### Context
+
+The read routes (`GET /games/league-day/:gameDate`, `GET /games/hour/:gameDate`, `/games/date`,
+team views…) used to show the playoff series label (`seriesStatus` such as `MIL leads 2-1`,
+falling back on `seriesSummary` such as `NLCS - Game 2`) **in the record slots, ahead of the
+season record**. The record-isolation fix (« records are isolated by preseason, regular season,
+and playoffs ») removed that display priority from `_enrichGameWithTeamData()`, and since the
+frontend never renders `seriesSummary` / `seriesStatus` directly (they only exist on
+`GameFormatted`), no view showed the series status any more. Worse, `syncGameWithScore()`
+overwrote both stored fields on **every** score sync, so a fresh payload carrying an empty
+`series.summary` (common once a playoff game is finished) wiped the stored status — visible on
+the finished NLCS/ALCS games of 2026-10-12 (`seriesStatus: ""`).
+
+### Behavior restored
+
+Per the requested display rules (display-time only — **stored** records are never modified):
+
+- **Playoff game** (phase `recordSeasonType === 3`): show `seriesStatus`, then `seriesSummary`,
+  then the season record when the game carries no series info — whether the season/playoffs are
+  finished or in progress.
+- **Regular-season game**: always the season record (latest available tally for past and
+  upcoming games of an in-progress season; the verified final tally / previous-season or
+  `0-0-0` fallback for a finished or not-yet-started phase), unchanged.
+- Both record slots (home and away) show the same series label.
+
+### Solution
+
+- **`GameService._playoffSeriesDisplay(game)`** (new private helper + `nonSeriesLabelPattern`):
+  returns the series label to display. A stored phase is authoritative when present (only `3`
+  may override the record); documents stored before the phase existed decide from the label
+  content, so a regular-season note (`Regular Season`, `Game 2 of 3`, `Doubleheader …`, bare
+  `Game N` from the PWHL mapping) can never replace a record.
+- **`_enrichGameWithTeamData()`** prefixes its record chain with that helper.
+- **`game.schema.ts`** — new optional `recordSeasonType` prop (1 = preseason, 2 = regular
+  season, 3 = playoffs): every schedule mapping already computed it but Mongoose strict mode
+  dropped it on save, so read paths could not tell a playoff game from a regular-season one.
+  Persisting it also makes the `_freezeSeasonRecords()` projection (which already selected it)
+  meaningful. Existing documents fall back to the label-content check until their next refresh.
+- **`syncGameWithScore()`** — `seriesSummary` / `seriesStatus` are now overwritten only by a
+  non-empty fresh value, so an empty score payload can no longer wipe a stored status.
+
+### Files changed
+
+- `backend/src/games/games.service.ts` — helper, enrichment priority, non-empty sync guard.
+- `backend/src/games/schemas/game.schema.ts` — persisted `recordSeasonType`.
+- `backend/src/games/tests/games.service.spec.ts` — the 2 enrichment tests asserting the old
+  behavior were rewritten to the restored rules (status priority, empty-status fallback, playoff
+  game without series info, regular-season protection, legacy content fallback), plus 2 new
+  `syncGameWithScore` series-preservation tests.
+- `backend/docs/games/games.service.ts.md` — new `_enrichGameWithTeamData()` section, clarified
+  stored-vs-displayed wording, sync guard documented.
+
 ## Added: Ligue Magnus scraping module (`src/utils/fetchData/scrappingData.ts`)
 
 ### Context
