@@ -2,7 +2,48 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: Ligue Magnus scraping module (`src/utils/fetchData/scrappingData.ts`)
+
+### Context
+
+The goal is to eventually display Synerglace Ligue Magnus fixtures (games **and** teams) in the app.
+The calendar page (https://liguemagnus.com/calendrier/?…&poule=714…) looked at first like an HTML
+scraping job (cheerio + axios), but inspection showed its match container
+(`.calendrier-general-compet`) ships **empty**: the site loads fixtures client-side from the
+WordPress AJAX endpoint `admin-ajax.php?action=get_rencontres`, which answers JSON built from the
+hockeynet.fr feed. Scraping therefore targets that JSON endpoint — no HTML parsing and **no new
+dependency** (global `fetch`, like the other providers).
+
+### What was added
+
+- **`src/utils/fetchData/scrappingData.ts`** — `ScrappingData` class:
+  - `getLigueMagnusRencontres(query?)`: fetches every fixture of a phase, paging on
+    `meta.last_page` (default `par_page=1000` answers the whole regular season in one request),
+    **deduping by rencontre id** so a wrapping cursor can never double-count games, with one
+    fetched-match count logged per page (crawl observability).
+  - `scrapeLigueMagnus(query?)`: current entry point — fetch, then `console.log` a summary
+    (finished/upcoming/postponed counts + distinct teams), a one-line-per-fixture digest
+    (`formatRencontreLine`, e.g. `2026-09-15 20:00  GAP 2 - 1 CHAMONIX`) and the full raw payload.
+    Returns `[]` and logs the error on failure (same fail-soft style as `HockeyData` /
+    `ESPNAllData`).
+  - `buildLigueMagnusUrl()` maps every filter (`phase_id`, `date_min`, `date_max`, `journee`,
+    `equipe_id`, `competition_id`, `par_page`) onto the endpoint, with a 15s `AbortController`
+    timeout and browser-like headers (same approach as ESPN's `fetchWithTimeout`).
+  - Default phase id **`714`** = "Saison régulière" 2026-27 (264 fixtures, 12 clubs); phase ids are
+    season-specific and documented as such.
+- **`src/utils/fetchData/scrappingData.spec.ts`** — 11 tests: URL/filter mapping, single-page fetch,
+  multi-page aggregation with dedupe, the three `console.log` outputs, fail-soft behaviour on network
+  errors and non-2xx answers, and the line formatter.
+- **`docs/utils/fetchData/scrappingData.ts.md`** — endpoint reverse-engineering, types, data flow
+  and the list of steps still required for the database integration (`League` enum value,
+  `LigueMagnusRencontre → GameFormatted`, `LigueMagnusTeam → TeamType`, hooks in `GameService` /
+  `TeamService`).
+
+Scope is deliberately **read-only for now**: nothing is written to MongoDB and no league is
+registered yet.
+
 ## Fixed: conference-parented college teams (Sun Belt, SWAC, …) were classified non-D1
+
 
 ### Problem
 
