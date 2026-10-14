@@ -357,6 +357,9 @@ it returned an incomplete history for the opponent.
 - **Indexing**: `homeTeamId` and `awayTeamId` are plain props, so the schema also declares
   `{ isActive: 1, homeTeamId: 1, startTimeUTC: -1 }` and `{ isActive: 1, awayTeamId: 1, startTimeUTC: -1 }`
   (`game.schema.ts`). Without them the `$or` query is a full collection scan on every request.
+  The schema also declares `{ isActive: 1, teamSelectedId: 1, recordSeasonType: 1 }`, which serves
+  the per-team game counts of `GET /teams?minGames=…` entirely from the index — including the
+  preseason exclusion (see `TeamService.countActiveGamesByTeam()`).
 
 ### `findByTeam()` / `findResultsByTeam()`
 

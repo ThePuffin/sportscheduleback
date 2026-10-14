@@ -4,6 +4,7 @@ import { DeleteResult } from 'mongodb';
 import { Model } from 'mongoose';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { Game } from '../games/schemas/game.schema';
 import { CollegeLeague, League } from '../utils/enum';
 import { D1_PARENT_IDS, getESPNTeams } from '../utils/fetchData/espnAllData';
 import { HockeyData } from '../utils/fetchData/hockeyData';
@@ -20,11 +21,46 @@ const DIVISION_ONE_LEAGUES = new Set<string>([
   CollegeLeague.NCAAWH,
 ]);
 
+/**
+ * How long the per-team active-game counts stay valid.
+ *
+ * `GET /teams?minGames=…` needs one aggregation over the games collection. It
+ * is served by a DISTINCT_SCAN on `{ isActive: 1, teamSelectedId: 1 }` so it
+ * reads no game document at all, but the result is memoised anyway: the counts
+ * only move when a refresh writes/deletes games, and a team crossing the
+ * threshold mid-request is irrelevant next to the cron cadence. Five minutes
+ * keeps a burst of parallel requests (the frontend fires `GET /teams` from
+ * several screens) down to a single aggregation without ever serving counts
+ * that are meaningfully stale.
+ */
+const ACTIVE_GAME_COUNT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * `recordSeasonType` value of a preseason game. Shared with the fetchers, which
+ * write `1` = preseason, `2` = regular season, `3` = playoffs.
+ *
+ * Named here (instead of inlined as `1`) because the meaning is the whole point
+ * of the filter: only regular-season and playoff games make a team "official"
+ * and therefore selectable.
+ */
+const PRESEASON_RECORD_SEASON_TYPE = 1;
+
 @Injectable()
 export class TeamService {
   private isFetchingTeams: { [league: string]: boolean } = {};
   private lastPurgedNonD1Ids: string[] = [];
-  constructor(@InjectModel(Team.name) public teamModel: Model<Team>) {}
+  /**
+   * Memoised result of `countActiveGamesByTeam()`, or `null` when the cache is
+   * empty/expired. Cleared by `clearActiveGameCountCache()`.
+   */
+  private activeGameCountCache: {
+    counts: Map<string, number>;
+    timestamp: number;
+  } | null = null;
+  constructor(
+    @InjectModel(Team.name) public teamModel: Model<Team>,
+    @InjectModel(Game.name) private readonly gameModel: Model<Game>,
+  ) {}
 
   /**
    * Returns and clears the queued `uniqueId`s deleted by the last `getTeams()`
@@ -245,10 +281,111 @@ export class TeamService {
     }
   }
 
-  async findAll(leagues?: string[]): Promise<any[]> {
+  /**
+   * Number of ACTIVE **regular-season or playoff** games per team, keyed by
+   * `uniqueId`. This is what backs the `minGames` filter, so it decides which
+   * teams a user may pick as a favorite / Calendar team / Schedule filter.
+   *
+   * Counting is done on `teamSelectedId` — the team whose upstream feed created
+   * the document — and NOT on `homeTeamId`/`awayTeamId`: a match is stored
+   * **twice** (one document per participating feed, `uniqueId` prefixed with
+   * that team, e.g. `NHL-ANA-…` and `NHL-VGK-…`) and both copies carry the same
+   * `homeTeamId`/`awayTeamId`, so counting either of those would double every
+   * total. `teamSelectedId` yields exactly one document per team per match.
+   *
+   * **Preseason games are excluded** (`recordSeasonType: { $ne: 1 }`). Without
+   * that, a team appearing only in exhibitions — a franchise that never plays
+   * the regular season, or a preseason-only opponent — would reach the
+   * threshold on friendlies alone and become selectable as an "official" team.
+   * Phases are `1` = preseason, `2` = regular season, `3` = playoffs, written by
+   * every provider (ESPN `seasontype`, NHL `gameType`).
+   *
+   * The exclusion is deliberately a `$ne` rather than an `$in: [2, 3]`, so it
+   * only drops games **positively known** to be preseason:
+   * - documents stored before `recordSeasonType` was persisted have no phase,
+   *   and an `$in` would silently discard them and hide real teams (the same
+   *   reasoning as `_propagateTeamRecordToSeasonGames()`, which matches
+   *   `{ $in: [2, null] }`);
+   * - the PWHL feed does not report a phase at all, so its games must keep
+   *   counting rather than dropping every PWHL team.
+   * A stale `0` phase is never written, so `$ne: 1` cannot misclassify one.
+   *
+   * Inactive games (decided series, expired grace period, stale unresolved
+   * fixtures) are excluded too, so the count matches what the app actually
+   * shows. Teams with no countable game are simply absent from the map.
+   *
+   * Served from the `{ isActive, teamSelectedId, recordSeasonType }` index
+   * (`game.schema.ts`), which covers every field used here, so no game document
+   * is read. Memoised for `ACTIVE_GAME_COUNT_CACHE_TTL_MS` — see the constant.
+   */
+  async countActiveGamesByTeam(): Promise<Map<string, number>> {
+    const now = Date.now();
+    if (
+      this.activeGameCountCache &&
+      now - this.activeGameCountCache.timestamp < ACTIVE_GAME_COUNT_CACHE_TTL_MS
+    ) {
+      return this.activeGameCountCache.counts;
+    }
+
+    const rows = (await this.gameModel
+      .aggregate<{ _id: string; count: number }>([
+        {
+          $match: {
+            isActive: true,
+            // Only games positively identified as preseason are dropped: `$ne`
+            // keeps the regular season, the playoffs AND the legacy documents
+            // that carry no phase (see the JSDoc above).
+            recordSeasonType: { $ne: PRESEASON_RECORD_SEASON_TYPE },
+          },
+        },
+        { $group: { _id: '$teamSelectedId', count: { $sum: 1 } } },
+      ])
+      .exec()) as Array<{ _id: string; count: number }>;
+
+    const counts = new Map<string, number>();
+    for (const row of rows || []) {
+      // `teamSelectedId` is `''` on the synthetic placeholder rows built by
+      // `findByDateHour()`, and absent on legacy documents: both must not
+      // become a phantom "team" in the map.
+      if (typeof row?._id === 'string' && row._id.length > 0) {
+        counts.set(row._id, row.count ?? 0);
+      }
+    }
+
+    this.activeGameCountCache = { counts, timestamp: now };
+    console.info(
+      `[countActiveGamesByTeam] ${counts.size} team(s) with at least one active regular-season/playoff game.`,
+    );
+    return counts;
+  }
+
+  /**
+   * Drops the memoised per-team game counts so the next
+   * `countActiveGamesByTeam()` re-runs the aggregation. Called by `GameService`
+   * after a refresh writes or deletes games.
+   */
+  clearActiveGameCountCache(): void {
+    this.activeGameCountCache = null;
+  }
+
+  async findAll(
+    leagues?: string[],
+    options?: { minGames?: number | string },
+  ): Promise<any[]> {
+    const minGames = TeamService.normalizeMinGames(options?.minGames);
     const filter: any = {};
     if (leagues && leagues.length > 0) {
       filter.league = { $in: leagues };
+    }
+    if (minGames > 0) {
+      // The game-count threshold only ever builds the SELECTION list, so teams
+      // retired from the provider (`isActive === false`: historical franchises,
+      // records imported from old games) are dropped here too and can never be
+      // picked. `$ne: false` keeps documents written before the field existed
+      // (same reasoning as `recordSeasonType: { $ne: 1 }` in the count), and
+      // the unfiltered catalog — `GET /teams` with no `minGames` — still
+      // returns them: display and opponents must never be filtered.
+      filter.isActive = { $ne: false };
     }
     const allTeams = await this.teamModel
       .find(filter)
@@ -264,9 +401,12 @@ export class TeamService {
       const teams = leagues?.length
         ? await this.getTeams(leagues[0])
         : await this.getTeams();
-      return teams
-        .filter((team) => !leagues?.length || leagues.includes(team.league))
-        .map((team) => this.addRecord(team));
+      const bootstrapTeams = teams.filter(
+        (team) => !leagues?.length || leagues.includes(team.league),
+      );
+      return (await this.filterByMinGames(bootstrapTeams, minGames)).map(
+        (team) => this.addRecord(team),
+      );
     }
 
     const lastMonth = new Date();
@@ -293,7 +433,58 @@ export class TeamService {
     if (process.env.NODE_ENV === 'development') {
       await this.generateLeaguesTeamsAndColorsFiles();
     }
-    return allTeams.map((team) => this.addRecord(team));
+    return (await this.filterByMinGames(allTeams, minGames)).map((team) =>
+      this.addRecord(team),
+    );
+  }
+
+  /**
+   * Keeps only the teams that may be newly **selected**: at least `minGames`
+   * active games AND still active (`isActive !== false` — retired/historical
+   * teams are never pickable, whatever their game count).
+   *
+   * `minGames` comes from `normalizeMinGames()`, so `0` means "no filter" and
+   * short-circuits before any aggregation runs — this is what every internal
+   * caller of `findAll()` gets, so the game counting costs them nothing. The
+   * full catalog returned without `minGames` keeps its inactive teams: they
+   * are still needed to display old games and opponent metadata.
+   *
+   * A team with no game at all is absent from the counts map, which reads as
+   * `0` and is therefore filtered out like any team below the threshold.
+   *
+   * The `isActive` guard covers the bootstrap branch (`getTeams()`), which
+   * bypasses the Mongo filter `findAll()` builds above.
+   */
+  private async filterByMinGames(
+    teams: any[],
+    minGames: number,
+  ): Promise<any[]> {
+    if (minGames <= 0 || !teams?.length) return teams;
+    const counts = await this.countActiveGamesByTeam();
+    return teams.filter(
+      (team) =>
+        team?.isActive !== false &&
+        (counts.get(team?.uniqueId) ?? 0) >= minGames,
+    );
+  }
+
+  /**
+   * Normalizes the `minGames` query parameter into a usable threshold.
+   *
+   * - `undefined` / `''` / non-numeric / negative → `0` (no filter, the
+   *   historical behavior of `GET /teams`).
+   * - `'0'` → `0` as well: asking for "at least 0 games" is the unfiltered
+   *   list, so there is no point running the aggregation.
+   * - `'1.9'` → `1` (the value is truncated, never rounded up, so a fractional
+   *   input can never silently raise the threshold).
+   */
+  private static normalizeMinGames(minGames?: number | string): number {
+    const parsed =
+      typeof minGames === 'number'
+        ? minGames
+        : Number.parseInt(String(minGames ?? '').trim(), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return Math.floor(parsed);
   }
 
   async findAllLeagues(): Promise<string[]> {
@@ -615,11 +806,11 @@ export class TeamService {
       // comparison, so pass the raw stored values ('' when missing).
       const existingColors = map.get(item.uniqueId);
       const existingColorRaw = existingColors?.color?.trim() ?? '';
-      const existingBackgroundRaw = existingColors?.backgroundColor?.trim() ?? '';
+      const existingBackgroundRaw =
+        existingColors?.backgroundColor?.trim() ?? '';
       const existingColorsArePlaceholder =
         !existingColors ||
-        (!existingColorRaw &&
-          !existingBackgroundRaw) ||
+        (!existingColorRaw && !existingBackgroundRaw) ||
         (existingColorRaw.toLowerCase() === '#ffffff' &&
           existingBackgroundRaw.toLowerCase() === '#000000');
 

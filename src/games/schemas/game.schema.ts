@@ -148,3 +148,13 @@ GameSchema.index({
 // `before` bound can then only be applied in memory.
 GameSchema.index({ isActive: 1, homeTeamId: 1, startTimeUTC: -1 });
 GameSchema.index({ isActive: 1, awayTeamId: 1, startTimeUTC: -1 });
+
+// Per-team ACTIVE game counts, backing `GET /teams?minGames=…`
+// (`TeamService.countActiveGamesByTeam()`). The aggregation
+// `{ $match: { isActive: true, recordSeasonType: { $ne: 1 } } }` +
+// `{ $group: { _id: '$teamSelectedId' } }` is then served straight from this
+// index, so counting a team's games never reads a single game document.
+// `recordSeasonType` is part of the index because the `$ne` filter (which drops
+// preseason games) has to be evaluated there; without it every active game
+// document would be fetched just to check its phase and then be grouped.
+GameSchema.index({ isActive: 1, teamSelectedId: 1, recordSeasonType: 1 });

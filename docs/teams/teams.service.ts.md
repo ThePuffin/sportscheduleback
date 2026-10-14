@@ -7,6 +7,11 @@ This service manages the team catalog, including import from external providers,
 ## Key Features
 
 - **Team import** — fetches team lists from ESPN or PWHL sources
+- **Game-count filter** — `GET /teams?minGames=<n>` returns only the teams having at least `n`
+  active games, computed on the fly from the games collection (see
+  `countActiveGamesByTeam()`); teams marked `isActive: false` (historical/retired) are excluded
+  as well, so they can never be picked. The Game model is injected here for that purpose only,
+  without importing `GameService` (no circular dependency)
 - **Team activation** — teams returned by a current provider roster are saved with `isActive: true`; records created from historical games remain inactive until returned by a current roster
 - **Persistence** — stores teams in MongoDB using the `Team` model
 - **Record updates** — updates win/loss/tie information from fetched data
@@ -23,9 +28,20 @@ Creates or updates a team document and optionally regenerates frontend constants
 
 Fetches teams for a specific league or for all supported leagues, imports them, and saves them to the database. Triggered manually via `POST /teams/refresh?leagueParam=<LEAGUE>` or by the monthly `updateTeams` cron. At the end of the run only (never during game fetches), `backfillMissingUniversityLogos()` adds missing university logo links under both `'{LEAGUE}-{ABBREV}'` and plain `'{ABBREV}'` keys when the file has no entry (or an empty string) for them.
 
-### `findAll(leagues?)` / `findAllLeagues()` / `findByLeague()` / `findOne()`
+### `findAll(leagues?, options?)` / `findAllLeagues()` / `findByLeague()` / `findOne()`
 
 Expose team lookup helpers for the controller and other services.
+
+`findAll()` accepts an optional `options.minGames` (number or raw query string). When it is a
+positive integer, only the teams having **at least** that many active games **and** still active
+(`isActive !== false`) are returned — `GET /teams?minGames=4` therefore means "more than 3 games".
+The threshold is inclusive, truncated rather than rounded (`'3.9'` → `3`), and `undefined` / `''` /
+non-numeric / negative / `0` all mean **no filter**, in which case no aggregation runs at all, the
+`isActive` condition is not applied either, and the response is exactly what it was before the
+parameter existed — retired teams are still returned there, because the full catalog backs display
+and opponent metadata. Every internal caller of `findAll()` (nine call sites in
+`GameService`: enrichment, league refresh, day views, stale-team purge) passes no options and is
+therefore unaffected.
 
 When `leagues` is given and the query matches **no** team, the missing league is re-fetched
 from the provider — **for that league only** (`getTeams(leagues[0])`), and the result is filtered
@@ -34,6 +50,37 @@ no-filter case. Previously the fallback ran unfiltered whatever the caller had a
 single-league lookup (e.g. `GameService._fetchUniqueGames('NWSL')`) received the teams of **every**
 league and then processed them all under the one requested `leagueName`, building schedule URLs
 from a league those teams do not belong to.
+
+### `countActiveGamesByTeam()` / `clearActiveGameCountCache()`
+
+Backs the `minGames` filter of `findAll()`: returns a `Map<uniqueId, number>` of how many
+**active regular-season or playoff** games each team has, past and upcoming alike.
+
+- **Counted on `teamSelectedId`, never on `homeTeamId`/`awayTeamId`.** A match is stored
+  **twice** — one document per participating upstream feed, with a `uniqueId` prefixed by that
+  team (`NHL-ANA-…` and `NHL-VGK-…`) — and both copies carry the same `homeTeamId`/`awayTeamId`,
+  so counting either of those would double every total. `teamSelectedId` yields exactly one
+  document per team per match. The synthetic placeholder rows of `findByDateHour()` (empty
+  `teamSelectedId`) are skipped, as are legacy documents without the field.
+- **Preseason games are excluded** (`recordSeasonType: { $ne: 1 }`, phases being `1` = preseason,
+  `2` = regular season, `3` = playoffs). Without it a franchise that only ever appears in
+  exhibitions would reach the threshold on friendlies alone and become selectable as an
+  "official" team. The exclusion is a `$ne`, **not** an `$in: [2, 3]`, so it only drops games
+  positively known to be preseason: documents stored before the phase was persisted carry no
+  value, and the whole PWHL feed reports no phase — an `$in` would silently hide those real
+  teams. Same reasoning as `_propagateTeamRecordToSeasonGames()`, which matches `{ $in: [2, null] }`.
+- **Inactive games are excluded** (decided series, expired grace period, stale unresolved
+  fixtures), so the count matches what the app actually shows.
+- **One aggregation, memoised for 5 minutes** (`ACTIVE_GAME_COUNT_CACHE_TTL_MS`): a burst of
+  parallel `GET /teams` requests costs a single pass, and `clearActiveGameCountCache()` lets
+  `GameService` drop the memo as soon as it writes or deletes games.
+- **Cost**: served from the `{ isActive: 1, teamSelectedId: 1, recordSeasonType: 1 }` index
+  declared in `game.schema.ts`, which covers every field used here (the phase included, so the
+  `$ne` filter is evaluated in the index), so no game document is read. The counts are
+  deliberately **not** stored on the team documents: the games collection has about ten
+  write/delete paths (`create()`, `removeDuplicatesAndOlds()`, `_deleteGamesOfPurgedTeams()`, the
+  disk-capacity purge that deletes a whole month, …) and a stored counter maintained incrementally
+  would drift silently the first time one of them is missed.
 
 ### `updateRecord()`
 

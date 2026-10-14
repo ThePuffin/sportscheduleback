@@ -1595,6 +1595,9 @@ export class GameService {
             `[Oldies] ${normalizedLeague} ${season ? `(season ${season})` : ''}: added ${added}, skipped (existing identical) ${skippedExisting}, skipped (missing team/score data) ${skippedMissingTeamData}, records backfilled ${backfilled}.`,
           );
           await this._deleteGamesOfPurgedTeams(normalizedLeague);
+          // See the note at the end of the normal path: the memoised per-team
+          // game counts no longer match the collection.
+          this.teamService.clearActiveGameCountCache?.();
           return { added, skippedExisting, skippedMissingTeamData };
         }
       }
@@ -1604,6 +1607,9 @@ export class GameService {
       console.info(
         `[Games] ${normalizedLeague} refresh complete: ${uniqueGames.length} distinct game(s) fetched, ${savedGames} game document(s) saved/upserted.`,
       );
+      // The per-team game counts memoised by `TeamService` are stale now that
+      // games were written and deactivated above.
+      this.teamService.clearActiveGameCountCache?.();
       return games;
     } catch (err) {
       // Never let a failing third-party API (ESPN / PWHL) propagate to the
@@ -2305,6 +2311,7 @@ export class GameService {
   async remove(uniqueId: string) {
     const filter = { uniqueId: uniqueId };
     const deleted = await this.gameModel.findOneAndDelete(filter).exec();
+    if (deleted) this.teamService.clearActiveGameCountCache?.();
     return deleted;
   }
 
@@ -2350,6 +2357,7 @@ export class GameService {
     for (const game of games) {
       await this.remove(game.uniqueId);
     }
+    this.teamService.clearActiveGameCountCache?.();
   }
 
   async removeDuplicatesAndOlds() {
@@ -2418,12 +2426,16 @@ export class GameService {
       await this.remove(duplicate.uniqueId);
     }
 
+    // Both the age-based deleteMany above and the duplicate removals change the
+    // per-team counts behind `GET /teams?minGames=…`.
+    this.teamService.clearActiveGameCountCache?.();
     console.info('End of removing duplicates and old games...');
   }
 
   async removeLeague(league: string): Promise<DeleteResult> {
     const filter = { league };
     const deleted = await this.gameModel.deleteMany(filter);
+    this.teamService.clearActiveGameCountCache?.();
     return deleted;
   }
 
@@ -2449,6 +2461,7 @@ export class GameService {
       game.isActive = false;
       await this.create(game);
     }
+    this.teamService.clearActiveGameCountCache?.();
   }
 
   async fetchOldGamesWithMissingScores(hours = 2): Promise<Game[]> {
@@ -4463,6 +4476,9 @@ export class GameService {
       console.info(
         `[Capacity Manager] Deleted ${deletedCount} games from ${oldestYear}-${oldestMonth}.`,
       );
+      // A whole month of games just disappeared: the memoised per-team counts
+      // behind `GET /teams?minGames=…` must be recomputed.
+      this.teamService.clearActiveGameCountCache?.();
 
       // Get remaining years for the report
       const remainingYears = (await this.getAvailableYears()).map(

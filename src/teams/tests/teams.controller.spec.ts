@@ -83,6 +83,22 @@ describe('TeamsController', () => {
       expect(await controller.findAll()).toEqual(mockTeams);
       expect(service.findAll).toHaveBeenCalled();
     });
+
+    it('forwards the minGames query param so only teams with enough games come back', async () => {
+      await controller.findAll('4');
+
+      expect(service.findAll).toHaveBeenCalledWith(undefined, {
+        minGames: '4',
+      });
+    });
+
+    it('passes no threshold when the param is absent', async () => {
+      await controller.findAll();
+
+      expect(service.findAll).toHaveBeenCalledWith(undefined, {
+        minGames: undefined,
+      });
+    });
   });
 
   describe('findLeagues', () => {

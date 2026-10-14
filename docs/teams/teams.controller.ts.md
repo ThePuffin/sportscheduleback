@@ -12,7 +12,7 @@ This controller exposes team-related API endpoints for the frontend and admin to
 
 ## Main Endpoints
 
-- `GET /teams` — returns all teams
+- `GET /teams` — returns all teams. Optional `?minGames=<n>` keeps only the teams with **at least** `n` active games (past or upcoming), e.g. `?minGames=4` = "more than 3 games". Preseason games (`recordSeasonType: 1`) never count towards the threshold, and teams marked `isActive: false` (historical/retired franchises) are excluded while the parameter is set, so a retired team can never be picked. Omitted, `0`, negative or non-numeric returns the unfiltered catalog (the historical behavior, inactive teams included)
 - `GET /teams/leagues` — returns available leagues
 - `GET /teams/league/:league` — returns teams from one league
 - `GET /teams/:uniqueId` — returns a single team

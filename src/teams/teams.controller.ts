@@ -19,8 +19,11 @@ export class TeamsController {
   constructor(private readonly TeamService: TeamService) {}
 
   @Get()
-  async findAll(): Promise<TeamType[]> {
-    return this.TeamService.findAll();
+  async findAll(@Query('minGames') minGames?: string): Promise<TeamType[]> {
+    // `minGames` is inclusive: `?minGames=4` returns only the teams with at
+    // least 4 active games (past or upcoming). Omitted / invalid / `0` keeps
+    // the unfiltered catalog — the behavior every existing caller relies on.
+    return this.TeamService.findAll(undefined, { minGames });
   }
 
   @Get('/leagues')

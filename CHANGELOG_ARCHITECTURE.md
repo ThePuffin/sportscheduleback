@@ -2,6 +2,148 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: `GET /teams?minGames=<n>` filters the catalog by game count
+
+### Context
+
+`GET /teams` returns the whole catalog (~1,700 entries across every league), including teams with
+no fixture at all — off-season franchises, historical programs, teams imported from an oldies game
+that never got another fixture. The frontend only needs the teams that actually have games, so the
+endpoint can now filter on that.
+
+### Behavior
+
+- `GET /teams?minGames=4` returns only the teams with **at least 4 active games** (past or
+  upcoming) — i.e. "more than 3 games". The threshold is inclusive and **truncated**, never
+  rounded: `'3.9'` behaves as `3`, so a fractional input can never silently raise the bar.
+- Omitting the parameter, or passing `0`, a negative or a non-numeric value, returns the
+  **unfiltered** catalog — byte-for-byte what the endpoint returned before. Every existing caller
+  is unaffected.
+- Teams marked `isActive: false` (historical franchises, records imported from old games) are
+  excluded **while the threshold is set**: a retired team can never become selectable, whatever
+  its counted games. The unfiltered catalog keeps them — display and opponent metadata must
+  never be filtered.
+
+### Why the count is computed at read time, not stored
+
+The counts are **not** persisted on the team documents. The games collection has roughly ten
+write/delete paths — `create()` (upsert), `removeDuplicatesAndOlds()`,
+`_deleteGamesOfPurgedTeams()`, `_deleteUnlinkedTeams()`, `remove()`/`removeAll()`/`removeLeague()`,
+`unactivateGames()`, the grace-period/decided-series deactivations, and the disk-capacity purge
+that deletes a **whole month** at once. A counter maintained incrementally would drift silently the
+first time one of them is missed, and a drifted counter hides teams with no error anywhere. The
+aggregation below is cheap enough that storing a denormalized copy buys nothing.
+
+### Solution
+
+- **`TeamService.countActiveGamesByTeam()`** — one aggregation
+  `[{ $match: { isActive: true, recordSeasonType: { $ne: 1 } } },
+  { $group: { _id: '$teamSelectedId', count: { $sum: 1 } } }]`
+  returning a `Map<uniqueId, number>`, memoised for 5 minutes
+  (`ACTIVE_GAME_COUNT_CACHE_TTL_MS`).
+  - **Counted on `teamSelectedId`, never on `homeTeamId`/`awayTeamId`**: a match is stored
+    **twice** (one document per participating feed, `uniqueId` prefixed by that team — `NHL-ANA-…`
+    and `NHL-VGK-…`) and both copies carry the same `homeTeamId`/`awayTeamId`, so counting either
+    of those would **double every total**. `teamSelectedId` yields exactly one document per team
+    per match. The synthetic placeholder rows of `findByDateHour()` (empty `teamSelectedId`) and
+    legacy documents without the field are skipped.
+  - **Preseason games are excluded** — see the "Fixed: preseason games no longer make a team
+    selectable" entry below for the reasoning and the `$ne` vs `$in` subtlety.
+  - Inactive games (decided series, expired grace period, stale unresolved fixtures) are excluded,
+    so the count matches what the app actually shows.
+- **`TeamService.clearActiveGameCountCache()`** — drops the memo. Called by `GameService` from
+  every path that changes the game set: both exits of `getLeagueGames()` (normal + oldies
+  `addMissingOnly`), `remove()`, `removeAll()`, `removeLeague()`, `removeDuplicatesAndOlds()`,
+  `unactivateGames()` and `purgeOldestMonth()`. Called through optional chaining so a partially
+  mocked `TeamService` cannot break an unrelated test.
+- **`TeamService.findAll(leagues?, options?)`** — new `options.minGames`; the filter is applied by
+  a private `filterByMinGames()` that short-circuits when the threshold is `0`, so **no
+  aggregation runs** unless it was actually asked for. `normalizeMinGames()` does the parsing.
+  With a positive threshold the Mongo filter also carries `isActive: { $ne: false }` (keeps
+  documents written before the field existed, same reasoning as the `recordSeasonType` `$ne` in
+  the count), and `filterByMinGames()` repeats the `isActive` guard in JS so the bootstrap branch
+  — where the teams come from `getTeams()` rather than from the query — is covered too.
+- **`teams.module.ts`** — registers the **Game schema** in `MongooseModule.forFeature` so
+  `TeamService` can query the games collection. This is the schema only: it does **not** import
+  `GameModule`/`GameService`, so the dependency direction stays one-way
+  (`GameModule` → `TeamModule`) and no circular dependency is introduced; `forFeature` also reuses
+  the model already compiled on the shared connection.
+- **`game.schema.ts`** — new compound index `{ isActive: 1, teamSelectedId: 1, recordSeasonType: 1 }`.
+  Without it the `$match` cannot be applied in the index, so every active game document would be
+  fetched just to be grouped; with it the aggregation is served entirely from the index and reads
+  **no game document at all**.
+
+### Performance
+
+The aggregation touches the games collection once per request at most (5-minute memo), and is
+served entirely from the index. `GET /teams` is a low-frequency route — the frontend caches it for
+24 h (`frontend/utils/fetchData.ts`, `fetchTeams()`) and `updateLeagues.js` calls it by hand — so
+the added cost is negligible.
+
+### Files changed
+
+- `backend/src/teams/teams.service.ts` — `countActiveGamesByTeam()`,
+  `clearActiveGameCountCache()`, `filterByMinGames()`, `normalizeMinGames()`, the
+  `options.minGames` parameter of `findAll()`, the Game model injection and the TTL constant.
+- `backend/src/teams/teams.controller.ts` — `@Query('minGames')` on `GET /teams`.
+- `backend/src/teams/teams.module.ts` — Game schema registered in `forFeature`.
+- `backend/src/games/schemas/game.schema.ts` — the covering index (see the follow-up entry for its
+  final shape).
+- `backend/src/games/games.service.ts` — `clearActiveGameCountCache()` calls on every game
+  write/delete path.
+- `backend/src/teams/tests/teams.service.spec.ts` — new `countActiveGamesByTeam` suite (grouping
+  key, empty `teamSelectedId`, TTL reuse, TTL expiry, manual invalidation) and `findAll minGames
+  filter` suite (inclusive threshold, teams with no game, no aggregation without the param,
+  invalid values, fractional truncation, league filter still applied, inactive teams dropped from
+  the selection but kept in the unfiltered catalog, inactive teams dropped on the bootstrap
+  branch).
+- `backend/src/teams/tests/teams.controller.spec.ts` — the query param is forwarded; absent param
+  passes `undefined`.
+- `backend/src/games/tests/games.service.spec.ts` — new `active game count cache invalidation`
+  suite (normal refresh, oldies refresh, single delete, league delete, duplicate cleanup,
+  disk-capacity purge); `clearActiveGameCountCache` added to the mocked `TeamService`.
+- Docs: `backend/docs/teams/teams.service.ts.md`, `backend/docs/teams/teams.controller.ts.md`,
+  `backend/docs/games/games.service.ts.md`.
+
+## Fixed: preseason games no longer make a team selectable
+
+### Problem
+
+The first version of `countActiveGamesByTeam()` counted **every** active game. Preseason games are
+stored exactly like regular-season ones, so a team that only ever appears in exhibitions — or a
+franchise imported from a preseason fixture and never seen again — accumulated enough friendlies to
+cross the threshold and became selectable as a favorite / Calendar team / Schedule filter, even
+though it never plays the official season. The point of the filter is precisely to surface only the
+official teams.
+
+### Solution
+
+- **`recordSeasonType: { $ne: 1 }`** added to the aggregation's `$match` (`1` = preseason,
+  `2` = regular season, `3` = playoffs — a field that already existed and is written by every
+  provider: ESPN `seasontype`, NHL `gameType`).
+- **A `$ne`, not an `$in: [2, 3]`** — the important subtlety. It only drops games **positively
+  known** to be preseason, so it keeps:
+  - documents stored before `recordSeasonType` was persisted (no phase at all), which an `$in`
+    would silently discard and with them the real teams they belong to — the same reasoning as
+    `_propagateTeamRecordToSeasonGames()`, which matches `{ $in: [2, null] }`;
+  - the entire **PWHL** feed, whose HockeyTech mapping reports no phase, so an `$in` would have
+    dropped every PWHL team out of every selector.
+- **`game.schema.ts`** — the index became
+  `{ isActive: 1, teamSelectedId: 1, recordSeasonType: 1 }` so the phase is evaluated inside the
+  index and the aggregation stays free of document reads.
+- **`PRESEASON_RECORD_SEASON_TYPE`** — named constant in `teams.service.ts`, since "not a preseason
+  game" is the whole point of the filter.
+
+### Files changed
+
+- `backend/src/teams/teams.service.ts` — the `$ne` filter, the named constant, the rewritten
+  `countActiveGamesByTeam()` JSDoc.
+- `backend/src/games/schemas/game.schema.ts` — `recordSeasonType` added to the covering index.
+- `backend/src/teams/tests/teams.service.spec.ts` — the aggregation assertion now covers the phase
+  filter, plus a regression test pinning `$ne: 1` (and rejecting `$in: [2, 3]`) so a future
+  "simplification" cannot silently hide the legacy and PWHL teams.
+- Docs: `backend/docs/teams/teams.service.ts.md`.
+
 ## Added: season records propagate to every game of the current season (past and upcoming)
 
 ### Context

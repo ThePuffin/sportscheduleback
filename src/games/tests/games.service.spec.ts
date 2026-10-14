@@ -44,6 +44,7 @@ describe('GameService', () => {
     updateRecord: jest.fn().mockResolvedValue(undefined),
     updateRecords: jest.fn().mockResolvedValue(undefined),
     resetLeagueRecords: jest.fn().mockResolvedValue(0),
+    clearActiveGameCountCache: jest.fn(),
   };
 
   const mockRefreshTimestampService = {
@@ -880,7 +881,7 @@ describe('GameService', () => {
       expect(updateRecordsSpy).not.toHaveBeenCalled();
     });
 
-    it('propagates the fresh tallies onto each team\'s season games', async () => {
+    it("propagates the fresh tallies onto each team's season games", async () => {
       jest
         .spyOn(utils, 'isCurrentSeason')
         .mockImplementation(async (league: string) => league === League.NHL);
@@ -1628,12 +1629,7 @@ describe('GameService', () => {
       const recordsSpy = jest
         .spyOn(HockeyData.prototype, 'getPWHLRecordsForDates')
         .mockResolvedValue(
-          new Map([
-            [
-              '2024-05-29',
-              { BOS: '21-5-4', MIN: '16-9-5' },
-            ],
-          ]),
+          new Map([['2024-05-29', { BOS: '21-5-4', MIN: '16-9-5' }]]),
         );
       const createSpy = jest
         .spyOn(service, 'create')
@@ -1656,9 +1652,7 @@ describe('GameService', () => {
       (service as any)._persistMissingHistoricalGameTeams = jest
         .fn()
         .mockResolvedValue(0);
-      (service as any)._backfillSeasonRecords = jest
-        .fn()
-        .mockResolvedValue(0);
+      (service as any)._backfillSeasonRecords = jest.fn().mockResolvedValue(0);
       mockTeamService.findAll.mockResolvedValue([]);
       mockGameModel.exec.mockResolvedValue([
         {
@@ -1712,9 +1706,7 @@ describe('GameService', () => {
       (service as any)._persistMissingHistoricalGameTeams = jest
         .fn()
         .mockResolvedValue(0);
-      (service as any)._backfillSeasonRecords = jest
-        .fn()
-        .mockResolvedValue(0);
+      (service as any)._backfillSeasonRecords = jest.fn().mockResolvedValue(0);
       mockTeamService.findAll.mockResolvedValue([]);
       mockGameModel.exec.mockResolvedValue([
         {
@@ -2253,7 +2245,9 @@ describe('GameService', () => {
     });
 
     it('clears a stale 0-0-0 on an UPCOMING game so the reader falls back to team.record', async () => {
-      const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const future = new Date(
+        Date.now() + 7 * 24 * 60 * 60 * 1000,
+      ).toISOString();
       const existingGame: any = {
         uniqueId: 'NHL-BOS-NHL-TOR-upcoming',
         homeTeamScore: null,
@@ -2355,13 +2349,15 @@ describe('GameService', () => {
           action: 'none',
           diskUsage: { usedMB: 50, totalMB: 100, percentage: 0.5 },
         });
-      const directPurgeSpy = jest.spyOn(service, 'purgeOldestMonth').mockResolvedValue({
-        action: 'purged',
-        purgedYear: 2016,
-        purgedMonth: 9,
-        deletedCount: 120,
-        remainingYears: [2017],
-      });
+      const directPurgeSpy = jest
+        .spyOn(service, 'purgeOldestMonth')
+        .mockResolvedValue({
+          action: 'purged',
+          purgedYear: 2016,
+          purgedMonth: 9,
+          deletedCount: 120,
+          remainingYears: [2017],
+        });
 
       await service.create({
         uniqueId: 'NHL-BOS-NHL-TOR',
@@ -2722,6 +2718,93 @@ describe('GameService', () => {
         }),
       );
       createSpy.mockRestore();
+    });
+  });
+
+  describe('active game count cache invalidation', () => {
+    /**
+     * `GET /teams?minGames=…` reads a per-team game count memoised by
+     * `TeamService`. Every path that writes or deletes games must clear that
+     * memo, otherwise the endpoint keeps serving counts that no longer match
+     * the collection.
+     */
+    const stubLeagueRefresh = () => {
+      (service as any)._fetchUniqueGames = jest.fn().mockResolvedValue([]);
+      (service as any)._deleteUnlinkedTeams = jest
+        .fn()
+        .mockResolvedValue(undefined);
+    };
+
+    it('is cleared after a normal league refresh', async () => {
+      stubLeagueRefresh();
+      mockGameModel.exec.mockResolvedValue([]);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+      });
+
+      expect(mockTeamService.clearActiveGameCountCache).toHaveBeenCalled();
+    });
+
+    it('is cleared after an oldies (addMissingOnly) refresh', async () => {
+      stubLeagueRefresh();
+      mockGameModel.exec.mockResolvedValue([]);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+        season: new Date().getFullYear() - 1,
+        addMissingOnly: true,
+      });
+
+      expect(mockTeamService.clearActiveGameCountCache).toHaveBeenCalled();
+    });
+
+    it('is cleared when a game is deleted', async () => {
+      mockGameModel.findOneAndDelete.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ uniqueId: 'NHL-1' }),
+      });
+
+      await service.remove('NHL-1');
+
+      expect(mockTeamService.clearActiveGameCountCache).toHaveBeenCalled();
+    });
+
+    it('is cleared when a whole league is deleted', async () => {
+      mockGameModel.deleteMany.mockResolvedValue({ deletedCount: 3 });
+
+      await service.removeLeague(League.NHL);
+
+      expect(mockTeamService.clearActiveGameCountCache).toHaveBeenCalled();
+    });
+
+    it('is cleared after the duplicate/old-games cleanup', async () => {
+      mockGameModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
+      mockGameModel.exec.mockResolvedValue([]);
+
+      await service.removeDuplicatesAndOlds();
+
+      expect(mockTeamService.clearActiveGameCountCache).toHaveBeenCalled();
+    });
+
+    it('is cleared after a disk-capacity purge of the oldest month', async () => {
+      // Same setup as the existing purgeOldestMonth suites: the per-year counts
+      // come from getAvailableYears(), the month from a single aggregate.
+      jest
+        .spyOn(service as any, 'getAvailableYears')
+        .mockResolvedValue([{ year: 2016, count: 2496 }]);
+      mockGameModel.aggregate = jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: '09', count: 296 }]),
+      });
+      mockGameModel.deleteMany.mockResolvedValue({ deletedCount: 296 });
+
+      const result = await service.purgeOldestMonth();
+
+      expect(result.action).toBe('purged');
+      expect(mockTeamService.clearActiveGameCountCache).toHaveBeenCalled();
     });
   });
 
