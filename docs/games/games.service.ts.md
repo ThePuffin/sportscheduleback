@@ -58,9 +58,16 @@ the record, while a playoff-shaped label (`ALCS - Game 2`, `NFC Wild Card`, `MIL
 does. A stored phase ≠ 3 always wins over the label, so a regular-season game can never display
 a series string.
 
-The stored series fields themselves are protected in `syncGameWithScore()`: a score sync whose
-fresh payload carries an empty `seriesSummary` / `seriesStatus` (common once a playoff game is
-finished) no longer wipes the stored value — only a non-empty fresh value overwrites it.
+The stored series fields themselves are protected on both write paths by the **series-evolution
+rule** (`_isSeriesEvolution()` + `seriesEvolutionPattern`): a stored `seriesStatus` that reads as
+a series evolution (a team leading — `MIL leads 3-0`, `EDM lead series 3-2` —, the series tied —
+`Series tied 2-2` —, or a team having won it — `MIL wins series 4-2`, `Series over`) is only ever
+replaced by **another** evolution. A fresh payload that is empty (the team-schedule endpoint used
+by the refresh cron carries no `series.summary` at all) or that is a mere round label
+(`NLDS - Game 3`) never overwrites it — otherwise the display would fall back from the evolution
+to `seriesSummary`. The round label `seriesSummary` itself is only overwritten by a non-empty
+fresh value. A stored non-evolution value (e.g. PWHL's `Game 2`) keeps the plain non-empty rule.
+This applies in `syncGameWithScore()` (score sync) and in `create()` (schedule refresh upsert).
 
 This restores the historical "series status first, season record otherwise" display for playoff
 games (day views, schedule, results) while keeping the phase isolation of the **stored** records
@@ -95,6 +102,16 @@ cleared the record of an unstarted fixture so the reader falls back to `team.rec
 (`_enrichGameWithTeamData()`), so the clear **is** applied and overwrites a stale `0-0-0` (or pre-game
 tally) left by an earlier fetch. Without this exception a scheduled game would never stop showing
 `0-0-0`.
+
+**Series guard (playoff evolution):** when the game already exists, a stored `seriesStatus` that
+reads as a series evolution (`_isSeriesEvolution()` — a team leading, the series tied, or a team
+having won it) is only replaced by **another** evolution: an empty fresh status (the
+team-schedule endpoint of the refresh cron carries no `series.summary`) or a non-evolution label
+(`NLDS - Game 3`) is dropped from the DTO. This is what keeps `MIL leads 3-0` on the stored game
+when the daily refresh re-upserts it; without it, the display (`_playoffSeriesDisplay()`) would
+fall back to `seriesSummary` (`NLDS - Game 3`). A stored non-evolution status (PWHL's `Game 2`)
+still accepts any non-empty fresh value, and `seriesSummary` follows the plain non-empty rule
+(an empty fresh summary never wipes a stored one).
 
 ### `getLeagueGames(params)`
 

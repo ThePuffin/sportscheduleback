@@ -98,6 +98,28 @@ export class GameService {
     return this.decidedSeriesPattern.test(seriesStatus.trim());
   }
 
+  /**
+   * Matches a playoff series **evolution** label: a team leading the series
+   * (`"MIL leads 3-0"`, `"EDM lead series 3-2"`), the series tied
+   * (`"Series tied 2-2"`, `"Tied 1-1"`) or a team having won it
+   * (`"MIL wins series 4-2"`, `"Series over"`). A stored `seriesStatus` may
+   * only ever be replaced by another value of this shape — a round label
+   * (`"NLDS - Game 3"`) or an empty payload must never overwrite it (see
+   * `_isSeriesEvolution()`, `create()` and `syncGameWithScore()`).
+   */
+  private readonly seriesEvolutionPattern =
+    /\bleads?\s+(?:the\s+)?series\b|\bleads?\s+\d+\s*[-–]\s*\d+\b|\bwins?\s+(?:the\s+)?series\b|series\s+(?:is\s+)?over\b|series\s+won\b|\b(?:series\s+)?tied\s+\d+\s*[-–]\s*\d+\b/i;
+
+  /**
+   * Whether a label reads as a playoff series evolution (a team leading, the
+   * series tied, or a team having won it). An empty/absent value is never an
+   * evolution.
+   */
+  private _isSeriesEvolution(value?: string): boolean {
+    if (!value || typeof value !== 'string') return false;
+    return this.seriesEvolutionPattern.test(value.trim());
+  }
+
   // Capacity-based purge configuration
   private readonly DISK_USAGE_THRESHOLD = 0.97; // 97%
   private readonly CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
@@ -383,6 +405,46 @@ export class GameService {
               }
             }
           });
+
+          // Playoff series fields: a stored series evolution (`seriesStatus`
+          // such as "MIL leads 3-0") may only ever be replaced by another
+          // evolution ("LAD ties series 2-2", "MIL wins series 4-0"). The
+          // team-schedule endpoint used by the refresh cron carries no
+          // `series.summary` at all, so its empty status would wipe the
+          // stored one on every refresh and the display would fall back to
+          // the round label ("NLDS - Game 3"). A stored non-evolution value
+          // (e.g. PWHL's "Game 2") keeps the previous rule: any non-empty
+          // fresh value overwrites it.
+          const storedSeriesStatus =
+            typeof existingGame.seriesStatus === 'string'
+              ? existingGame.seriesStatus.trim()
+              : '';
+          if (storedSeriesStatus) {
+            const incomingSeriesStatus =
+              typeof gameDto.seriesStatus === 'string'
+                ? gameDto.seriesStatus.trim()
+                : '';
+            const storedIsEvolution =
+              this._isSeriesEvolution(storedSeriesStatus);
+            const incomingIsEvolution =
+              this._isSeriesEvolution(incomingSeriesStatus);
+            if (
+              !incomingSeriesStatus ||
+              (storedIsEvolution && !incomingIsEvolution)
+            ) {
+              delete gameDto.seriesStatus;
+            }
+          }
+
+          // Same non-empty rule for the round label (`seriesSummary`, e.g.
+          // "NLDS - Game 3"): an empty fresh value never wipes a stored one.
+          if (
+            !gameDto.seriesSummary &&
+            typeof existingGame.seriesSummary === 'string' &&
+            existingGame.seriesSummary.trim()
+          ) {
+            delete gameDto.seriesSummary;
+          }
 
           Object.assign(existingGame, gameDto);
 
@@ -3146,14 +3208,28 @@ export class GameService {
       game.dataChangedAt = now;
     }
     game.gameStatus = resolvedStatus;
-    // Series fields are only overwritten by a non-empty fresh value: a score
-    // sync answering with an empty `series.summary` (common once a playoff
-    // game is finished) must not wipe a stored status that the display
-    // priority of `_enrichGameWithTeamData()` still needs.
+    // Series fields: the round label (`seriesSummary`) is only overwritten by
+    // a non-empty fresh value, and a series evolution (`seriesStatus` such as
+    // "MIL leads 3-0") is only overwritten by another evolution ("LAD ties
+    // series 2-2", "MIL wins series 4-0"). A sync answering with an empty
+    // status (the team-schedule endpoint carries no `series.summary`) or with
+    // a mere round label ("NLDS - Game 3") must not wipe the stored
+    // evolution, otherwise the display priority of
+    // `_enrichGameWithTeamData()` would fall back to `seriesSummary`. A
+    // stored non-evolution value (e.g. PWHL's "Game 2") still accepts any
+    // non-empty fresh value.
     if (matchedScore.seriesSummary) {
       game.seriesSummary = matchedScore.seriesSummary;
     }
-    if (matchedScore.seriesStatus) {
+    const freshSeriesStatus =
+      typeof matchedScore.seriesStatus === 'string'
+        ? matchedScore.seriesStatus.trim()
+        : '';
+    if (
+      freshSeriesStatus &&
+      (!this._isSeriesEvolution(game.seriesStatus) ||
+        this._isSeriesEvolution(freshSeriesStatus))
+    ) {
       game.seriesStatus = matchedScore.seriesStatus;
     }
 

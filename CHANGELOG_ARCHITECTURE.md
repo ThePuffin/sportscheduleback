@@ -2,6 +2,60 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: a stored playoff series evolution is only replaced by another evolution
+
+### Context
+
+During the MLB playoffs, the read routes correctly displayed the series evolution (`seriesStatus`
+such as `MIL leads 3-0`) in the record slots, but after a scheduled refresh ran, the same game
+fell back to the round label (`seriesSummary` such as `NLDS - Game 3`).
+
+Root cause: the refresh cron (`getLeagueGames()` → `create()` upsert) re-fetches schedules from
+ESPN's **team-schedule endpoint** (`teams/{id}/schedule`), which does **not** carry
+`competitions[].series.summary` at all — only the round headline (`notes[0].headline`, e.g.
+`NLDS - Game 3`). The mapping therefore emits `seriesStatus: ''`, and `create()`'s
+`Object.assign(existingGame, gameDto)` let that empty value **wipe** the stored evolution on every
+refresh. The display (`_playoffSeriesDisplay()`) then fell back to `seriesSummary`. The score-sync
+path (`syncGameWithScore()`) already rejected empty values, but neither write path enforced any
+rule about *which shape* may replace a stored evolution, and `create()` had no guard at all.
+
+### Rule implemented
+
+A stored playoff series **evolution** (`seriesStatus`) is only ever replaced by **another
+evolution**:
+
+- a team **leading** the series — `MIL leads 3-0`, `EDM lead series 3-2`;
+- the series **tied** — `Series tied 2-2`, `Tied 1-1`;
+- a team having **won** the series — `MIL wins series 4-2`, `Series over`.
+
+Anything else never overwrites it: an empty fresh status, or a non-evolution label such as a round
+name (`NLDS - Game 3`). The round label `seriesSummary` follows the plain non-empty rule (an empty
+fresh value never wipes a stored one). A stored **non-evolution** status (PWHL labels every game
+`Game N`) keeps the previous behavior: any non-empty fresh value updates it.
+
+### Solution
+
+- **`GameService.seriesEvolutionPattern` + `GameService._isSeriesEvolution()`** (new, next to
+  `decidedSeriesPattern` / `_isSeriesDecided()`): shape check shared by both write paths.
+- **`create()`** — new series guard next to the existing record guard: on an existing game, an
+  empty fresh `seriesStatus` is dropped, and a non-evolution fresh status is dropped when the
+  stored one is an evolution; `seriesSummary` drops an empty fresh value.
+- **`syncGameWithScore()`** — the non-empty guard on `seriesStatus` is upgraded to the same
+  evolution rule (`seriesSummary` unchanged).
+- **`create-game.dto.ts` / `update-game.dto.ts`** — `seriesSummary` / `seriesStatus` are now
+  declared (optional) so the guards are type-safe; every schedule mapping already sent them.
+
+### Files changed
+
+- `backend/src/games/games.service.ts` — pattern, helper, `create()` guard, sync guard.
+- `backend/src/games/dto/create-game.dto.ts`, `backend/src/games/dto/update-game.dto.ts` —
+  optional series fields.
+- `backend/src/games/tests/games.service.spec.ts` — new `create — playoff series fields` suite
+  (6 tests: empty payload kept out, round label kept out, fresh evolution applied, tied-series
+  applied, empty summary kept, first evolution stored) + 2 new `syncGameWithScore` series tests
+  (round label cannot replace an evolution; a stored non-evolution label still updates).
+- `backend/docs/games/games.service.ts.md` — evolution rule documented for both write paths.
+
 ## Added: `GET /teams?minGames=<n>` filters the catalog by game count
 
 ### Context

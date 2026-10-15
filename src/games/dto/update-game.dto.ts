@@ -75,4 +75,10 @@ export class UpdateGameDto {
 
   @ApiProperty()
   gameStatus: string | null;
+
+  @ApiProperty({ required: false, nullable: true })
+  seriesSummary?: string;
+
+  @ApiProperty({ required: false, nullable: true })
+  seriesStatus?: string;
 }

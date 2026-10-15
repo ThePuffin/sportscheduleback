@@ -6055,6 +6055,10 @@ export const ColorsTeamEnum: Record<string, { color: string; backgroundColor: st
     color: '#ffffff',
     backgroundColor: '#173f35',
   },
+  'NCAAF-MSUN': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
   'NCAAF-MTST': {
     color: '#bc955c',
     backgroundColor: '#00205c',

@@ -249,6 +249,53 @@ describe('GameService', () => {
       expect(game.seriesSummary).toBe('NLCS - Game 3');
       expect(game.seriesStatus).toBe('MIL leads 3-1');
     });
+
+    it('keeps a stored series evolution when the fresh status is not an evolution', async () => {
+      const game = buildGame();
+
+      await (service as any).syncGameWithScore(
+        {
+          gameStatus: 'FINISHED',
+          isFinal: true,
+          homeTeamScore: 7,
+          awayTeamScore: 4,
+          homeTeamRecord: '103-59',
+          awayTeamRecord: '100-62',
+          seriesSummary: 'NLCS - Game 3',
+          // A round label must never replace a stored evolution, otherwise
+          // the display would fall back from "MIL leads 2-1" to
+          // "NLCS - Game 3".
+          seriesStatus: 'NLCS - Game 3',
+        },
+        game,
+      );
+
+      expect(game.seriesStatus).toBe('MIL leads 2-1');
+      // The round label itself still follows the fresh payload.
+      expect(game.seriesSummary).toBe('NLCS - Game 3');
+    });
+
+    it('updates a stored non-evolution label with any fresh non-empty value', async () => {
+      const game = buildGame();
+      // PWHL labels every game "Game N": not an evolution, so the previous
+      // non-empty rule still applies to it.
+      game.seriesStatus = 'Game 2';
+
+      await (service as any).syncGameWithScore(
+        {
+          gameStatus: 'FINISHED',
+          isFinal: true,
+          homeTeamScore: 7,
+          awayTeamScore: 4,
+          seriesSummary: 'Game 3',
+          seriesStatus: 'Game 3',
+        },
+        game,
+      );
+
+      expect(game.seriesStatus).toBe('Game 3');
+    });
+
     it('propagates the refreshed record onto the season games of both teams', async () => {
       const propagateSpy = jest
         .spyOn(service as any, '_propagateTeamRecordToSeasonGames')
@@ -270,6 +317,107 @@ describe('GameService', () => {
       expect(propagateSpy).toHaveBeenCalledWith('MLB', 'MLB-MIL', '103-59');
       expect(propagateSpy).toHaveBeenCalledWith('MLB', 'MLB-LAD', '100-62');
       propagateSpy.mockRestore();
+    });
+  });
+
+  describe('create — playoff series fields', () => {
+    const buildStoredGame = () =>
+      ({
+        uniqueId: 'MLB-MIL-LAD-2026-10-14-3',
+        league: League.MLB,
+        seriesSummary: 'NLCS - Game 3',
+        seriesStatus: 'MIL leads 3-0',
+        save: jest.fn().mockResolvedValue(undefined),
+      }) as any;
+
+    const givenStoredGame = (game: any) => {
+      // `findOne()` chains `.exec()` on the model mock.
+      mockGameModel.exec.mockResolvedValue(game);
+    };
+
+    it('keeps a stored series evolution when the refresh payload carries no status', async () => {
+      const stored = buildStoredGame();
+      givenStoredGame(stored);
+
+      await service.create({
+        uniqueId: stored.uniqueId,
+        // The team-schedule endpoint used by the refresh cron carries no
+        // `series.summary` at all, so the mapping emits an empty status.
+        seriesStatus: '',
+        seriesSummary: 'NLCS - Game 3',
+      } as any);
+
+      expect(stored.seriesStatus).toBe('MIL leads 3-0');
+      expect(stored.seriesSummary).toBe('NLCS - Game 3');
+      expect(stored.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a stored series evolution when the fresh status is a round label', async () => {
+      const stored = buildStoredGame();
+      givenStoredGame(stored);
+
+      await service.create({
+        uniqueId: stored.uniqueId,
+        seriesStatus: 'NLDS - Game 3',
+        seriesSummary: 'NLDS - Game 3',
+      } as any);
+
+      expect(stored.seriesStatus).toBe('MIL leads 3-0');
+    });
+
+    it('replaces a stored series evolution with a fresh evolution', async () => {
+      const stored = buildStoredGame();
+      givenStoredGame(stored);
+
+      await service.create({
+        uniqueId: stored.uniqueId,
+        seriesStatus: 'MIL wins series 4-0',
+        seriesSummary: 'NLCS - Game 4',
+      } as any);
+
+      expect(stored.seriesStatus).toBe('MIL wins series 4-0');
+      expect(stored.seriesSummary).toBe('NLCS - Game 4');
+    });
+
+    it('accepts a tied-series evolution as a replacement', async () => {
+      const stored = buildStoredGame();
+      stored.seriesStatus = 'MIL leads 3-2';
+      givenStoredGame(stored);
+
+      await service.create({
+        uniqueId: stored.uniqueId,
+        seriesStatus: 'Series tied 3-3',
+      } as any);
+
+      expect(stored.seriesStatus).toBe('Series tied 3-3');
+    });
+
+    it('keeps a stored round label when the fresh summary is empty', async () => {
+      const stored = buildStoredGame();
+      givenStoredGame(stored);
+
+      await service.create({
+        uniqueId: stored.uniqueId,
+        seriesSummary: '',
+      } as any);
+
+      expect(stored.seriesSummary).toBe('NLCS - Game 3');
+    });
+
+    it('stores a series evolution on a game that has none', async () => {
+      const stored = buildStoredGame();
+      stored.seriesSummary = '';
+      stored.seriesStatus = '';
+      givenStoredGame(stored);
+
+      await service.create({
+        uniqueId: stored.uniqueId,
+        seriesStatus: 'MIL leads 3-0',
+        seriesSummary: 'NLCS - Game 3',
+      } as any);
+
+      expect(stored.seriesStatus).toBe('MIL leads 3-0');
+      expect(stored.seriesSummary).toBe('NLCS - Game 3');
     });
   });
 
