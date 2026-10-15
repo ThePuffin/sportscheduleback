@@ -44,6 +44,12 @@ stored document is spread as-is; only the display fields are rewritten.
    `seriesSummary` (e.g. `NLCS - Game 2` when ESPN leaves the status empty on a finished game)
    **in priority of the season record**, in *both* the home and away record slots. A playoff
    game that carries no series info at all keeps its record.
+   - When `seriesStatus` is empty, `_playoffSeriesDisplay()` first consults a pre-computed
+     evolution derived from the other stored games of the same series (`_precomputeSeriesStatus()`,
+     `_computeSeriesStatus()`). This lets old games display an evolution such as `MIL leads 3-0`
+     even when ESPN never provided `series.summary` (older seasons, other leagues). The computed
+     status only applies to playoff games (phase 3 or a playoff-shaped label for legacy documents)
+     and falls back to `seriesSummary` when no evolution can be deduced.
 2. Otherwise the stored `homeTeamRecord` / `awayTeamRecord`, then `team.record` (the live team
    tally), then `''`. During an in-progress season the stored values themselves are kept up to
    date by `_propagateTeamRecordToSeasonGames()` (every game of the season, past and upcoming),
@@ -72,6 +78,32 @@ This applies in `syncGameWithScore()` (score sync) and in `create()` (schedule r
 This restores the historical "series status first, season record otherwise" display for playoff
 games (day views, schedule, results) while keeping the phase isolation of the **stored** records
 introduced by the record-isolation fix untouched.
+
+### Computed series status for games without stored `seriesStatus` (new)
+
+For playoff games that have no stored `seriesStatus` (e.g. old seasons where ESPN did not
+provide `series.summary`, or leagues such as PWHL that never carry it), the service computes
+an evolution from the other stored games of the same series:
+
+- **`_seriesKey(game)`** — builds a grouping key `${league}|${season}|${teamA}|${teamB}` with the
+  two teams sorted alphabetically, so the key is identical regardless of which team is home or
+  away (teams swap sides across a playoff series). Season is derived from `gameDate` (`YYYY`).
+- **`_isPlayoffGame(game)`** — true when `recordSeasonType === 3`, or (for legacy documents
+  without a phase) when `seriesStatus`/`seriesSummary` carry a non-empty, non-regular-season
+  label.
+- **`_computeSeriesStatus(seriesGames, currentGame)`** — pure function: takes all phase-3
+  fixtures between the same two teams in the same season, counts wins per team regardless of
+  home/away side, and returns `X leads Y-Z`, `Series tied Y-Y` or `X wins series Y-Z`. A
+  series is considered decided at 4+ wins (covers best-of-7 and best-of-5), or at 3 wins with
+  5 completed games (best-of-5 clincher). Returns `''` when no game has been played, or when
+  only one game has been played — a single-elimination match (NFL wildcard, Olympic knockout,
+  etc.) falls back to `seriesSummary` (e.g. `NFC Divisional Playoffs`, `NFC Championship`)
+  instead of displaying a misleading `X leads 1-0`.
+- **`_precomputeSeriesStatus(games)`** — called before enrichment in every read route
+  (`findAll`, `findByDate`, `findRecentFormGames`, `_findEnrichedGamesForDay`). Groups
+  playoff games without a stored status by series key, runs **one DB query per series** to
+  fetch all its games, and stores the result in `_computedSeriesStatusMap` (keyed by
+  `uniqueId`). `_playoffSeriesDisplay()` consults this map when `seriesStatus` is empty.
 
 ### `create()`
 

@@ -2,6 +2,47 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Added: computed playoff series status for games without stored `seriesStatus`
+
+### Context
+
+Playoff games stored without a `seriesStatus` (older seasons where ESPN never provided
+`series.summary`, or leagues such as PWHL that never carry it) fell back to the round label
+(`seriesSummary`, e.g. `NLDS - Game 3`) or to nothing in the record slots. The evolution
+(`MIL leads 3-0`, `Series tied 2-2`, `MIL wins series 4-2`) was therefore invisible for those
+games.
+
+### Behavior
+
+A new read-time computation derives the series evolution from the other stored games of the same
+series (same league, same two teams, same season, phase 3):
+
+- **`_seriesKey(game)`** — groups games by `${league}|${season}|${teamA}|${teamB}` with teams
+  sorted, independent of home/away swaps across the series.
+- **`_computeSeriesStatus(seriesGames, currentGame)`** — counts wins per team from completed
+  games and returns `X leads Y-Z`, `Series tied Y-Y` or `X wins series Y-Z` (series decided at
+  4+ wins, or 3 wins across 5 games for best-of-5).
+- **`_precomputeSeriesStatus(games)`** — called before enrichment in every read route
+  (`findAll`, `findByDate`, `findRecentFormGames`, `_findEnrichedGamesForDay`). Runs one DB
+  query per series and caches the result in `_computedSeriesStatusMap` keyed by `uniqueId`.
+- **`_playoffSeriesDisplay()`** — consults the computed map when `seriesStatus` is empty,
+  falling back to `seriesSummary` as before.
+
+The computation is independent of ESPN and applies to any league (PWHL, etc.). Stored documents
+are never modified — this is display-time only. The series-evolution guard from the previous
+change still protects any stored `seriesStatus` from being overwritten by a refresh.
+
+### Files changed
+
+- `backend/src/games/games.service.ts` — `_seriesKey`, `_isPlayoffGame`, `_computeSeriesStatus`,
+  `_precomputeSeriesStatus`, `_seriesDisplayForPhase`, `_computedSeriesStatusMap`,
+  modified `_playoffSeriesDisplay`, `_precomputeSeriesStatus` calls in `findAll`,
+  `findByDate`, `findRecentFormGames` and `_findEnrichedGamesForDay`.
+- `backend/src/games/tests/games.service.spec.ts` — new `computed series status` suite
+  (14 tests: `_computeSeriesStatus` pure-function tests, `_precomputeSeriesStatus` integration
+  tests, `_playoffSeriesDisplay` computed-status tests).
+- `backend/docs/games/games.service.ts.md` — computed series status documented.
+
 ## Fixed: a stored playoff series evolution is only replaced by another evolution
 
 ### Context

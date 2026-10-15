@@ -236,18 +236,23 @@ export class GameService {
     /regular season|preseason|spring training|exhibition|doubleheader|game\s+\d+\s+of\s+\d+|^\s*game\s+\d+\s*$/i;
 
   /**
+   * Cache of computed series statuses, keyed by game `uniqueId`. Populated
+   * before enrichment in the read routes (`_precomputeSeriesStatus`) and
+   * consulted by `_playoffSeriesDisplay()` when a stored `seriesStatus` is
+   * missing.
+   */
+  private _computedSeriesStatusMap = new Map<string, string>();
+
+  /**
    * Playoff series label shown **in priority of the season record** in the
    * record slots of the responses (display-time only: the persisted
    * `homeTeamRecord` / `awayTeamRecord` are never modified here).
    *
    * Display rules:
-   * - **Playoff game** — stored phase `recordSeasonType === 3`, or (for
-   *   documents stored before the phase existed) a label that does not read
-   *   as a regular-season note: returns `seriesStatus` (e.g.
-   *   `"MIL leads 2-1"`), falling back to `seriesSummary` (e.g.
-   *   `"NLCS - Game 2"` when ESPN leaves the status empty on a finished
-   *   game), or `''` when the game carries no series info at all so the
-   *   caller keeps the season record.
+   * - **Playoff game with a stored series evolution** — returns `seriesStatus`.
+   * - **Playoff game without a stored status** — returns a computed evolution
+   *   derived from the other games of the same series, falling back to
+   *   `seriesSummary`.
    * - **Any other phase / label** — returns `''`, keeping the record chain
    *   (`game record || team.record`) used by the regular season.
    */
@@ -256,24 +261,179 @@ export class GameService {
       typeof game.seriesStatus === 'string' ? game.seriesStatus.trim() : '';
     const summary =
       typeof game.seriesSummary === 'string' ? game.seriesSummary.trim() : '';
-    const candidate = status || summary;
-    if (!candidate) return '';
 
-    // A stored phase is authoritative when present (fresh fetches always
-    // carry it): only phase 3 (playoffs) may override the record.
+    // 1. Stored series status takes priority.
+    if (status) {
+      return this._seriesDisplayForPhase(game, status);
+    }
+
+    // 2. No stored status: try a computed evolution from series games
+    //    (playoff games only).
+    if (this._isPlayoffGame(game)) {
+      const computed = this._computedSeriesStatusMap.get(game.uniqueId);
+      if (computed) return computed;
+    }
+
+    // 3. Fall back to the series label.
+    if (!summary) return '';
+    return this._seriesDisplayForPhase(game, summary);
+  }
+
+  /**
+   * Applies the phase/label gate for a series candidate label: only phase 3
+   * (playoffs) may override the record; legacy documents are decided from the
+   * label content (a regular-season note never replaces the record).
+   */
+  private _seriesDisplayForPhase(game: any, label: string): string {
     const phase = game.recordSeasonType;
     if (phase !== undefined && phase !== null && phase !== '') {
-      return String(phase) === '3' ? candidate : '';
+      return String(phase) === '3' ? label : '';
+    }
+    if (this.nonSeriesLabelPattern.test(label)) return '';
+    return label;
+  }
+
+  /**
+   * Builds a series key that groups games of the same playoff series together
+   * regardless of which team is home or away. Key:
+   * `${league}|${season}|${teamA}|${teamB}` with teamA < teamB.
+   */
+  private _seriesKey(game: any): string | null {
+    if (!game.league || !game.homeTeamId || !game.awayTeamId || game.homeTeamId === game.awayTeamId) {
+      return null;
+    }
+    const season = (game.gameDate || '').slice(0, 4);
+    if (!season) return null;
+    const [a, b] = [game.homeTeamId, game.awayTeamId].sort();
+    return `${game.league}|${season}|${a}|${b}`;
+  }
+
+  /**
+   * Whether a game is a playoff game, for series-status computation. Modern
+   * documents carry `recordSeasonType === 3`; legacy documents are decided
+   * from the label content (a non-empty, non-regular-season label).
+   */
+  private _isPlayoffGame(game: any): boolean {
+    const phase = game.recordSeasonType;
+    if (phase !== undefined && phase !== null && phase !== '') {
+      return String(phase) === '3';
+    }
+    const status = typeof game.seriesStatus === 'string' ? game.seriesStatus.trim() : '';
+    const summary = typeof game.seriesSummary === 'string' ? game.seriesSummary.trim() : '';
+    const hasLabel = status || summary;
+    return hasLabel && !this.nonSeriesLabelPattern.test(status) && !this.nonSeriesLabelPattern.test(summary);
+  }
+
+  /**
+   * Computes the playoff series status for `currentGame` from the full list of
+   * games in the same series. Returns a label such as `"MIL leads 3-0"`,
+   * `"Series tied 2-2"` or `"MIL wins series 4-2"`, or `''` when there aren't
+   * enough completed games to determine a status.
+   */
+  private _computeSeriesStatus(seriesGames: any[], currentGame: any): string {
+    const team1Id = currentGame.homeTeamId;
+    const team2Id = currentGame.awayTeamId;
+    const team1Name = currentGame.homeTeamShort || currentGame.homeTeam || team1Id;
+    const team2Name = currentGame.awayTeamShort || currentGame.awayTeam || team2Id;
+
+    let team1Wins = 0;
+    let team2Wins = 0;
+    let completedGames = 0;
+
+    for (const game of seriesGames) {
+      const homeScore = game.homeTeamScore;
+      const awayScore = game.awayTeamScore;
+      if (homeScore === null || homeScore === undefined || awayScore === null || awayScore === undefined) {
+        continue;
+      }
+      completedGames++;
+      if (homeScore > awayScore) {
+        if (game.homeTeamId === team1Id) team1Wins++;
+        else if (game.homeTeamId === team2Id) team2Wins++;
+      } else if (awayScore > homeScore) {
+        if (game.awayTeamId === team1Id) team1Wins++;
+        else if (game.awayTeamId === team2Id) team2Wins++;
+      }
     }
 
-    // Legacy documents without a stored phase: decide from the label itself.
-    if (
-      this.nonSeriesLabelPattern.test(status) ||
-      this.nonSeriesLabelPattern.test(summary)
-    ) {
+    // Un seul match joué ne constitue pas une série avec évolution :
+    // on laisse tomber sur seriesSummary (ex: "NFC Divisional Playoffs").
+    if (completedGames <= 1 || (team1Wins === 0 && team2Wins === 0)) {
       return '';
     }
-    return candidate;
+
+    if (team1Wins === team2Wins) {
+      return `Series tied ${team1Wins}-${team2Wins}`;
+    }
+
+    const leaderWins = Math.max(team1Wins, team2Wins);
+    const trailerWins = Math.min(team1Wins, team2Wins);
+    const leaderName = team1Wins > team2Wins ? team1Name : team2Name;
+
+    // Series decided: 4+ wins (best-of-7 or best-of-5), or 3 wins with all
+    // 5 games completed (best-of-5 clincher).
+    const seriesDecided = leaderWins >= 4 || (leaderWins === 3 && completedGames >= 5);
+
+    if (seriesDecided) {
+      return `${leaderName} wins series ${leaderWins}-${trailerWins}`;
+    }
+
+    return `${leaderName} leads ${leaderWins}-${trailerWins}`;
+  }
+
+  /**
+   * Pre-computes series statuses for the playoff games in `games` that are
+   * missing a stored `seriesStatus`. Groups them by series key, fetches all
+   * games of each series from the DB in a single query, and stores the
+   * computed status per `uniqueId` in `_computedSeriesStatusMap`.
+   */
+  private async _precomputeSeriesStatus(games: any[]): Promise<void> {
+    this._computedSeriesStatusMap.clear();
+
+    const needsCompute = games.filter((g) => {
+      const status = typeof g.seriesStatus === 'string' ? g.seriesStatus.trim() : '';
+      if (status) return false;
+      if (!this._isPlayoffGame(g)) return false;
+      if (!g.uniqueId) return false;
+      return true;
+    });
+
+    if (needsCompute.length === 0) return;
+
+    const bySeries = new Map<string, any[]>();
+    for (const g of needsCompute) {
+      const key = this._seriesKey(g);
+      if (!key) continue;
+      if (!bySeries.has(key)) bySeries.set(key, []);
+      bySeries.get(key)!.push(g);
+    }
+
+    if (bySeries.size === 0) return;
+
+    for (const [key, groupGames] of bySeries) {
+      const [league, season, teamA, teamB] = key.split('|');
+
+      const seriesGames = await this.gameModel
+        .find({
+          league,
+          gameDate: { $gte: `${season}-01-01`, $lte: `${season}-12-31` },
+          recordSeasonType: 3,
+          $or: [
+            { homeTeamId: teamA, awayTeamId: teamB },
+            { homeTeamId: teamB, awayTeamId: teamA },
+          ],
+        })
+        .sort({ startTimeUTC: 1 })
+        .lean()
+        .exec();
+
+      for (const g of groupGames) {
+        const computed = this._computeSeriesStatus(seriesGames, g);
+        if (computed && g.uniqueId) {
+          this._computedSeriesStatusMap.set(g.uniqueId, computed);
+        }
+      }
+    }
   }
 
   private _enrichGameWithTeamData(game: any, teamsMap: Map<string, TeamType>) {
@@ -1766,6 +1926,8 @@ export class GameService {
     const teams = await this.teamService.findAll();
     const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
+    await this._precomputeSeriesStatus(allGames);
+
     return allGames.map((game: any) =>
       this._enrichGameWithTeamData(game, teamsMap),
     );
@@ -2219,6 +2381,8 @@ export class GameService {
     );
     const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
+    await this._precomputeSeriesStatus(filtredGames);
+
     const games = Array.isArray(filtredGames)
       ? filtredGames.map((game: any) =>
           this._enrichGameWithTeamData(game, teamsMap),
@@ -2359,6 +2523,9 @@ export class GameService {
         gameStatus === 'FINISHED'
       );
     });
+
+    await this._precomputeSeriesStatus(filteredGames);
+
     return filteredGames.map((game: any) =>
       this._enrichGameWithTeamData(game, teamsMap),
     );
@@ -3457,6 +3624,8 @@ export class GameService {
           : undefined,
     );
     const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
+
+    await this._precomputeSeriesStatus(games);
 
     // avoid dupplicate games
     return games

@@ -912,6 +912,240 @@ describe('GameService', () => {
     });
   });
 
+  describe('computed series status (no stored seriesStatus)', () => {
+    const playoffGame = (overrides = {}) => ({
+      uniqueId: 'g1',
+      league: 'MLB',
+      gameDate: '2026-10-15',
+      startTimeUTC: '2026-10-15T23:00:00Z',
+      homeTeamId: 'MLB-MIL',
+      awayTeamId: 'MLB-LAD',
+      homeTeamShort: 'MIL',
+      awayTeamShort: 'LAD',
+      recordSeasonType: 3,
+      seriesStatus: '',
+      seriesSummary: '',
+      ...overrides,
+    });
+
+    describe('_computeSeriesStatus', () => {
+      it('returns "X leads Y-Z" when one team leads', () => {
+        const seriesGames = [
+          { ...playoffGame(), homeTeamScore: 5, awayTeamScore: 3 },
+          { ...playoffGame(), uniqueId: 'g2', homeTeamScore: 2, awayTeamScore: 4 },
+          { ...playoffGame(), uniqueId: 'g3', homeTeamScore: 1, awayTeamScore: 7 },
+        ];
+        const current = { ...playoffGame() };
+        const result = (service as any)._computeSeriesStatus(seriesGames, current);
+        expect(result).toBe('LAD leads 2-1');
+      });
+
+      it('returns "Series tied Y-Y" when wins are equal', () => {
+        const seriesGames = [
+          { ...playoffGame(), homeTeamScore: 5, awayTeamScore: 3 },
+          { ...playoffGame(), uniqueId: 'g2', homeTeamScore: 2, awayTeamScore: 4 },
+        ];
+        const current = { ...playoffGame() };
+        const result = (service as any)._computeSeriesStatus(seriesGames, current);
+        expect(result).toBe('Series tied 1-1');
+      });
+
+      it("returns '' when no game has been played yet", () => {
+        const seriesGames = [
+          { ...playoffGame(), homeTeamScore: null, awayTeamScore: null },
+          { ...playoffGame(), uniqueId: 'g2', homeTeamScore: null, awayTeamScore: null },
+        ];
+        const current = { ...playoffGame() };
+        const result = (service as any)._computeSeriesStatus(seriesGames, current);
+        expect(result).toBe('');
+      });
+
+      it('ignores games with missing scores when counting', () => {
+        const seriesGames = [
+          { ...playoffGame(), homeTeamScore: 5, awayTeamScore: 3 },
+          { ...playoffGame(), uniqueId: 'g2', homeTeamScore: null, awayTeamScore: null },
+        ];
+        const current = { ...playoffGame() };
+        const result = (service as any)._computeSeriesStatus(seriesGames, current);
+        // Un seul match joué : pas d'évolution de série, on laisse tomber sur seriesSummary.
+        expect(result).toBe('');
+      });
+
+      it('returns "X wins series Y-Z" when a team reaches 4 wins', () => {
+        const seriesGames = [
+          { ...playoffGame(), homeTeamScore: 3, awayTeamScore: 5 },
+          { ...playoffGame(), uniqueId: 'g2', homeTeamScore: 1, awayTeamScore: 4 },
+          { ...playoffGame(), uniqueId: 'g3', homeTeamScore: 2, awayTeamScore: 5 },
+          { ...playoffGame(), uniqueId: 'g4', homeTeamScore: 3, awayTeamScore: 6 },
+        ];
+        const current = { ...playoffGame() };
+        const result = (service as any)._computeSeriesStatus(seriesGames, current);
+        expect(result).toBe('LAD wins series 4-0');
+      });
+
+      it('returns "X wins series Y-Z" for a best-of-5 clincher (3 wins, 5 games)', () => {
+        const seriesGames = [
+          { ...playoffGame(), homeTeamScore: 5, awayTeamScore: 3 },
+          { ...playoffGame(), uniqueId: 'g2', homeTeamScore: 1, awayTeamScore: 4 },
+          { ...playoffGame(), uniqueId: 'g3', homeTeamScore: 2, awayTeamScore: 5 },
+          { ...playoffGame(), uniqueId: 'g4', homeTeamScore: 6, awayTeamScore: 1 },
+          { ...playoffGame(), uniqueId: 'g5', homeTeamScore: 2, awayTeamScore: 3 },
+        ];
+        const current = { ...playoffGame() };
+        const result = (service as any)._computeSeriesStatus(seriesGames, current);
+        expect(result).toBe('LAD wins series 3-2');
+      });
+
+      it('returns "X leads Y-Z" when home/away sides swap between games', () => {
+        const seriesGames = [
+          { ...playoffGame(), homeTeamScore: 5, awayTeamScore: 3 },
+          {
+            ...playoffGame(),
+            uniqueId: 'g2',
+            homeTeamId: 'MLB-LAD',
+            awayTeamId: 'MLB-MIL',
+            homeTeamShort: 'LAD',
+            awayTeamShort: 'MIL',
+            homeTeamScore: 1,
+            awayTeamScore: 4,
+          },
+        ];
+        const current = { ...playoffGame() };
+        const result = (service as any)._computeSeriesStatus(seriesGames, current);
+        expect(result).toBe('MIL leads 2-0');
+      });
+    });
+
+    describe('_precomputeSeriesStatus', () => {
+      it('computes and stores status for playoff games without seriesStatus', async () => {
+        const games = [
+          { ...playoffGame(), uniqueId: 'g1', seriesStatus: '', seriesSummary: '' },
+          { ...playoffGame(), uniqueId: 'g2', seriesStatus: '', seriesSummary: '' },
+        ];
+
+        mockGameModel.find.mockReturnValue({
+          sort: jest.fn().mockReturnThis(),
+          lean: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue([
+            { ...playoffGame(), uniqueId: 'g1', homeTeamScore: 5, awayTeamScore: 3 },
+            { ...playoffGame(), uniqueId: 'g2', homeTeamScore: 2, awayTeamScore: 4 },
+            { ...playoffGame(), uniqueId: 'g3', homeTeamScore: 1, awayTeamScore: 7 },
+          ]),
+        });
+
+        await (service as any)._precomputeSeriesStatus(games);
+
+        const map = (service as any)._computedSeriesStatusMap;
+        expect(map.get('g1')).toBe('LAD leads 2-1');
+        expect(map.get('g2')).toBe('LAD leads 2-1');
+      });
+
+      it('skips games that already have a stored seriesStatus', async () => {
+        const games = [
+          {
+            ...playoffGame(),
+            uniqueId: 'g1',
+            seriesStatus: 'MIL leads 2-1',
+            seriesSummary: 'NLCS - Game 3',
+          },
+        ];
+
+        await (service as any)._precomputeSeriesStatus(games);
+
+        const map = (service as any)._computedSeriesStatusMap;
+        expect(map.size).toBe(0);
+        expect(mockGameModel.find).not.toHaveBeenCalled();
+      });
+
+      it('does nothing when no game needs computation', async () => {
+        await (service as any)._precomputeSeriesStatus([
+          { ...playoffGame(), seriesStatus: 'MIL leads 2-1' },
+          { ...playoffGame(), recordSeasonType: 2 },
+        ]);
+        const map = (service as any)._computedSeriesStatusMap;
+        expect(map.size).toBe(0);
+      });
+    });
+
+    describe('_playoffSeriesDisplay with computed status', () => {
+      it('shows the computed evolution instead of the series label', () => {
+        const game = {
+          ...playoffGame(),
+          uniqueId: 'g1',
+          seriesStatus: '',
+          seriesSummary: 'NLCS - Game 3',
+          recordSeasonType: 3,
+        };
+        (service as any)._computedSeriesStatusMap.set('g1', 'MIL leads 3-0');
+
+        const enriched = (service as any)._enrichGameWithTeamData(
+          game,
+          new Map(),
+        );
+
+        expect(enriched.homeTeamRecord).toBe('MIL leads 3-0');
+        expect(enriched.awayTeamRecord).toBe('MIL leads 3-0');
+        expect(enriched.seriesStatus).toBe('');
+        expect(enriched.seriesSummary).toBe('NLCS - Game 3');
+      });
+
+      it('keeps the stored seriesStatus when both exist', () => {
+        const game = {
+          ...playoffGame(),
+          seriesStatus: 'MIL leads 3-0',
+          seriesSummary: 'NLCS - Game 4',
+          recordSeasonType: 3,
+        };
+        (service as any)._computedSeriesStatusMap.set(game.uniqueId, 'LAD leads 3-1');
+
+        const enriched = (service as any)._enrichGameWithTeamData(
+          game,
+          new Map(),
+        );
+
+        expect(enriched.homeTeamRecord).toBe('MIL leads 3-0');
+        expect(enriched.seriesStatus).toBe('MIL leads 3-0');
+      });
+
+      it('falls back to series summary when no computed status exists', () => {
+        const game = {
+          ...playoffGame(),
+          seriesStatus: '',
+          seriesSummary: 'NLCS - Game 2',
+          recordSeasonType: 3,
+        };
+
+        const enriched = (service as any)._enrichGameWithTeamData(
+          game,
+          new Map(),
+        );
+
+        expect(enriched.homeTeamRecord).toBe('NLCS - Game 2');
+        expect(enriched.awayTeamRecord).toBe('NLCS - Game 2');
+      });
+
+      it('keeps the season record for a legacy playoff game without computed status', () => {
+        const game = {
+          homeTeamId: 'MLB-LAD',
+          awayTeamId: 'MLB-MIL',
+          homeTeamRecord: '100-62',
+          awayTeamRecord: '103-59',
+          seriesSummary: 'ALCS - Game 2',
+          seriesStatus: '',
+        };
+        (service as any)._computedSeriesStatusMap.clear();
+
+        const enriched = (service as any)._enrichGameWithTeamData(
+          game,
+          new Map(),
+        );
+
+        expect(enriched.homeTeamRecord).toBe('ALCS - Game 2');
+        expect(enriched.awayTeamRecord).toBe('ALCS - Game 2');
+      });
+    });
+  });
+
   describe('refreshCurrentSeasonRecords', () => {
     afterEach(() => {
       jest.restoreAllMocks();
