@@ -2,6 +2,17 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+
+## Fixed: Olympic teams deduplicated in the team catalog output
+
+The backend returned separate `OLYMPICS-HOCKEY-{GENDER}-{PAYS}` and
+`OLYMPICS-BASKETBALL-{GENDER}-{PAYS}` documents, so the same country appeared
+twice in the team selector (once per sport).
+
+- **`backend/src/teams/teams.controller.ts`** — `GET /teams` now deduplicates Olympic teams in the HTTP response to one entry per country/gender (`OLYMPICS-{MEN|WOMEN}-{PAYS}`). The representative ID is unified to `OLYMPICS-{GENDER}-{COUNTRY}` (first-encountered team wins; no sport-specific tie-break).
+- **`backend/src/teams/teams.service.ts`** — `generateLeaguesTeamsAndColorsFiles()` deduplicates `Teams.tsx` the same way via a new private `dedupOlympicTeams()`. `TeamService.findAll()` is intentionally **not** deduplicated: `GameService` relies on it for per-sport enrichment (`_fetchUniqueGames`) and league discovery (`getAllGames`).
+- **`backend/src/teams/tests/teams.service.spec.ts`** — covers `dedupOlympicTeams()` (single entry per country/gender, non-Olympic teams untouched, empty/undefined input).
+
 ## Changed: `Teams.tsx` only lists teams that actually play (≥10 games, ≥1 for Olympics)
 
 `TeamService.generateLeaguesTeamsAndColorsFiles()` now filters the teams written to

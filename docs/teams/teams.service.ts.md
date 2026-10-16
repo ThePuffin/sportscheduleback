@@ -51,6 +51,12 @@ single-league lookup (e.g. `GameService._fetchUniqueGames('NWSL')`) received the
 league and then processed them all under the one requested `leagueName`, building schedule URLs
 from a league those teams do not belong to.
 
+**Olympic deduplication scope:** `findAll()` itself is intentionally **not** deduplicated —
+`GameService` relies on it for per-sport enrichment (`_fetchUniqueGames`) and league discovery
+(`getAllGames`), so every Olympic team is still returned there. Olympic deduplication applies only
+to the static file generation (`generateLeaguesTeamsAndColorsFiles()`, `Teams.tsx`) and to the
+HTTP `GET /teams` response (controller output).
+
 ### `countActiveGamesByTeam()` / `clearActiveGameCountCache()`
 
 Backs the `minGames` filter of `findAll()`: returns a `Map<uniqueId, number>` of how many
@@ -139,6 +145,13 @@ actually play to the frontend constant:
   computed via `countActiveGamesByTeam()`.
 - **Olympic teams** (`OLYMPICS-*` ids) — at least 1 active game, so country delegations are never
   empty.
+- **Olympic deduplication** — when both `OLYMPICS-HOCKEY-{GENDER}-{PAYS}` and
+  `OLYMPICS-BASKETBALL-{GENDER}-{PAYS}` exist, only one entry per country/gender
+  (`OLYMPICS-{MEN|WOMEN}-{PAYS}`) is written to `Teams.tsx`. The representative is the
+  **first-encountered** team in the group (no lexicographic tie-break favoring basketball), and its
+  ID is unified to `OLYMPICS-{GENDER}-{COUNTRY}` (e.g. `OLYMPICS-WOMEN-USA`) so neither sport is
+  arbitrarily favored. The sport-specific IDs are preserved in the color entries below for match
+  display and in `findAll()` for `GameService` enrichment.
 Teams marked `isActive: false` and `HistoricalTeams` entries are still excluded as before.
 
 ## Data Flow

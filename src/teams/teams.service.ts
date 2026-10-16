@@ -173,6 +173,26 @@ export class TeamService {
             teams = await hockeyData.getNHLTeams();
           }
         }
+        // `getESPNTeams()` now fails open (returns []) instead of throwing on
+        // non-JSON ESPN responses (Akamai 403 bot-block, etc.). When that
+        // happens for NHL, the catch block above is never triggered, so apply
+        // the HockeyData fallback here so the league still refreshes.
+        if (teams.length === 0 && league === League.NHL) {
+          try {
+            const hockeyData = new HockeyData();
+            teams = await hockeyData.getNHLTeams();
+            if (teams.length) {
+              console.info(
+                `NHL: recovered ${teams.length} team(s) via HockeyData fallback after ESPN returned no teams.`,
+              );
+            }
+          } catch (fallbackError) {
+            console.error(
+              `NHL: HockeyData fallback also failed:`,
+              fallbackError,
+            );
+          }
+        }
         if (teams.length) {
           activeTeams.push(...teams);
         }
@@ -945,6 +965,45 @@ export class TeamService {
     return blocks.join('\n');
   }
 
+  /**
+   * Deduplicates Olympic teams so there is a single entry per country and
+   * gender (`OLYMPICS-{MEN|WOMEN}-{PAYS}`) in the display output
+   * (Teams.tsx and GET /teams).
+   *
+   * The representative ID is unified to `OLYMPICS-{GENDER}-{COUNTRY}`
+   * (e.g. `OLYMPICS-WOMEN-USA`) instead of keeping a sport-specific ID such as
+   * `OLYMPICS-HOCKEY-WOMEN-USA` or `OLYMPICS-BASKETBALL-WOMEN-USA`. This avoids
+   * arbitrarily dropping hockey (lexicographic tie-break) while still showing
+   * each country delegation only once in the selector.
+   *
+   * Non-Olympic teams pass through unchanged. `findAll()` is deliberately left
+   * untouched because GameService uses it for per-sport enrichment
+   * (_fetchUniqueGames) and for league discovery (getAllGames), which require
+   * every Olympic team with its sport-specific ID.
+   */
+  private dedupOlympicTeams(teams: any[]): any[] {
+    const representatives = new Map<string, any>();
+    for (const team of teams ?? []) {
+      const match = String(team?.uniqueId ?? '').match(
+        /^OLYMPICS-(?:HOCKEY|BASKETBALL)-(MEN|WOMEN)-(.+)$/,
+      );
+      if (!match) {
+        representatives.set(team?.uniqueId, team);
+        continue;
+      }
+      const groupKey = `OLYMPICS-${match[1]}-${match[2]}`;
+      // One entry per country and gender. The ID is unified to
+      // `OLYMPICS-{GENDER}-{COUNTRY}` so neither hockey nor basketball is
+      // arbitrarily favored (previous lexicographic tie-break kept basketball).
+      // The first team encountered wins the group; its sport-specific ID is
+      // still authoritative in the database (findAll is not deduplicated).
+      if (!representatives.has(groupKey)) {
+        representatives.set(groupKey, { ...team, uniqueId: groupKey });
+      }
+    }
+    return Array.from(representatives.values());
+  }
+
   private async generateLeaguesTeamsAndColorsFiles() {
     try {
       // --- 1. Enums Leagues & Teams ---
@@ -978,10 +1037,16 @@ export class TeamService {
           (team.uniqueId?.startsWith(OLYMPICS_PREFIX)
             ? (gameCounts.get(team.uniqueId) ?? 0) >=
               TEAMS_CONSTANT_MIN_GAMES_OLYMPICS
-            : (gameCounts.get(team.uniqueId) ?? 0) >=
-              TEAMS_CONSTANT_MIN_GAMES),
+            : (gameCounts.get(team.uniqueId) ?? 0) >= TEAMS_CONSTANT_MIN_GAMES),
       );
-      const lines = visibleTeams.map(
+      // Olympic deduplication: one entry per country and gender in Teams.tsx
+      // (the frontend selector must not display the same country twice for
+      // hockey + basketball). The representative ID is unified to
+      // `OLYMPICS-{GENDER}-{COUNTRY}` so neither sport is arbitrarily favored.
+      // The color entries below stay complete for match display (sport-specific
+      // IDs and colors are preserved there).
+      const visibleTeamsDeduped = this.dedupOlympicTeams(visibleTeams);
+      const lines = visibleTeamsDeduped.map(
         (team) => `  '${team.uniqueId}': '${team.label.replace(/'/g, "\\'")}',`,
       );
       const fileContent = `export const TeamsEnum: Record<string, string> = {\n${lines.join(

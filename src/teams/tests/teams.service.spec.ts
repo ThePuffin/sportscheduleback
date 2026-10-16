@@ -664,6 +664,62 @@ describe('TeamService', () => {
     });
   });
 
+  describe('dedupOlympicTeams', () => {
+    it('keeps a single Olympic entry per country and gender (unified representative ID)', () => {
+      const teams = [
+        {
+          uniqueId: 'OLYMPICS-HOCKEY-MEN-CAN',
+          label: 'Canada',
+          league: 'OLYMPICS-HOCKEY',
+        },
+        {
+          uniqueId: 'OLYMPICS-BASKETBALL-MEN-CAN',
+          label: 'Canada',
+          league: 'OLYMPICS-BASKETBALL',
+        },
+        {
+          uniqueId: 'OLYMPICS-BASKETBALL-WOMEN-USA',
+          label: 'USA',
+          league: 'OLYMPICS-BASKETBALL',
+        },
+        { uniqueId: 'NHL-BOS', label: 'Boston Bruins', league: 'NHL' },
+      ];
+
+      const result = service['dedupOlympicTeams'](teams);
+
+      expect(result).toHaveLength(3);
+      // First team in the group wins; its ID is unified to
+      // `OLYMPICS-{GENDER}-{COUNTRY}` (no sport segment, neither hockey nor
+      // basketball arbitrarily favored).
+      expect(result.map((t) => t.uniqueId)).toEqual([
+        'OLYMPICS-MEN-CAN',
+        'OLYMPICS-WOMEN-USA',
+        'NHL-BOS',
+      ]);
+      expect(result[0].uniqueId).toBe('OLYMPICS-MEN-CAN');
+      expect(result[1].uniqueId).toBe('OLYMPICS-WOMEN-USA');
+    });
+
+    it('does not deduplicate non-Olympic teams', () => {
+      const teams = [
+        { uniqueId: 'NHL-BOS', label: 'Boston Bruins', league: 'NHL' },
+        { uniqueId: 'NHL-TOR', label: 'Toronto Maple Leafs', league: 'NHL' },
+        { uniqueId: 'NBA-LAL', label: 'Lakers', league: 'NBA' },
+      ];
+
+      expect(
+        service['dedupOlympicTeams'](teams).map((t) => t.uniqueId),
+      ).toEqual(['NHL-BOS', 'NHL-TOR', 'NBA-LAL']);
+    });
+
+    it('gère un tableau vide ou undefined', () => {
+      expect(service['dedupOlympicTeams']([])).toEqual([]);
+      expect(
+        service['dedupOlympicTeams'](undefined as unknown as any[]),
+      ).toEqual([]);
+    });
+  });
+
   describe('remove', () => {
     it('should remove a team by its uniqueId and return the deleted document', async () => {
       const uniqueId = 'NHL-BOS';

@@ -23,8 +23,11 @@ export class GamesController {
   constructor(private readonly GameService: GameService) {}
 
   @Get()
-  async findAll(): Promise<any[]> {
-    return this.GameService.findAll();
+  async findAll(
+    @Query('league') league?: string,
+    @Query('team') team?: string,
+  ): Promise<any[]> {
+    return this.GameService.findAll(league, team);
   }
   @Get('/team/:teamSelectedId')
   findByTeam(

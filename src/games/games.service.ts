@@ -66,7 +66,7 @@ export class GameService {
     private readonly refreshTimestampService: RefreshTimestampService,
   ) {}
 
-  maxYearBeforeDelete = 6;
+  maxYearBeforeDelete = 9;
   // Purge games that are still active/resolved-less several months after their start
   // (e.g. a PWHL game stuck on 2026-05-11 whose final result can never be fetched).
   staleGameMaxAgeDays = 90;
@@ -170,16 +170,24 @@ export class GameService {
   private expandOlympicTeamIds(teamSelectedIds: string[]): string[] {
     const expandedIds = new Set<string>();
     for (const teamSelectedId of teamSelectedIds) {
-      const match = teamSelectedId
-        .trim()
-        .toUpperCase()
-        .match(/^OLYMPICS-(?:HOCKEY|BASKETBALL)-(MEN|WOMEN)-(.+)$/);
-      if (!match) {
-        expandedIds.add(teamSelectedId.trim());
+      const id = teamSelectedId.trim().toUpperCase();
+      // Format unifié (frontend/backend Teams.tsx): OLYMPICS-{GENDER}-{COUNTRY}
+      const unifiedMatch = id.match(/^OLYMPICS-(MEN|WOMEN)-(.+)$/);
+      if (unifiedMatch) {
+        const [, gender, country] = unifiedMatch;
+        expandedIds.add(`OLYMPICS-HOCKEY-${gender}-${country}`);
+        expandedIds.add(`OLYMPICS-BASKETBALL-${gender}-${country}`);
         continue;
       }
-
-      const [, gender, country] = match;
+      // Format sport-specific (matchs stockés en DB): OLYMPICS-{HOCKEY|BASKETBALL}-{GENDER}-{COUNTRY}
+      const sportMatch = id.match(
+        /^OLYMPICS-(?:HOCKEY|BASKETBALL)-(MEN|WOMEN)-(.+)$/,
+      );
+      if (!sportMatch) {
+        expandedIds.add(id);
+        continue;
+      }
+      const [, gender, country] = sportMatch;
       expandedIds.add(`OLYMPICS-HOCKEY-${gender}-${country}`);
       expandedIds.add(`OLYMPICS-BASKETBALL-${gender}-${country}`);
     }
@@ -1903,9 +1911,12 @@ export class GameService {
     return forceUpdate || date ? [] : this.findAll();
   }
 
-  async findAll(): Promise<any[]> {
+  async findAll(league?: string, teamSelectedId?: string): Promise<any[]> {
+    const filter: any = { isActive: true };
+    if (league) filter.league = league.toUpperCase();
+
     const allGames = await this.gameModel
-      .find({ isActive: true })
+      .find(filter)
       .sort({ startTimeUTC: 1 })
       .lean()
       .exec();
@@ -1923,12 +1934,21 @@ export class GameService {
       return [];
     }
 
+    // Filter by team if requested (expands Olympic unified IDs to sport-specific IDs)
+    let gamesToEnrich = allGames;
+    if (teamSelectedId) {
+      const teamIds = this.expandOlympicTeamIds([teamSelectedId]);
+      gamesToEnrich = allGames.filter((game: any) =>
+        teamIds.includes(game.teamSelectedId),
+      );
+    }
+
     const teams = await this.teamService.findAll();
     const teamsMap = new Map(teams.map((t) => [t.uniqueId, t]));
 
-    await this._precomputeSeriesStatus(allGames);
+    await this._precomputeSeriesStatus(gamesToEnrich);
 
-    return allGames.map((game: any) =>
+    return gamesToEnrich.map((game: any) =>
       this._enrichGameWithTeamData(game, teamsMap),
     );
   }

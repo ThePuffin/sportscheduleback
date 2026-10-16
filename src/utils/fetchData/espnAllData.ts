@@ -1,7 +1,7 @@
 import { readableDate } from '../../utils/date';
 import { CollegeLeague, League } from '../../utils/enum';
 import { getTeamColors } from '../Colors';
-import type { ESPNTeam, TeamESPN, TeamType } from '../interface/team';
+import type { ESPNTeam, TeamType } from '../interface/team';
 import { UniversityLogos } from '../UniversityLogos';
 import { capitalize, getLuminance, getCurrentSeasonYears } from '../utils';
 
@@ -161,10 +161,7 @@ export const fetchJsonOrNull = async (url: string): Promise<any> => {
   const body = await res.text().catch(() => '');
   const snippet = body.slice(0, 160).replace(/\s+/g, ' ');
   espnSkipCount++;
-  if (
-    espnSkipCount === 1 ||
-    espnSkipCount % ESPN_SKIP_LOG_EVERY === 0
-  ) {
+  if (espnSkipCount === 1 || espnSkipCount % ESPN_SKIP_LOG_EVERY === 0) {
     console.warn(
       `[ESPN] Skipping ${res.status} ${res.statusText} ${ct ? 'non-JSON' : 'HTTP'} for ${url} — body preview: ${snippet}` +
         (espnSkipCount > 1
@@ -186,8 +183,7 @@ const getNextTeamSchedulePageUrl = (
       ? data.links.next
       : typeof data?.links?.next?.href === 'string'
         ? data.links.next.href
-        : typeof data?.nextPage === 'string' &&
-            !/^\d+$/.test(data.nextPage)
+        : typeof data?.nextPage === 'string' && !/^\d+$/.test(data.nextPage)
           ? data.nextPage
           : undefined;
 
@@ -202,9 +198,7 @@ const getNextTeamSchedulePageUrl = (
   const reportedCurrentPage =
     data?.pagination?.currentPage ?? data?.currentPage;
   const hasNext =
-    data?.pagination?.hasNext ??
-    data?.hasNext ??
-    data?.hasNextPage;
+    data?.pagination?.hasNext ?? data?.hasNext ?? data?.hasNextPage;
   const nextPage = data?.pagination?.nextPage ?? data?.nextPage;
   const nextPageNumber =
     typeof nextPage === 'number'
@@ -249,10 +243,7 @@ export const fetchESPNTeamScheduleEvents = async (
   initialUrl: string,
 ): Promise<any[]> => {
   const firstPageUrl = new URL(initialUrl);
-  firstPageUrl.searchParams.set(
-    'limit',
-    String(ESPN_TEAM_SCHEDULE_PAGE_SIZE),
-  );
+  firstPageUrl.searchParams.set('limit', String(ESPN_TEAM_SCHEDULE_PAGE_SIZE));
   firstPageUrl.searchParams.set('page', '1');
 
   const events: any[] = [];
@@ -322,7 +313,6 @@ export const fetchESPNTeamScheduleEvents = async (
 
   return events;
 };
-
 
 const formatSeriesSummary = (summary?: string): string => {
   if (!summary) return '';
@@ -511,7 +501,7 @@ export const getRecordSeasonType = (game: any): number => {
     competition?.season?.type;
   const type =
     typeof rawType === 'object' && rawType !== null
-      ? rawType.id ?? rawType.type ?? rawType.name ?? rawType.abbreviation
+      ? (rawType.id ?? rawType.type ?? rawType.name ?? rawType.abbreviation)
       : rawType;
   const normalized = String(type ?? '').toLowerCase();
 
@@ -910,19 +900,76 @@ export const UNVERIFIABLE_DIVISION_LEAGUES: ReadonlySet<string> = new Set([
  */
 export const NCAAMH_D1_TEAMS: ReadonlySet<string> = new Set([
   // Big Ten
-  'MICH', 'MSU', 'MINN', 'ND', 'OSU', 'PSU', 'WIS',
+  'MICH',
+  'MSU',
+  'MINN',
+  'ND',
+  'OSU',
+  'PSU',
+  'WIS',
   // NCHC
-  'ASU', 'COLC', 'DEN', 'M-OH', 'OMA', 'UND', 'UMD', 'SCSU', 'WMU',
+  'ASU',
+  'COLC',
+  'DEN',
+  'M-OH',
+  'OMA',
+  'UND',
+  'UMD',
+  'SCSU',
+  'WMU',
   // Hockey East
-  'BC', 'BU', 'CONN', 'ME', 'MASS', 'MRMK', 'NE', 'UNH', 'PROV', 'UML', 'UVM',
+  'BC',
+  'BU',
+  'CONN',
+  'ME',
+  'MASS',
+  'MRMK',
+  'NE',
+  'UNH',
+  'PROV',
+  'UML',
+  'UVM',
   // ECAC
-  'BRWN', 'CLAR', 'COLG', 'COR', 'DART', 'HARV', 'PRIN', 'QUIN', 'RPI', 'UNNY', 'USL', 'YALE',
+  'BRWN',
+  'CLAR',
+  'COLG',
+  'COR',
+  'DART',
+  'HARV',
+  'PRIN',
+  'QUIN',
+  'RPI',
+  'UNNY',
+  'USL',
+  'YALE',
   // CCHA
-  'AUSD', 'BGSU', 'BST', 'FRST', 'LSS', 'MNST', 'MTU', 'NMI', 'STMN',
+  'AUSD',
+  'BGSU',
+  'BST',
+  'FRST',
+  'LSS',
+  'MNST',
+  'MTU',
+  'NMI',
+  'STMN',
   // Atlantic Hockey
-  'AIC', 'AF', 'ARMY', 'BENT', 'CAN', 'HC', 'MERC', 'NIA', 'RIT', 'RMU', 'SHU',
+  'AIC',
+  'AF',
+  'ARMY',
+  'BENT',
+  'CAN',
+  'HC',
+  'MERC',
+  'NIA',
+  'RIT',
+  'RMU',
+  'SHU',
   // Independents
-  'AKFB', 'UAA', 'LIN', 'LIU', 'STO',
+  'AKFB',
+  'UAA',
+  'LIN',
+  'LIU',
+  'STO',
 ]);
 
 /**
@@ -931,10 +978,46 @@ export const NCAAMH_D1_TEAMS: ReadonlySet<string> = new Set([
  * Update this set when the NCAA D1 roster changes.
  */
 export const NCAAWH_D1_TEAM_IDS: ReadonlySet<string> = new Set([
-  '132', '103', '104', '225', '2137', '2142', '172', '159', '108', '107',
-  '2815', '2341', '311', '2385', '2771', '134', '135', '2364', '160', '315',
-  '155', '111', '194', '213', '163', '2507', '2514', '178', '2528', '2523',
-  '2529', '2594', '2779', '2900', '284', '183', '41', '2785', '261', '275',
+  '132',
+  '103',
+  '104',
+  '225',
+  '2137',
+  '2142',
+  '172',
+  '159',
+  '108',
+  '107',
+  '2815',
+  '2341',
+  '311',
+  '2385',
+  '2771',
+  '134',
+  '135',
+  '2364',
+  '160',
+  '315',
+  '155',
+  '111',
+  '194',
+  '213',
+  '163',
+  '2507',
+  '2514',
+  '178',
+  '2528',
+  '2523',
+  '2529',
+  '2594',
+  '2779',
+  '2900',
+  '284',
+  '183',
+  '41',
+  '2785',
+  '261',
+  '275',
   '43',
 ]);
 
@@ -1201,11 +1284,7 @@ const resolveD1ViaGroupHierarchy = async (
 
   const seen = new Set<string>();
   let currentId: string | undefined = startGroupId;
-  for (
-    let hops = 0;
-    currentId && hops < ESPN_GROUP_CHAIN_MAX_HOPS;
-    hops++
-  ) {
+  for (let hops = 0; currentId && hops < ESPN_GROUP_CHAIN_MAX_HOPS; hops++) {
     if (d1Parents.includes(currentId)) return true;
     if (seen.has(currentId)) return undefined;
     seen.add(currentId);
@@ -1270,7 +1349,6 @@ export const resetESPNDivisionCachesForTests = (): void => {
   espnRosterGroupsCache.clear();
   espnGroupMetaCache.clear();
 };
-
 
 /**
  * Division-1 verdict for one team, cached for six hours once it has been
@@ -1474,10 +1552,8 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
       return allTeams;
     }
     if (!leaguesData[leagueName]) return [];
-    const fetchedTeams = await fetchWithRetry(
-      leaguesData[leagueName].fetchTeam,
-    );
-    const fetchTeams: TeamESPN = await fetchedTeams.json();
+    const fetchTeams = await fetchJsonOrNull(leaguesData[leagueName].fetchTeam);
+    if (!fetchTeams) return [];
     const { sports } = fetchTeams;
     if (!sports) return [];
     const { leagues } = sports[0];
@@ -1487,25 +1563,28 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
     if (allTeams.length === 0 && leagueName.includes('OLYMPICS')) {
       try {
         const url = leaguesData[leagueName].fetchStandings;
-        const res = await fetchWithRetry(url);
-        const data = await res.json();
-
-        const traverse = (node) => {
-          if (node.standings?.entries) {
-            node.standings.entries.forEach((entry) => {
-              if (entry.team) {
-                if (!allTeams.find((t) => t.team.id === entry.team.id)) {
-                  allTeams.push({ team: entry.team });
+        const data = await fetchJsonOrNull(url);
+        if (!data) {
+          console.warn(
+            `[ESPN] Skipping standings fallback for ${leagueName}: non-JSON or HTTP error`,
+          );
+        } else {
+          const traverse = (node) => {
+            if (node.standings?.entries) {
+              node.standings.entries.forEach((entry) => {
+                if (entry.team) {
+                  if (!allTeams.find((t) => t.team.id === entry.team.id)) {
+                    allTeams.push({ team: entry.team });
+                  }
                 }
-              }
-            });
-          }
-          if (node.children) {
-            node.children.forEach((child) => traverse(child));
-          }
-        };
-
-        traverse(data);
+              });
+            }
+            if (node.children) {
+              node.children.forEach((child) => traverse(child));
+            }
+          };
+          traverse(data);
+        }
       } catch (error) {
         console.error('Error fetching standings for teams fallback:', error);
       }
@@ -1565,7 +1644,7 @@ export const getESPNTeams = async (leagueName: string): Promise<TeamType[]> => {
         // ESPN sometimes returns no logos; fall back to our manual list if we
         // have an entry for this abbreviation. the abbreviation is the second
         // part of the uniqueId when saved in the database.
-        let teamLogo =
+        const teamLogo =
           getESPNTeamLogo(team) ||
           UniversityLogos[teamID] ||
           getOlympicTeamLogo(leagueName, teamID);
