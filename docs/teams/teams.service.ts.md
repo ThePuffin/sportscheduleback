@@ -133,6 +133,14 @@ if the database still has the exact default placeholder (or no color fields) and
 contains a non-placeholder palette, regeneration retains that palette. A later non-placeholder
 database value can still update it.
 
+**Team filtering in `Teams.tsx`:** `generateLeaguesTeamsAndColorsFiles()` only writes teams that
+actually play to the frontend constant:
+- **Regular leagues** — at least `TEAMS_CONSTANT_MIN_GAMES` (10) active (non-preseason) games,
+  computed via `countActiveGamesByTeam()`.
+- **Olympic teams** (`OLYMPICS-*` ids) — at least 1 active game, so country delegations are never
+  empty.
+Teams marked `isActive: false` and `HistoricalTeams` entries are still excluded as before.
+
 ## Data Flow
 
 1. Team data is fetched from the provider.

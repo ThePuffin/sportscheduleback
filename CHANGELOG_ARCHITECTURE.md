@@ -2,6 +2,27 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Changed: `Teams.tsx` only lists teams that actually play (≥10 games, ≥1 for Olympics)
+
+`TeamService.generateLeaguesTeamsAndColorsFiles()` now filters the teams written to
+`frontend/constants/Teams.tsx` by active-game count, computed via
+`countActiveGamesByTeam()`:
+
+- **Regular leagues** — at least `TEAMS_CONSTANT_MIN_GAMES` (10) active (non-preseason) games.
+- **Olympic teams** (`OLYMPICS-*` ids) — at least 1 active game, so country delegations are never empty.
+
+Teams marked `isActive: false` and `HistoricalTeams` entries remain excluded as before. The same
+filter is applied by `updateLeagues.js` (two API calls: `?minGames=10` + `?minGames=1`) and by the
+frontend `fetchTeams()` (merged result cached in session storage for 24 h).
+
+- **`backend/src/teams/teams.service.ts`** — `generateLeaguesTeamsAndColorsFiles()` filters teams
+  by active-game count before writing `Teams.tsx`; new constants `TEAMS_CONSTANT_MIN_GAMES` (10),
+  `TEAMS_CONSTANT_MIN_GAMES_OLYMPICS` (1) and `OLYMPICS_PREFIX`.
+- **`updateLeagues.js`** — fetches teams with `?minGames=10` and `?minGames=1`, keeps Olympic entries
+  only from the second call, merges and writes `Teams.tsx`.
+- **`frontend/utils/fetchData.ts`** — `fetchTeams()` background refresh now calls `?minGames=10`
+  and `?minGames=1` and merges the results.
+
 ## Added: computed playoff series status for games without stored `seriesStatus`
 
 ### Context

@@ -45,6 +45,18 @@ const ACTIVE_GAME_COUNT_CACHE_TTL_MS = 5 * 60 * 1000;
  */
 const PRESEASON_RECORD_SEASON_TYPE = 1;
 
+/**
+ * Minimum number of active (non-preseason) games a team must have to appear
+ * in the generated `Teams.tsx` constant. Teams below the threshold are never
+ * offered for selection and are not part of the instant cold-start fallback.
+ *
+ * Olympic teams are exempted: a single match is enough for them to be listed,
+ * so country delegations are never empty.
+ */
+const TEAMS_CONSTANT_MIN_GAMES = 10;
+const TEAMS_CONSTANT_MIN_GAMES_OLYMPICS = 1;
+const OLYMPICS_PREFIX = 'OLYMPICS-';
+
 @Injectable()
 export class TeamService {
   private isFetchingTeams: { [league: string]: boolean } = {};
@@ -955,9 +967,19 @@ export class TeamService {
         .exec();
       // Never expose inactive/historical teams in the frontend selection
       // file: only active teams appear in Teams.tsx (filters / favorites).
+      // A team is listed only if it has enough active games: at least
+      // TEAMS_CONSTANT_MIN_GAMES (10) for regular leagues, or just 1 match
+      // for Olympic teams so country delegations are never empty.
+      const gameCounts = await this.countActiveGamesByTeam();
       const visibleTeams = allTeams.filter(
         (team: any) =>
-          team.isActive !== false && !HistoricalTeams[team.uniqueId],
+          team.isActive !== false &&
+          !HistoricalTeams[team.uniqueId] &&
+          (team.uniqueId?.startsWith(OLYMPICS_PREFIX)
+            ? (gameCounts.get(team.uniqueId) ?? 0) >=
+              TEAMS_CONSTANT_MIN_GAMES_OLYMPICS
+            : (gameCounts.get(team.uniqueId) ?? 0) >=
+              TEAMS_CONSTANT_MIN_GAMES),
       );
       const lines = visibleTeams.map(
         (team) => `  '${team.uniqueId}': '${team.label.replace(/'/g, "\\'")}',`,
