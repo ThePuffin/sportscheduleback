@@ -3,6 +3,23 @@
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
 
+## Added: real DB deletion of old games + 1-year retention for preseason games
+
+`GameService.removeDuplicatesAndOlds()` (manual `DELETE /games/duplicate`) now really
+removes documents from MongoDB in two steps:
+
+- **Old games** — `deleteMany` on `startTimeUTC` / `gameDate` older than
+  `maxYearBeforeDelete` (6 years), unchanged behavior.
+- **Preseason games** — new `deleteMany` with `recordSeasonType: 1` and a cutoff of
+  `preseasonYearsToKeep` (1 year): a preseason game stays 1 year in the DB, then it is
+  really deleted, even when the 6-year window has not expired.
+
+- **`backend/src/games/games.service.ts`** — new `preseasonYearsToKeep = 1` field, second
+  `deleteMany` + log in `removeDuplicatesAndOlds()`, fixed stale "5 years" comments.
+- **`backend/src/games/tests/games.service.spec.ts`** — new `removeDuplicatesAndOlds retention`
+  suite (2 `deleteMany` calls, preseason filter with `recordSeasonType: 1` and ~1-year cutoff).
+- **`backend/docs/games/games.service.ts.md`** — maintenance logic documents both retentions.
+
 ## Fixed: Olympic teams deduplicated in the team catalog output
 
 The backend returned separate `OLYMPICS-HOCKEY-{GENDER}-{PAYS}` and

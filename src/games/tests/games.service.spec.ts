@@ -3190,6 +3190,45 @@ describe('GameService', () => {
     });
   });
 
+  describe('removeDuplicatesAndOlds retention', () => {
+    it('deletes games older than maxYearBeforeDelete and preseason games older than 1 year', async () => {
+      jest.spyOn(console, 'info').mockImplementation(() => undefined);
+      mockGameModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
+      mockGameModel.exec.mockResolvedValue([]);
+
+      await service.removeDuplicatesAndOlds();
+
+      // Two real deletions in DB: old games + old preseason games.
+      expect(mockGameModel.deleteMany).toHaveBeenCalledTimes(2);
+
+      // 1st call: games older than maxYearBeforeDelete (no phase filter).
+      const oldGamesFilter = mockGameModel.deleteMany.mock.calls[0][0];
+      expect(oldGamesFilter.recordSeasonType).toBeUndefined();
+      expect(JSON.stringify(oldGamesFilter)).toContain('$lt');
+
+      // 2nd call: preseason only, with a ~1-year cutoff.
+      const preseasonFilter = mockGameModel.deleteMany.mock.calls[1][0];
+      expect(preseasonFilter.recordSeasonType).toBe(1);
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      const usedCutoff =
+        preseasonFilter.$or?.[0]?.startTimeUTC?.$lt ??
+        preseasonFilter.$or?.[1]?.gameDate?.$lt;
+      expect(usedCutoff).toBeDefined();
+      const cutoffDate = new Date(
+        typeof usedCutoff === 'string' && usedCutoff.length === 10
+          ? `${usedCutoff}T00:00:00.000Z`
+          : usedCutoff,
+      );
+      // Cutoff must be within a few days of "1 year ago" (day-boundary rounding).
+      expect(
+        Math.abs(cutoffDate.getTime() - oneYearAgo.getTime()),
+      ).toBeLessThan(3 * 24 * 60 * 60 * 1000);
+
+      (console.info as jest.Mock).mockRestore();
+    });
+  });
+
   describe('_deleteUnlinkedTeams', () => {
     it('should call teamService.deleteManyByIds when unlinked team IDs are found', async () => {
       const league = League.NHL;

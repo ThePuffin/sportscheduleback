@@ -11,7 +11,9 @@ This is the core business logic module for games. It fetches schedules and score
 - **Data enrichment** — attaches team names, logos, records and colors (during the playoffs the series label is displayed in priority of the season record, see `_enrichGameWithTeamData()`)
 - **Olympic logo enrichment** — derives a missing country flag from the Olympic team code at response time, including for legacy game records whose stored logo is empty
 - **Query helpers** — returns upcoming games, results, date-range data and hour-grouped schedules
-- **Maintenance logic** — removes duplicates, old games and invalid score records, and purges stale
+- **Maintenance logic** — removes duplicates, old games (older than `maxYearBeforeDelete`,
+  6 years), preseason games older than `preseasonYearsToKeep` (1 year,
+  `recordSeasonType === 1`) and invalid score records, and purges stale
   active games whose final result can no longer be recovered. `_deleteGamesOfPurgedTeams()` also
   deletes the games referencing teams purged as non-D1 by the last `TeamService.getTeams()` run
   on both normal refreshes and add-missing-only oldies recoveries (pulled via

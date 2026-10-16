@@ -13,7 +13,7 @@ describe('CronService', () => {
   };
 
   const mockGameService = {
-    maxYearBeforeDelete: 9,
+    maxYearBeforeDelete: 6,
     getSeasonStatus: jest.fn(),
     getOldiesGames: jest.fn(),
     fetchGamesScores: jest.fn().mockResolvedValue([]),

@@ -66,7 +66,11 @@ export class GameService {
     private readonly refreshTimestampService: RefreshTimestampService,
   ) {}
 
-  maxYearBeforeDelete = 9;
+  maxYearBeforeDelete = 6;
+  // Preseason games are only kept for this many years (they have little
+  // historical value once the season is over). Applied in
+  // `removeDuplicatesAndOlds()` via `recordSeasonType === 1`.
+  preseasonYearsToKeep = 1;
   // Purge games that are still active/resolved-less several months after their start
   // (e.g. a PWHL game stuck on 2026-05-11 whose final result can never be fetched).
   staleGameMaxAgeDays = 90;
@@ -2622,18 +2626,18 @@ export class GameService {
     // E.g., "2025-10-23" to match the format of your gameDate field
     const maxYearsAgoStr = maxYearsAgo.toISOString().split('T')[0];
 
-    // 1. Delete games older than 5 years directly in DB for efficiency
+    // 1. Delete games older than maxYearBeforeDelete years directly in DB for efficiency
     const deleteResult = await this.gameModel.deleteMany({
       $or: [
         {
-          // Condition 1: startTimeUTC is valid and older than 5 years
+          // Condition 1: startTimeUTC is valid and older than the limit
           startTimeUTC: {
             $lt: maxYearsAgoISO,
             $nin: ['', null], // Ignore empty or null fields here
           },
         },
         {
-          // Condition 2 (safety net): gameDate is older than 5 years
+          // Condition 2 (safety net): gameDate is older than the limit
           gameDate: {
             $lt: maxYearsAgoStr,
             $nin: ['', null],
@@ -2644,6 +2648,39 @@ export class GameService {
 
     console.info(
       `Deleted ${deleteResult.deletedCount} games older than ${this.maxYearBeforeDelete} years.`,
+    );
+
+    // 1b. Delete preseason games older than preseasonYearsToKeep years.
+    // Preseason has little historical value: a preseason game stays 1 year in
+    // the DB, then it is really removed (deleteMany), even when the regular
+    // retention window (maxYearBeforeDelete) has not expired yet.
+    const preseasonCutoff = new Date();
+    preseasonCutoff.setFullYear(
+      preseasonCutoff.getFullYear() - this.preseasonYearsToKeep,
+    );
+    const preseasonCutoffISO = preseasonCutoff.toISOString();
+    const preseasonCutoffStr = preseasonCutoff.toISOString().split('T')[0];
+
+    const preseasonDeleteResult = await this.gameModel.deleteMany({
+      recordSeasonType: 1,
+      $or: [
+        {
+          startTimeUTC: {
+            $lt: preseasonCutoffISO,
+            $nin: ['', null],
+          },
+        },
+        {
+          gameDate: {
+            $lt: preseasonCutoffStr,
+            $nin: ['', null],
+          },
+        },
+      ],
+    });
+
+    console.info(
+      `Deleted ${preseasonDeleteResult.deletedCount} preseason games older than ${this.preseasonYearsToKeep} year(s).`,
     );
 
     // 2. Handle duplicates among remaining active games
