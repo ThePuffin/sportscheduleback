@@ -21,6 +21,24 @@ Fail-soft: a cleanup failure is logged and never blocks the team purge below.
   cleanup-first behavior.
 
 
+## Added: per-league deletion summary on `DELETE /games/duplicate`
+
+`GameService.removeDuplicatesAndOlds()` previously returned `undefined`. It now returns a
+summary so the caller can see exactly how many games were removed, both in total and per
+league:
+
+- `totalDeleted` — grand total across all three sources (old games, old preseason games, duplicates)
+- `deletedByLeague` — `{ [league]: count }` merged across all sources
+- `details` — per-source breakdown (`oldGames`, `preseasonGames`, `duplicates`), each with its own `total` and `byLeague`
+
+The per-league counts for old/preseason games come from a pre-delete `aggregate($match + $group by league)`; duplicates are counted from the in-memory objects already being removed.
+
+- **`backend/src/games/games.service.ts`** — `removeDuplicatesAndOlds()` now counts by league before each `deleteMany` and returns the summary object.
+- **`backend/src/games/games.controller.ts`** — `DELETE /games/duplicate` (`removeDuplicate()`) returns the service summary unchanged.
+- **`backend/src/games/tests/games.service.spec.ts`** — 2 new tests (per-league summary + duplicate counted in summary).
+- **`backend/docs/games/games.controller.ts.md`** — `DELETE /games/duplicate` row documents the returned summary.
+
+
 ## Fixed: playoff series status can never show "8-0" and always reflects the last game of the strict series
 
 A playoff series is strictly the playoff games (`recordSeasonType === 3`) between the same two

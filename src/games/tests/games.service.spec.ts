@@ -3445,6 +3445,7 @@ describe('GameService', () => {
     it('is cleared after the duplicate/old-games cleanup', async () => {
       mockGameModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
       mockGameModel.exec.mockResolvedValue([]);
+      mockGameModel.aggregate.mockResolvedValue([]);
 
       await service.removeDuplicatesAndOlds();
 
@@ -3472,6 +3473,7 @@ describe('GameService', () => {
   describe('removeDuplicatesAndOlds retention', () => {
     it('deletes games older than maxYearBeforeDelete and preseason games older than 1 year', async () => {
       jest.spyOn(console, 'info').mockImplementation(() => undefined);
+      mockGameModel.aggregate.mockResolvedValue([]);
       mockGameModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
       mockGameModel.exec.mockResolvedValue([]);
 
@@ -3504,6 +3506,75 @@ describe('GameService', () => {
         Math.abs(cutoffDate.getTime() - oneYearAgo.getTime()),
       ).toBeLessThan(3 * 24 * 60 * 60 * 1000);
 
+      (console.info as jest.Mock).mockRestore();
+    });
+
+    it('returns a per-league summary of deleted games', async () => {
+      jest.spyOn(console, 'info').mockImplementation(() => undefined);
+      // aggregate is called twice (old games + preseason); both return the same breakdown here.
+      mockGameModel.aggregate.mockResolvedValue([
+        { _id: 'NHL', count: 2 },
+        { _id: 'NFL', count: 1 },
+      ]);
+      mockGameModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
+      mockGameModel.exec.mockResolvedValue([]); // no duplicates
+
+      const result = await service.removeDuplicatesAndOlds();
+
+      expect(result.totalDeleted).toBe(6); // 3 old + 3 preseason + 0 duplicates
+      expect(result.deletedByLeague).toEqual({ NHL: 4, NFL: 2 });
+      expect(result.details.oldGames).toEqual({
+        total: 3,
+        byLeague: { NHL: 2, NFL: 1 },
+      });
+      expect(result.details.preseasonGames).toEqual({
+        total: 3,
+        byLeague: { NHL: 2, NFL: 1 },
+      });
+      expect(result.details.duplicates).toEqual({
+        total: 0,
+        byLeague: {},
+      });
+
+      (console.info as jest.Mock).mockRestore();
+    });
+
+    it('counts duplicates from the in-memory objects and includes them in the summary', async () => {
+      jest.spyOn(console, 'info').mockImplementation(() => undefined);
+      mockGameModel.aggregate.mockResolvedValue([]); // no old / preseason games
+      mockGameModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
+      // Two active games share the same team+time key → one duplicate.
+      mockGameModel.exec.mockResolvedValue([
+        {
+          uniqueId: 'DUP-1',
+          league: 'NHL',
+          teamSelectedId: 'T1',
+          startTimeUTC: '2026-01-01T00:00:00.000Z',
+          homeTeamScore: null,
+          awayTeamScore: null,
+        },
+        {
+          uniqueId: 'DUP-2',
+          league: 'NHL',
+          teamSelectedId: 'T1',
+          startTimeUTC: '2026-01-01T00:00:00.000Z',
+          homeTeamScore: 2,
+          awayTeamScore: 1,
+        },
+      ]);
+
+      const removeSpy = jest
+        .spyOn(service as any, 'remove')
+        .mockResolvedValue(undefined);
+
+      const result = await service.removeDuplicatesAndOlds();
+
+      expect(result.totalDeleted).toBe(1);
+      expect(result.deletedByLeague).toEqual({ NHL: 1 });
+      expect(result.details.duplicates.total).toBe(1);
+      expect(removeSpy).toHaveBeenCalledWith('DUP-1'); // the no-score copy is removed
+
+      removeSpy.mockRestore();
       (console.info as jest.Mock).mockRestore();
     });
   });

@@ -53,7 +53,7 @@ This controller exposes the HTTP API for game data operations.
 - `PATCH /games/:uniqueId`
 - `DELETE /games/league/:league`
 - `DELETE /games/all`
-- `DELETE /games/duplicate`
+- `DELETE /games/duplicate` — runs `removeDuplicatesAndOlds()`: deletes games older than `maxYearBeforeDelete` (6 years), preseason games older than `preseasonYearsToKeep` (1 year), and duplicates among active games. **Returns a summary:** `{ totalDeleted, deletedByLeague: { [league]: count }, details: { oldGames, preseasonGames, duplicates } }` so you can see how many games were removed per league. (API key)
 - `DELETE /games/:uniqueId`
 
 ### Capacity management

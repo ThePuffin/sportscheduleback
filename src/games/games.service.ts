@@ -2854,8 +2854,7 @@ export class GameService {
     // E.g., "2025-10-23" to match the format of your gameDate field
     const maxYearsAgoStr = maxYearsAgo.toISOString().split('T')[0];
 
-    // 1. Delete games older than maxYearBeforeDelete years directly in DB for efficiency
-    const deleteResult = await this.gameModel.deleteMany({
+    const oldFilter = {
       $or: [
         {
           // Condition 1: startTimeUTC is valid and older than the limit
@@ -2872,7 +2871,21 @@ export class GameService {
           },
         },
       ],
-    });
+    };
+
+    // Count old games by league BEFORE deleting them (per-league breakdown).
+    const oldByLeagueRows =
+      (await this.gameModel.aggregate([
+        { $match: oldFilter },
+        { $group: { _id: '$league', count: { $sum: 1 } } },
+      ])) || [];
+    const oldGamesByLeague: Record<string, number> = {};
+    for (const row of oldByLeagueRows) {
+      oldGamesByLeague[String(row._id)] = row.count;
+    }
+
+    // 1. Delete games older than maxYearBeforeDelete years directly in DB for efficiency
+    const deleteResult = await this.gameModel.deleteMany(oldFilter);
 
     console.info(
       `Deleted ${deleteResult.deletedCount} games older than ${this.maxYearBeforeDelete} years.`,
@@ -2889,7 +2902,7 @@ export class GameService {
     const preseasonCutoffISO = preseasonCutoff.toISOString();
     const preseasonCutoffStr = preseasonCutoff.toISOString().split('T')[0];
 
-    const preseasonDeleteResult = await this.gameModel.deleteMany({
+    const preseasonFilter = {
       recordSeasonType: 1,
       $or: [
         {
@@ -2905,7 +2918,20 @@ export class GameService {
           },
         },
       ],
-    });
+    };
+
+    // Count old preseason games by league BEFORE deleting them.
+    const preseasonByLeagueRows =
+      (await this.gameModel.aggregate([
+        { $match: preseasonFilter },
+        { $group: { _id: '$league', count: { $sum: 1 } } },
+      ])) || [];
+    const preseasonGamesByLeague: Record<string, number> = {};
+    for (const row of preseasonByLeagueRows) {
+      preseasonGamesByLeague[String(row._id)] = row.count;
+    }
+
+    const preseasonDeleteResult = await this.gameModel.deleteMany(preseasonFilter);
 
     console.info(
       `Deleted ${preseasonDeleteResult.deletedCount} preseason games older than ${this.preseasonYearsToKeep} year(s).`,
@@ -2936,6 +2962,13 @@ export class GameService {
       }
     }
 
+    // Per-league breakdown of duplicate removals (we already have the objects).
+    const duplicatesByLeague: Record<string, number> = {};
+    for (const duplicate of duplicates) {
+      const league = String(duplicate.league);
+      duplicatesByLeague[league] = (duplicatesByLeague[league] || 0) + 1;
+    }
+
     for (const duplicate of duplicates) {
       await this.remove(duplicate.uniqueId);
     }
@@ -2944,6 +2977,41 @@ export class GameService {
     // per-team counts behind `GET /teams?minGames=…`.
     this.teamService.clearActiveGameCountCache?.();
     console.info('End of removing duplicates and old games...');
+
+    const oldTotal = Object.values(oldGamesByLeague).reduce(
+      (a, b) => a + b,
+      0,
+    );
+    const preseasonTotal = Object.values(preseasonGamesByLeague).reduce(
+      (a, b) => a + b,
+      0,
+    );
+    const duplicatesTotal = duplicates.length;
+
+    // Merge all three sources into a single per-league summary.
+    const deletedByLeague: Record<string, number> = {};
+    for (const map of [
+      oldGamesByLeague,
+      preseasonGamesByLeague,
+      duplicatesByLeague,
+    ]) {
+      for (const [league, count] of Object.entries(map)) {
+        deletedByLeague[league] = (deletedByLeague[league] || 0) + count;
+      }
+    }
+
+    return {
+      totalDeleted: oldTotal + preseasonTotal + duplicatesTotal,
+      deletedByLeague,
+      details: {
+        oldGames: { total: oldTotal, byLeague: oldGamesByLeague },
+        preseasonGames: {
+          total: preseasonTotal,
+          byLeague: preseasonGamesByLeague,
+        },
+        duplicates: { total: duplicatesTotal, byLeague: duplicatesByLeague },
+      },
+    };
   }
 
   async removeLeague(league: string): Promise<DeleteResult> {
