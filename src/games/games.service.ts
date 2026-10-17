@@ -22,6 +22,7 @@ import {
   getOlympicSeasonTeams,
   getRecordSeasonType,
   getSeasonFinals,
+  getTeamRecord,
   getTeamRecordFromSchedule,
   getTeamsSchedule,
 } from '../utils/fetchData/espnAllData';
@@ -1068,6 +1069,34 @@ export class GameService {
    * months comfortably covers the longest post-season tail (a Game 7 in early
    * summer) while staying well clear of the next season's opening fixtures.
    */
+  /**
+   * Formats an ESPN team-detail record into the same `W-L[-T/-O]` string
+   * format the records cron has always stored (`extractCompetitorRecord` on
+   * event competitors). `otLosses` is the third number for hockey, `ties` the
+   * third number for soccer / NFL / college; NBA and baseball carry no third
+   * number, so a `0` is never appended.
+   */
+  private _toRecordString(record: {
+    wins: number;
+    losses: number;
+    ties?: number;
+    otLosses?: number;
+  }): string {
+    if (record.otLosses !== undefined && record.otLosses !== null) {
+      return `${record.wins}-${record.losses}-${record.otLosses}`;
+    }
+    if (record.ties !== undefined && record.ties !== null) {
+      return `${record.wins}-${record.losses}-${record.ties}`;
+    }
+    return `${record.wins}-${record.losses}`;
+  }
+
+  /**
+   * How long a league must have gone without a single game starting before its
+   * season — regular season **and** playoffs — is considered finished. Two
+   * months comfortably covers the longest post-season tail (a Game 7 in early
+   * summer) while staying well clear of the next season's opening fixtures.
+   */
   private static readonly SEASON_OVER_MONTHS = 2;
 
   /**
@@ -1277,10 +1306,73 @@ export class GameService {
         existingIds.add(team.uniqueId);
       }
     }
-    const leagueLogos = await this.getTeamsLogo(leagueTeams);
+    // Team logos are only needed by the PWHL path and by the
+    // full-schedule path (getLeagueGames). The records-only mode builds no
+    // game payloads, so it skips the logo lookup entirely.
+    let leagueLogos: Record<string, string> | undefined;
+    if (normalizedLeague === League.PWHL || teamRecords === undefined) {
+      leagueLogos = await this.getTeamsLogo(leagueTeams);
+    }
 
     let gamesObj = {};
-    if (normalizedLeague === League.PWHL) {
+
+    // Records-only mode (refreshCurrentSeasonRecords): only the per-team
+    // tallies are needed; the full schedules are discarded afterwards. Fetching
+    // them just to throw them away is what made this endpoint OOM the 460 MB
+    // heap. Per team we fetch the team's cumulative record directly (ESPN team
+    // detail) and fall back to its regular-season schedule when the detail
+    // endpoint carries no record (e.g. college hockey). No game object, no
+    // deduplication set, no applySeasonFinalRecords pass is ever built here.
+    // getLeagueGames() and the oldies dry-run still use the full schedule
+    // path below.
+    if (teamRecords) {
+      let detailFetched = 0;
+      let fallbackFetched = 0;
+      let failed = 0;
+      for (const team of leagueTeams) {
+        let record = '';
+        let fromDetail = false;
+        try {
+          const detail = await getTeamRecord(normalizedLeague, team.id);
+          if (detail?.record) {
+            record = this._toRecordString(detail.record);
+            fromDetail = record.length > 0;
+          }
+        } catch (error) {
+          console.error(
+            `[Records] Could not fetch the team detail record for ${normalizedLeague} ${team.uniqueId}:`,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        if (!record) {
+          try {
+            record = await getTeamRecordFromSchedule(normalizedLeague, team.id);
+          } catch (error) {
+            console.error(
+              `[Records] Could not fetch the team schedule record for ${normalizedLeague} ${team.uniqueId}:`,
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+        }
+        if (record) {
+          teamRecords.set(team.uniqueId, record);
+          if (fromDetail) {
+            detailFetched++;
+          } else {
+            fallbackFetched++;
+          }
+        } else {
+          failed++;
+        }
+      }
+      // Per-league completion log: the records-only mode fetches no schedule,
+      // so this replaces the per-team fetched-game count / distinct-game summary
+      // the full path logs (project rule: keep refresh observability).
+      console.info(
+        `[Records] ${normalizedLeague}: ${teamRecords.size}/${leagueTeams.length} team record(s) fetched ` +
+          `(${detailFetched} via team detail, ${fallbackFetched} via schedule fallback, ${failed} without record).`,
+      );
+    } else if (normalizedLeague === League.PWHL) {
       const hockeyData = new HockeyData();
       gamesObj = await hockeyData.getHockeySchedule(
         leagueTeams,
@@ -2937,8 +3029,24 @@ export class GameService {
       `Deleted ${preseasonDeleteResult.deletedCount} preseason games older than ${this.preseasonYearsToKeep} year(s).`,
     );
 
-    // 2. Handle duplicates among remaining active games
-    const games = await this.gameModel.find({ isActive: true }).exec();
+    // 2. Handle duplicates among remaining active games.
+    // Only the dedup key, the two scores and the league are needed below, so
+    // the query projects just those fields and uses `.lean()` to get plain JS
+    // objects instead of full Mongoose documents. Materialising every active
+    // game (full documents) into the Node heap is what OOM-killed the process
+    // behind Render's 460 MB limit and surfaced as a 502 on this endpoint.
+    const games = await this.gameModel
+      .find({ isActive: true })
+      .select({
+        uniqueId: 1,
+        league: 1,
+        teamSelectedId: 1,
+        startTimeUTC: 1,
+        homeTeamScore: 1,
+        awayTeamScore: 1,
+      })
+      .lean()
+      .exec();
     const duplicates = [];
     const gameMap = new Map();
 

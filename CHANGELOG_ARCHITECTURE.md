@@ -3,6 +3,55 @@
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
 
+## Fixed: `POST /games/refresh/records` OOM (records-only mode in `_fetchUniqueGames()`)
+
+`refreshCurrentSeasonRecords()` collected the per-team tallies by fetching **every team's full
+schedule** through `_fetchUniqueGames(league, undefined, teamRecords)` — building each game
+object, deduplicating the whole batch and running `applySeasonFinalRecords()` — then discarded
+all of it, keeping only the `teamRecords` side effect. On Render (460 MB heap) this exhausted
+the V8 old space and killed the process.
+
+`_fetchUniqueGames()` now has a **records-only branch** (`teamRecords` given) that never builds
+game payloads: per team it fetches the cumulative record **directly** via
+`getTeamRecord(league, teamId)` (now **exported** from `espnAllData.ts`), formatted by the new
+`GameService._toRecordString()` helper into the stored `W-L[-T/-O]` string (`otLosses` for
+hockey, `ties` for soccer/NFL/college, plain `W-L` for NBA/baseball so a `0` is never appended),
+and falls back to `getTeamRecordFromSchedule()` when the detail endpoint carries no record
+(e.g. college hockey). The team-logo lookup is skipped too. Per-team failures are logged and
+never abort the loop, and each league ends with a per-league completion summary
+(`[Records] <LEAGUE>: N/M team record(s) fetched (X via detail, Y via schedule fallback, Z without record).`)
+so refresh observability stays equivalent to the full path (project rule).
+
+`getLeagueGames()` and the oldies dry-run (`teamRecords` omitted) still use the full schedule
+path, unchanged. The observability contract is preserved: `getLeagueGames()` keeps its
+per-team fetched-game count, per-league distinct-game summary and final saved/upserted count.
+
+- **`backend/src/utils/fetchData/espnAllData.ts`** — `getTeamRecord` is exported.
+- **`backend/src/games/games.service.ts`** — `_fetchUniqueGames()` records-only branch +
+  `_toRecordString()` helper.
+- **`backend/docs/games/games.service.ts.md`** — `refreshCurrentSeasonRecords()` rewritten for
+  the records-only mode.
+
+
+## Fixed: `DELETE /games/duplicate` returned 502 (OOM on Render)
+
+`GameService.removeDuplicatesAndOlds()` deduplicated active games with
+`this.gameModel.find({ isActive: true }).exec()`, which hydrated **every active game as a full
+Mongoose document** into the Node heap. On Render (460 MB heap) that exhausted the V8 old space,
+the process was killed, and Render's gateway answered **502 Bad Gateway** — the same crash
+pattern as the `POST /games/refresh/records` OOM.
+
+The query now **projects only the six fields the dedup actually reads** (`uniqueId`, `league`,
+`teamSelectedId`, `startTimeUTC`, `homeTeamScore`, `awayTeamScore`) and chains **`.lean()`**, so
+MongoDB returns plain JS objects instead of hydrated documents (~30× lighter). The dedup logic,
+iteration order, per-league summary and return shape are unchanged.
+
+- **`backend/src/games/games.service.ts`** — `removeDuplicatesAndOlds()` reads active games via a
+  projected `.lean()` query.
+- **`backend/docs/games/games.service.ts.md`** — maintenance-logic bullet documents the
+  memory-safe dedup read.
+
+
 ## Added: weekly games retention cleanup inside the Sunday stale-teams cron
 
 `GameService.removeDuplicatesAndOlds()` (games older than `maxYearBeforeDelete` = 6 years,

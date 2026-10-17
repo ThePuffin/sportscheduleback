@@ -3577,6 +3577,29 @@ describe('GameService', () => {
       removeSpy.mockRestore();
       (console.info as jest.Mock).mockRestore();
     });
+
+    it('reads active games with a projected lean query to stay within the heap budget', async () => {
+      // Regression guard for the Render 502: the dedup used to hydrate every
+      // active game as a full Mongoose document, OOM-killing the 460 MB heap.
+      jest.spyOn(console, 'info').mockImplementation(() => undefined);
+      mockGameModel.aggregate.mockResolvedValue([]);
+      mockGameModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
+      mockGameModel.exec.mockResolvedValue([]);
+
+      await service.removeDuplicatesAndOlds();
+
+      expect(mockGameModel.select).toHaveBeenCalledWith({
+        uniqueId: 1,
+        league: 1,
+        teamSelectedId: 1,
+        startTimeUTC: 1,
+        homeTeamScore: 1,
+        awayTeamScore: 1,
+      });
+      expect(mockGameModel.lean).toHaveBeenCalled();
+
+      (console.info as jest.Mock).mockRestore();
+    });
   });
 
   describe('_deleteUnlinkedTeams', () => {

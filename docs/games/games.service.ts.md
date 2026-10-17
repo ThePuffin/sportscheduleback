@@ -14,7 +14,11 @@ This is the core business logic module for games. It fetches schedules and score
 - **Maintenance logic** — removes duplicates, old games (older than `maxYearBeforeDelete`,
   6 years), preseason games older than `preseasonYearsToKeep` (1 year,
   `recordSeasonType === 1`) and invalid score records, and purges stale
-  active games whose final result can no longer be recovered. `_deleteGamesOfPurgedTeams()` also
+  active games whose final result can no longer be recovered. The duplicate pass in
+  `removeDuplicatesAndOlds()` reads active games with a **projected `.lean()` query**
+  (`uniqueId`, `league`, `teamSelectedId`, `startTimeUTC`, `homeTeamScore`, `awayTeamScore`)
+  instead of full Mongoose documents, so the dedup stays within the 460 MB Render heap.
+  `_deleteGamesOfPurgedTeams()` also
   deletes the games referencing teams purged as non-D1 by the last `TeamService.getTeams()` run
   on both normal refreshes and add-missing-only oldies recoveries (pulled via
   `takeLastPurgedNonD1Ids(league)`, which drains only that league's ids): a game is
@@ -359,7 +363,19 @@ frozen or initial `0-0-0` value.
 
 ### `refreshCurrentSeasonRecords()`
 
-Refreshes `team.record` (`wins` / `losses` / `ties` / `otLosses`) for every league whose season — **regular season OR playoffs** — covers today, **without saving any fetched game** (its only game writes are the record propagation described above). Each kept league's schedule is fetched with `_fetchUniqueGames()` and the returned games are discarded; only its `teamRecords` side effect (the most recent tally per team, harvested from the schedule — the only source for leagues whose scoreboard carries no `records`, e.g. college hockey) is used, then written through `TeamService.updateRecords()`. Each fresh tally is then mirrored onto every current-season game of the team (past and upcoming alike) by `_propagateTeamRecordToSeasonGames()` — logged as `[Records] Propagated fresh tallies to N season game(s).` — so stale stored records self-heal on every run. Off-season leagues are skipped **before** any third-party call, so the pass is cheap. A failing league is logged (`[Records] Could not refresh records for <LEAGUE>:`) and does not abort the others. Returns `{ leagues, updatedTeams }`.
+Refreshes `team.record` (`wins` / `losses` / `ties` / `otLosses`) for every league whose season — **regular season OR playoffs** — covers today, **without saving any fetched game** (its only game writes are the record propagation described above).
+
+To collect the tallies it calls `_fetchUniqueGames(league, undefined, teamRecords)` in **records-only mode**: instead of fetching (and discarding) every team's full schedule — which built every game object, deduplicated it and ran `applySeasonFinalRecords()` only to throw it all away, exhausting the 460 MB Render heap — the loop fetches each team's **cumulative record directly**:
+
+1. `getTeamRecord(league, teamId)` (exported from `espnAllData.ts`) reads ESPN's team-detail endpoint, formatted by `_toRecordString()` into the stored `W-L[-T/-O]` string (`otLosses` for hockey, `ties` for soccer/NFL/college, plain `W-L` for NBA/baseball, so a `0` is never appended).
+2. When the detail carries no record (e.g. college hockey), it falls back to `getTeamRecordFromSchedule(league, teamId)`.
+3. Either failure is logged per team (`[Records] Could not fetch the team <detail|schedule> record for <LEAGUE> <team>:`) and never aborts the loop; a team without any tally is simply skipped.
+
+In this mode no team logo lookup, no game payload, no deduplication map and no `applySeasonFinalRecords()` pass ever run. `getLeagueGames()` and the oldies dry-run still use the full schedule path.
+
+Progress/completion visibility is preserved (project rule): each league ends with a per-league summary — `[Records] <LEAGUE>: N/M team record(s) fetched (X via team detail, Y via schedule fallback, Z without record).` — standing in for the per-team fetched-game count and distinct-game summary the full path logs.
+
+The harvested map is written through `TeamService.updateRecords()`. Each fresh tally is then mirrored onto every current-season game of the team (past and upcoming alike) by `_propagateTeamRecordToSeasonGames()` — logged as `[Records] Propagated fresh tallies to N season game(s).` — so stale stored records self-heal on every run. Off-season leagues are skipped **before** any third-party call, so the pass is cheap. A failing league is logged (`[Records] Could not refresh records for <LEAGUE>:`) and does not abort the others. Returns `{ leagues, updatedTeams }`.
 
 Called by the twice-daily `refreshTeamRecordsMorning()` / `refreshTeamRecordsAfternoon()` crons and manually via `POST /games/refresh/records` (API key). The in-progress-season rule differs from `getLeagueGames()`, which skips the write only for **oldies** (`season` given): here the whole point is to refresh the live tally, and no game document is touched.
 

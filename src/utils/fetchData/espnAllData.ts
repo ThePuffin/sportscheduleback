@@ -1064,7 +1064,7 @@ const espnDivisionCache = new Map<
   { isD1: boolean; checkedAt: number }
 >();
 
-const getTeamRecord = async (
+export const getTeamRecord = async (
   leagueName: string,
   id: string,
 ): Promise<{
