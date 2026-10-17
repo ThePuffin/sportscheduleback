@@ -489,9 +489,29 @@ export class CronService implements OnModuleInit {
     }
   }
 
-  @Cron('0 4 * * 0') // WEEKLY ON SUNDAY AT 4AM (UTC) — purge stale teams without active games
+  @Cron('0 4 * * 0') // WEEKLY ON SUNDAY AT 4AM (UTC) — cleanup old games, then purge stale teams without active games
   async purgeStaleTeams() {
     try {
+      // Retention cleanup FIRST: delete games older than `maxYearBeforeDelete`
+      // (6 years) and preseason games older than `preseasonYearsToKeep` (1
+      // year), plus duplicates among active games. Running it before the team
+      // purge matters: removing old games can leave teams without any active
+      // game, which is exactly what the stale-team purge below then collects.
+      console.info(
+        '[Cron] Running weekly cleanup of duplicates and old games...',
+      );
+      try {
+        const cleanup = await this.gameService.removeDuplicatesAndOlds();
+        console.info(
+          `[Cron] Weekly games cleanup done: ${JSON.stringify(cleanup)}.`,
+        );
+      } catch (err) {
+        // Fail-soft: a cleanup failure must never block the team purge below.
+        console.error(
+          '[Cron] Error running weekly games cleanup:',
+          (err as any)?.message || err,
+        );
+      }
       console.info(
         '[Cron] Running weekly purge of stale teams without active games...',
       );

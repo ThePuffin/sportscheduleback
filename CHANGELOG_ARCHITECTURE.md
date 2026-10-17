@@ -3,6 +3,24 @@
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
 
+## Added: weekly games retention cleanup inside the Sunday stale-teams cron
+
+`GameService.removeDuplicatesAndOlds()` (games older than `maxYearBeforeDelete` = 6 years,
+preseason games older than `preseasonYearsToKeep` = 1 year, duplicates among active games) was
+manual-only (`DELETE /games/duplicate`) — no cron ever called it, so old games accumulated
+until the 97 %-disk emergency purge. It now runs **first** inside the weekly Sunday 4 AM UTC
+`CronService.purgeStaleTeams()` cron, **before** the stale-team purge: removing old games can
+leave teams without any active game, which is exactly what the team purge then collects.
+Fail-soft: a cleanup failure is logged and never blocks the team purge below.
+
+- **`backend/src/cronJob/cronJob.service.ts`** — `purgeStaleTeams()` calls
+  `gameService.removeDuplicatesAndOlds()` first (inner try/catch, result logged).
+- **`backend/src/cronJob/tests/cronJob.service.spec.ts`** — 2 new tests (cleanup-before-purge
+  order via `invocationCallOrder`, fail-soft when the cleanup rejects) + mock.
+- **`backend/docs/cronJob/cronJob.service.ts.md`** — `purgeStaleTeams()` row documents the
+  cleanup-first behavior.
+
+
 ## Fixed: playoff series status can never show "8-0" and always reflects the last game of the strict series
 
 A playoff series is strictly the playoff games (`recordSeasonType === 3`) between the same two

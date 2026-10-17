@@ -28,7 +28,7 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 | **`refreshTeamRecordsMorning()`** | **Daily (`0 6 * * *` = 3 AM Pacific / 6 AM New York, 9 AM NY in DST)** | **Refreshes `team.record` for in-season leagues only (regular season or playoffs); no game is written** |
 | **`refreshTeamRecordsAfternoon()`** | **Daily (`0 15 * * *` = 9 AM Pacific / 12 PM New York, 3 PM NY in DST)** | **Same midday safety net, so a failed or skipped morning run is caught the same U.S. day** |
 | **`finalizeFinishedSeasonRecords()`** | **Every ~15 days (`0 5 1,16 * *` = 1st & 16th, 5 AM UTC)** | **For leagues with no game started in 2 months: freeze the end-of-season tally onto their games, then reset `team.record` to zero** |
-| **`purgeStaleTeams()`**           | **Weekly Sunday 4AM UTC**       | **Refresh teams, then delete teams stale for more than 2 months with no active game** |
+| **`purgeStaleTeams()`**           | **Weekly Sunday 4AM UTC**       | **Games retention cleanup first (`removeDuplicatesAndOlds`: 6-year games, 1-year preseason, duplicates), then refresh teams + delete teams stale for more than 2 months with no active game (fail-soft: a cleanup failure never blocks the team purge)** |
 | **`monitorDiskCapacity()`**      | **Every hour (`0 */1 * * *`)** | **Disk usage check & purge of the oldest month**     |
 
 ## Team records refresh (`refreshTeamRecordsMorning` / `refreshTeamRecordsAfternoon`)

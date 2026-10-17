@@ -28,6 +28,7 @@ describe('CronService', () => {
     }),
     getAllGames: jest.fn().mockResolvedValue([]),
     purgeStaleTeamsWithoutGames: jest.fn(),
+    removeDuplicatesAndOlds: jest.fn().mockResolvedValue({ success: true }),
     getLastRecoveryTimestamp: jest.fn().mockResolvedValue(null),
     addRecoveryTimestamp: jest.fn().mockResolvedValue(undefined),
     isScoreRecoveryRunning: false,
@@ -545,6 +546,65 @@ describe('CronService', () => {
         expect.any(Error),
       );
       consoleSpy.mockRestore();
+    });
+
+    it('runs the games retention cleanup before the team purge', async () => {
+      jest.spyOn(console, 'info').mockImplementation();
+      mockTeamService.getTeams = jest.fn().mockResolvedValue([]);
+      mockGameService.removeDuplicatesAndOlds = jest
+        .fn()
+        .mockResolvedValue({ success: true });
+      mockGameService.purgeStaleTeamsWithoutGames = jest
+        .fn()
+        .mockResolvedValue({
+          action: 'none',
+          candidates: 0,
+          deletedCount: 0,
+          deletedIds: [],
+        });
+
+      await service.purgeStaleTeams();
+
+      expect(mockGameService.removeDuplicatesAndOlds).toHaveBeenCalledTimes(1);
+      // Cleanup runs first: its mock must resolve before the team purge.
+      const cleanupOrder = mockGameService.removeDuplicatesAndOlds.mock
+        .invocationCallOrder[0];
+      const purgeOrder = mockGameService.purgeStaleTeamsWithoutGames.mock
+        .invocationCallOrder[0];
+      expect(cleanupOrder).toBeLessThan(purgeOrder);
+      expect(console.info).toHaveBeenCalledWith(
+        '[Cron] Running weekly cleanup of duplicates and old games...',
+      );
+      (console.info as any).mockRestore();
+    });
+
+    it('still purges teams when the games cleanup fails (fail-soft)', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+      jest.spyOn(console, 'info').mockImplementation();
+      mockTeamService.getTeams = jest.fn().mockResolvedValue([]);
+      mockGameService.removeDuplicatesAndOlds = jest
+        .fn()
+        .mockRejectedValue(new Error('cleanup failed'));
+      mockGameService.purgeStaleTeamsWithoutGames = jest
+        .fn()
+        .mockResolvedValue({
+          action: 'none',
+          candidates: 0,
+          deletedCount: 0,
+          deletedIds: [],
+        });
+
+      await service.purgeStaleTeams();
+
+      expect(mockGameService.removeDuplicatesAndOlds).toHaveBeenCalled();
+      // The team purge still runs despite the cleanup failure.
+      expect(mockGameService.purgeStaleTeamsWithoutGames).toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[Cron] Error running weekly games cleanup:',
+        'cleanup failed',
+      );
+      errorSpy.mockRestore();
+      (console.info as any).mockRestore();
     });
   });
 });
