@@ -296,6 +296,25 @@ describe('GameService', () => {
       expect(game.seriesStatus).toBe('Game 3');
     });
 
+    it('never lets a game-number label overwrite a stored evolution', async () => {
+      const game = buildGame();
+
+      await (service as any).syncGameWithScore(
+        {
+          gameStatus: 'FINISHED',
+          isFinal: true,
+          homeTeamScore: 7,
+          awayTeamScore: 4,
+          seriesSummary: 'NLCS - Game 3',
+          seriesStatus: 'Game 3',
+        },
+        game,
+      );
+
+      expect(game.seriesStatus).toBe('MIL leads 2-1');
+      expect(game.seriesSummary).toBe('NLCS - Game 3');
+    });
+
     it('propagates the refreshed record onto the season games of both teams', async () => {
       const propagateSpy = jest
         .spyOn(service as any, '_propagateTeamRecordToSeasonGames')
@@ -418,6 +437,77 @@ describe('GameService', () => {
 
       expect(stored.seriesStatus).toBe('MIL leads 3-0');
       expect(stored.seriesSummary).toBe('NLCS - Game 3');
+    });
+
+    it('never moves a decided series backwards (wins 4-0 kept over leads 3-0)', async () => {
+      const stored = buildStoredGame();
+      stored.seriesStatus = 'MIL wins series 4-0';
+      givenStoredGame(stored);
+
+      await service.create({
+        uniqueId: stored.uniqueId,
+        seriesStatus: 'MIL leads 3-0',
+        seriesSummary: 'NLCS - Game 4',
+      } as any);
+
+      expect(stored.seriesStatus).toBe('MIL wins series 4-0');
+    });
+
+    it('rejects an impossible fresh evolution (8-0) and self-heals it later', async () => {
+      const stored = buildStoredGame();
+      givenStoredGame(stored);
+
+      await service.create({
+        uniqueId: stored.uniqueId,
+        seriesStatus: 'MIL wins series 8-0',
+        seriesSummary: 'NLCS - Game 4',
+      } as any);
+
+      expect(stored.seriesStatus).toBe('MIL leads 3-0');
+
+      await service.create({
+        uniqueId: stored.uniqueId,
+        seriesStatus: 'MIL wins series 4-0',
+        seriesSummary: 'NLCS - Game 4',
+      } as any);
+
+      expect(stored.seriesStatus).toBe('MIL wins series 4-0');
+    });
+
+    it('never replaces a stored evolution with a game-number label', async () => {
+      const stored = buildStoredGame();
+      givenStoredGame(stored);
+
+      await service.create({
+        uniqueId: stored.uniqueId,
+        seriesStatus: 'Game 3',
+        seriesSummary: 'NLCS - Game 3',
+      } as any);
+
+      expect(stored.seriesStatus).toBe('MIL leads 3-0');
+
+      await service.create({
+        uniqueId: stored.uniqueId,
+        seriesStatus: 'NLCS - Game 4',
+        seriesSummary: 'NLCS - Game 4',
+      } as any);
+
+      expect(stored.seriesStatus).toBe('MIL leads 3-0');
+    });
+
+    it('reroutes a game-number label to the summary when no status is stored', async () => {
+      const stored = buildStoredGame();
+      stored.seriesStatus = '';
+      stored.seriesSummary = '';
+      givenStoredGame(stored);
+
+      await service.create({
+        uniqueId: stored.uniqueId,
+        seriesStatus: 'Game 3',
+      } as any);
+
+      expect(stored.seriesStatus ?? '').toBe('');
+      expect(stored.seriesSummary).toBe('Game 3');
     });
   });
 
@@ -913,22 +1003,176 @@ describe('GameService', () => {
   });
 
   describe('computed series status (no stored seriesStatus)', () => {
-    const playoffGame = (overrides = {}) => ({
-      uniqueId: 'g1',
-      league: 'MLB',
-      gameDate: '2026-10-15',
-      startTimeUTC: '2026-10-15T23:00:00Z',
-      homeTeamId: 'MLB-MIL',
-      awayTeamId: 'MLB-LAD',
-      homeTeamShort: 'MIL',
-      awayTeamShort: 'LAD',
-      recordSeasonType: 3,
-      seriesStatus: '',
-      seriesSummary: '',
-      ...overrides,
+    let gameSeq = 0;
+    const playoffGame = (overrides: any = {}) => {
+      gameSeq += 1;
+      return {
+        uniqueId: `g${gameSeq}`,
+        league: 'MLB',
+        gameDate: '2026-10-15',
+        startTimeUTC: `2026-10-15T2${gameSeq % 10}:00:00Z`,
+        homeTeamId: 'MLB-MIL',
+        awayTeamId: 'MLB-LAD',
+        homeTeamShort: 'MIL',
+        awayTeamShort: 'LAD',
+        recordSeasonType: 3,
+        seriesStatus: '',
+        seriesSummary: '',
+        ...overrides,
+      };
+    };
+
+    beforeEach(() => {
+      gameSeq = 0;
     });
 
+    // NOTE: `playoffGame()` auto-assigns a distinct `uniqueId` AND a distinct
+    // start time per game, so fixtures built without explicit overrides are
+    // never mistaken for duplicates (same teams at the same hour) by the
+    // slot-dedupe of `_computeSeriesStatus`.
+
     describe('_computeSeriesStatus', () => {
+      it('prefers the last game stored evolution over recomputation (decided series)', () => {
+        const seriesGames = [
+          { ...playoffGame(), homeTeamScore: 5, awayTeamScore: 3 },
+          {
+            ...playoffGame(),
+            uniqueId: 'g4',
+            startTimeUTC: '2026-10-16T23:00:00Z',
+            gameDate: '2026-10-16',
+            homeTeamScore: 6,
+            awayTeamScore: 4,
+            // Clincher (16 oct.): authoritative final status.
+            seriesStatus: 'MIL wins series 4-0',
+          },
+        ];
+        const current = { ...playoffGame(), uniqueId: 'g1' };
+        expect((service as any)._computeSeriesStatus(seriesGames, current)).toBe(
+          'MIL wins series 4-0',
+        );
+      });
+
+      it('shows the ongoing-series status from the last game on every game', () => {
+        const seriesGames = [
+          {
+            ...playoffGame(),
+            startTimeUTC: '2026-10-15T23:00:00Z',
+            homeTeamScore: 6,
+            awayTeamScore: 2,
+            seriesStatus: 'MIL leads 3-0',
+          },
+          { ...playoffGame(), uniqueId: 'g4', startTimeUTC: '2026-10-18T23:00:00Z' },
+        ];
+        const future = {
+          ...playoffGame(),
+          uniqueId: 'g4',
+          startTimeUTC: '2026-10-18T23:00:00Z',
+        };
+        expect((service as any)._computeSeriesStatus(seriesGames, future)).toBe(
+          'MIL leads 3-0',
+        );
+      });
+
+      it('ignores an impossible stored evolution ("8-0") and computes instead', () => {
+        const seriesGames = [
+          { ...playoffGame(), homeTeamScore: 5, awayTeamScore: 3 },
+          {
+            ...playoffGame(),
+            uniqueId: 'g2',
+            homeTeamScore: 2,
+            awayTeamScore: 4,
+            seriesStatus: 'MIL wins series 8-0',
+          },
+          { ...playoffGame(), uniqueId: 'g3', homeTeamScore: 1, awayTeamScore: 7 },
+        ];
+        const current = { ...playoffGame() };
+        expect((service as any)._computeSeriesStatus(seriesGames, current)).toBe(
+          'LAD leads 2-1',
+        );
+      });
+
+      it('never counts more than 7 games (duplicate rows cannot make 8-0)', () => {
+        const seriesGames = Array.from({ length: 8 }, (_, i) => ({
+          ...playoffGame(),
+          uniqueId: `dup-${i}`,
+          startTimeUTC: `2026-10-1${i % 7}T23:00:00Z`,
+          homeTeamScore: 6,
+          awayTeamScore: 2,
+        }));
+        const current = { ...playoffGame() };
+        expect((service as any)._computeSeriesStatus(seriesGames, current)).toBe('');
+      });
+
+      it('counts a duplicated fixture (same teams, same time) only once', () => {
+        const fixture = {
+          ...playoffGame(),
+          startTimeUTC: '2026-10-15T23:00:00Z',
+          homeTeamScore: 6,
+          awayTeamScore: 2,
+        };
+        const seriesGames = [
+          fixture,
+          // Same fixture stored under a second id (re-fetch twin row).
+          { ...fixture, uniqueId: 'g2-twin' },
+          {
+            ...playoffGame(),
+            uniqueId: 'g3',
+            startTimeUTC: '2026-10-16T23:00:00Z',
+            homeTeamScore: 1,
+            awayTeamScore: 7,
+          },
+        ];
+        const current = {
+          ...playoffGame(),
+          uniqueId: 'g3',
+          startTimeUTC: '2026-10-16T23:00:00Z',
+        };
+        // 1 win each — not 2-1: the twin row must not count twice.
+        expect((service as any)._computeSeriesStatus(seriesGames, current)).toBe(
+          'Series tied 1-1',
+        );
+      });
+
+      it('counts a duplicated fixture with swapped home/away only once', () => {
+        const seriesGames = [
+          {
+            ...playoffGame(),
+            startTimeUTC: '2026-10-15T23:00:00Z',
+            homeTeamScore: 6,
+            awayTeamScore: 2,
+          },
+          {
+            ...playoffGame(),
+            uniqueId: 'g2-swapped',
+            startTimeUTC: '2026-10-15T23:00:00Z',
+            // Same fixture, sides swapped in the stored row.
+            homeTeamId: 'MLB-LAD',
+            awayTeamId: 'MLB-MIL',
+            homeTeamShort: 'LAD',
+            awayTeamShort: 'MIL',
+            homeTeamScore: 2,
+            awayTeamScore: 6,
+          },
+          {
+            ...playoffGame(),
+            uniqueId: 'g3',
+            startTimeUTC: '2026-10-16T23:00:00Z',
+            homeTeamScore: 6,
+            awayTeamScore: 2,
+          },
+        ];
+        const current = {
+          ...playoffGame(),
+          uniqueId: 'g3',
+          startTimeUTC: '2026-10-16T23:00:00Z',
+        };
+        // Only 2 distinct fixtures played (both MIL wins): no evolution yet
+        // from a single fixture counted twice, and no doubled 3-0.
+        expect((service as any)._computeSeriesStatus(seriesGames, current)).toBe(
+          'MIL leads 2-0',
+        );
+      });
+
       it('returns "X leads Y-Z" when one team leads', () => {
         const seriesGames = [
           { ...playoffGame(), homeTeamScore: 5, awayTeamScore: 3 },
@@ -1019,17 +1263,52 @@ describe('GameService', () => {
     describe('_precomputeSeriesStatus', () => {
       it('computes and stores status for playoff games without seriesStatus', async () => {
         const games = [
-          { ...playoffGame(), uniqueId: 'g1', seriesStatus: '', seriesSummary: '' },
-          { ...playoffGame(), uniqueId: 'g2', seriesStatus: '', seriesSummary: '' },
+          {
+            ...playoffGame(),
+            uniqueId: 'g1',
+            gameDate: '2026-10-15',
+            startTimeUTC: '2026-10-15T23:00:00Z',
+            seriesStatus: '',
+            seriesSummary: '',
+          },
+          {
+            ...playoffGame(),
+            uniqueId: 'g2',
+            gameDate: '2026-10-15',
+            startTimeUTC: '2026-10-15T23:00:00Z',
+            seriesStatus: '',
+            seriesSummary: '',
+          },
         ];
 
         mockGameModel.find.mockReturnValue({
           sort: jest.fn().mockReturnThis(),
           lean: jest.fn().mockReturnThis(),
           exec: jest.fn().mockResolvedValue([
-            { ...playoffGame(), uniqueId: 'g1', homeTeamScore: 5, awayTeamScore: 3 },
-            { ...playoffGame(), uniqueId: 'g2', homeTeamScore: 2, awayTeamScore: 4 },
-            { ...playoffGame(), uniqueId: 'g3', homeTeamScore: 1, awayTeamScore: 7 },
+            {
+              ...playoffGame(),
+              uniqueId: 'db1',
+              startTimeUTC: '2026-10-13T23:00:00Z',
+              gameDate: '2026-10-13',
+              homeTeamScore: 5,
+              awayTeamScore: 3,
+            },
+            {
+              ...playoffGame(),
+              uniqueId: 'db2',
+              startTimeUTC: '2026-10-14T23:00:00Z',
+              gameDate: '2026-10-14',
+              homeTeamScore: 2,
+              awayTeamScore: 4,
+            },
+            {
+              ...playoffGame(),
+              uniqueId: 'db3',
+              startTimeUTC: '2026-10-15T23:00:00Z',
+              gameDate: '2026-10-15',
+              homeTeamScore: 1,
+              awayTeamScore: 7,
+            },
           ]),
         });
 

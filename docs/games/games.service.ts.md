@@ -45,13 +45,20 @@ stored document is spread as-is; only the display fields are rewritten.
    `recordSeasonType === 3` shows `seriesStatus` (e.g. `MIL leads 2-1`), falling back to
    `seriesSummary` (e.g. `NLCS - Game 2` when ESPN leaves the status empty on a finished game)
    **in priority of the season record**, in *both* the home and away record slots. A playoff
-   game that carries no series info at all keeps its record.
-   - When `seriesStatus` is empty, `_playoffSeriesDisplay()` first consults a pre-computed
-     evolution derived from the other stored games of the same series (`_precomputeSeriesStatus()`,
-     `_computeSeriesStatus()`). This lets old games display an evolution such as `MIL leads 3-0`
-     even when ESPN never provided `series.summary` (older seasons, other leagues). The computed
-     status only applies to playoff games (phase 3 or a playoff-shaped label for legacy documents)
-     and falls back to `seriesSummary` when no evolution can be deduced.
+   game that carries no series info at all keeps its record. An impossible stored evolution
+   (`"MIL wins series 8-0"` — more than 4 wins for one team or more than 7 games in a
+   best-of-7) is ignored so the display falls through to the computed/latest status instead
+   of showing `"8-0"`.
+   - When `seriesStatus` is empty (or impossible), `_playoffSeriesDisplay()` first consults a
+     pre-computed evolution for the whole strict series (`_precomputeSeriesStatus()`,
+     `_computeSeriesStatus()`): the stored evolution of the **last game** of the series
+     (league + season + same two teams, playoffs only) is authoritative — `"MIL wins series
+     4-0"` on the clincher, or `"MIL leads 3-0"` / `"Series tied 2-2"` while the series is
+     ongoing — and is shown on every game of the series, including oldies. Only when no game
+     carries a usable stored status is the evolution recomputed by counting wins from
+     completed games (deduplicated, numeric scores). The computed status only applies to
+     playoff games (phase 3 or a playoff-shaped label for legacy documents) and falls back
+     to `seriesSummary` when no evolution can be deduced.
 2. Otherwise the stored `homeTeamRecord` / `awayTeamRecord`, then `team.record` (the live team
    tally), then `''`. During an in-progress season the stored values themselves are kept up to
    date by `_propagateTeamRecordToSeasonGames()` (every game of the season, past and upcoming),
@@ -81,11 +88,15 @@ This restores the historical "series status first, season record otherwise" disp
 games (day views, schedule, results) while keeping the phase isolation of the **stored** records
 introduced by the record-isolation fix untouched.
 
-### Computed series status for games without stored `seriesStatus` (new)
+### Computed series status for games without stored `seriesStatus`
 
 For playoff games that have no stored `seriesStatus` (e.g. old seasons where ESPN did not
-provide `series.summary`, or leagues such as PWHL that never carry it), the service computes
-an evolution from the other stored games of the same series:
+provide `series.summary`, or leagues such as PWHL that never carry it), the service takes
+the stored evolution of the **last game** of the strict series (same league, same season,
+same two teams, playoffs only) and shows it on every game — the final `"X wins series Y-Z"`
+when the series is decided, or `"X leads Y-Z"` / `"Series tied Y-Y"` while it is ongoing.
+Only when no game of the series carries a usable stored status is the evolution recomputed
+by counting wins:
 
 - **`_seriesKey(game)`** — builds a grouping key `${league}|${season}|${teamA}|${teamB}` with the
   two teams sorted alphabetically, so the key is identical regardless of which team is home or
@@ -93,19 +104,45 @@ an evolution from the other stored games of the same series:
 - **`_isPlayoffGame(game)`** — true when `recordSeasonType === 3`, or (for legacy documents
   without a phase) when `seriesStatus`/`seriesSummary` carry a non-empty, non-regular-season
   label.
-- **`_computeSeriesStatus(seriesGames, currentGame)`** — pure function: takes all phase-3
-  fixtures between the same two teams in the same season, counts wins per team regardless of
-  home/away side, and returns `X leads Y-Z`, `Series tied Y-Y` or `X wins series Y-Z`. A
-  series is considered decided at 4+ wins (covers best-of-7 and best-of-5), or at 3 wins with
-  5 completed games (best-of-5 clincher). Returns `''` when no game has been played, or when
-  only one game has been played — a single-elimination match (NFL wildcard, Olympic knockout,
-  etc.) falls back to `seriesSummary` (e.g. `NFC Divisional Playoffs`, `NFC Championship`)
-  instead of displaying a misleading `X leads 1-0`.
+- **`_latestStoredSeriesStatus(seriesGames)`** — sorts the series games by start time and
+  returns the last valid stored evolution; a decided series (`wins`/`over`, via
+  `_isSeriesDecided()`) found anywhere wins immediately over an earlier `leads`, so a stale
+  `"leads 3-0"` never hides the final `"wins 4-0"`. Invalid labels (`"8-0"`, via
+  `_isValidSeriesEvolution()`) are skipped. Returns `''` when no game carries a usable
+  status.
+- **`_parseSeriesScore(value)` / `_isValidSeriesEvolution(value)` / `_mayReplaceSeriesStatus(stored, incoming)`** —
+  score helpers: extract the `X-Y` score, reject impossible best-of-7 labels (more than 4
+  wins for one team or more than 7 games total, or a `tied` label with unequal scores), and
+  decide whether a fresh evolution may replace the stored one (never wiped, only a forward
+  move where the total number of games grows or stays equal, so `"leads 3-0"` → `"wins 4-0"`
+  is allowed but `"wins 4-0"` → `"leads 3-0"` is not; an invalid stored label self-heals on
+  any valid evolution).
+- **`_isGameNumberLabel(value)`** — true for a mere game-number / round label (`"Game 3"`,
+  `"NLCS - Game 3"`, `"Game 2 of 3"`) that is not an evolution. Such labels only say *which*
+  game of the series a document is: they belong in `seriesSummary`, are never stored in
+  `seriesStatus`, and can never overwrite a stored evolution (`"MIL leads 3-0"` stays when the
+  fresh status is `"Game 3"`; a game-number payload on a game with no status is rerouted to
+  the summary, PWHL stays updatable).
+- **`_seriesSlotKey(game)`** — fixture slot (league, start time, both teams sorted) used as the
+  second dedupe layer in `_computeSeriesStatus()`: two documents with the same teams at the same
+  hour count once, even under different ids.
+- **`_computeSeriesStatus(seriesGames, currentGame)`** — returns the latest stored evolution
+  when one exists, otherwise counts wins per team regardless of home/away side. Dedupe is
+  two-layer: same stored row (`uniqueId`) and same fixture slot (`_seriesSlotKey()` — same
+  league, same two teams in either order, same start time), so a duplicated fixture (mêmes
+  équipes à la même heure) only ever counts once. Numeric score comparison, tied/non-numeric
+  scores ignored. Returns `X leads Y-Z`, `Series tied Y-Y` or `X wins series Y-Z`. A series is
+  considered decided at 4+ wins (covers best-of-7 and best-of-5), or at 3 wins with 5 completed
+  games (best-of-5 clincher). Returns `''` when no game has been played, when only one game has
+  been played (a single-elimination match falls back to `seriesSummary`), or when the count is
+  impossible (> 4 wins for one team or > 7 games — duplicates must never display `"8-0"`).
 - **`_precomputeSeriesStatus(games)`** — called before enrichment in every read route
   (`findAll`, `findByDate`, `findRecentFormGames`, `_findEnrichedGamesForDay`). Groups
-  playoff games without a stored status by series key, runs **one DB query per series** to
-  fetch all its games, and stores the result in `_computedSeriesStatusMap` (keyed by
-  `uniqueId`). `_playoffSeriesDisplay()` consults this map when `seriesStatus` is empty.
+  playoff games without a (valid) stored status by series key, runs **one DB query per series**
+  (strict scope: `league` + season year + both teams + `recordSeasonType: 3`) to fetch all
+  its games — current series and oldies alike — and stores the result in
+  `_computedSeriesStatusMap` (keyed by `uniqueId`). `_playoffSeriesDisplay()` consults this
+  map when `seriesStatus` is empty or invalid.
 
 ### `create()`
 
@@ -137,15 +174,21 @@ cleared the record of an unstarted fixture so the reader falls back to `team.rec
 tally) left by an earlier fetch. Without this exception a scheduled game would never stop showing
 `0-0-0`.
 
-**Series guard (playoff evolution):** when the game already exists, a stored `seriesStatus` that
-reads as a series evolution (`_isSeriesEvolution()` — a team leading, the series tied, or a team
-having won it) is only replaced by **another** evolution: an empty fresh status (the
-team-schedule endpoint of the refresh cron carries no `series.summary`) or a non-evolution label
-(`NLDS - Game 3`) is dropped from the DTO. This is what keeps `MIL leads 3-0` on the stored game
-when the daily refresh re-upserts it; without it, the display (`_playoffSeriesDisplay()`) would
-fall back to `seriesSummary` (`NLDS - Game 3`). A stored non-evolution status (PWHL's `Game 2`)
-still accepts any non-empty fresh value, and `seriesSummary` follows the plain non-empty rule
-(an empty fresh summary never wipes a stored one).
+**Series guard (playoff evolution — strict scope, forward-only):** a series is only the
+playoff games (`recordSeasonType === 3`) between the same two teams in the same season. When
+the game already exists, a stored `seriesStatus` that reads as a series evolution
+(`_isSeriesEvolution()` — a team leading, the series tied, or a team having won it) is never
+wiped and only moves forward (`_mayReplaceSeriesStatus()`): an empty fresh status (the
+team-schedule endpoint of the refresh cron carries no `series.summary`), a non-evolution label
+(`NLDS - Game 3`), a game-number label (`Game 3`, via `_isGameNumberLabel()`), an impossible
+label (`8-0`, via `_isValidSeriesEvolution()`) or a backward
+move (`wins 4-0` → `leads 3-0`) is dropped from the DTO. This is what keeps `MIL leads 3-0` on
+the stored game when the daily refresh re-upserts it, and what lets it become `MIL wins series
+4-0` (but never the reverse). An invalid stored label self-heals on the next valid evolution.
+A stored non-evolution status (PWHL's `Game 2`) still accepts any non-empty fresh value, and
+`seriesSummary` follows the plain non-empty rule (an empty fresh summary never wipes a stored
+one). The same rule applies in `syncGameWithScore()`, and the series propagation writes to
+every game of the strict series without ever moving one backwards.
 
 ### `getLeagueGames(params)`
 

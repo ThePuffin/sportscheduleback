@@ -3,6 +3,57 @@
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
 
+## Fixed: playoff series status can never show "8-0" and always reflects the last game of the strict series
+
+A playoff series is strictly the playoff games (`recordSeasonType === 3`) between the same two
+teams in the same season (`${league}|${season}|${teamA}|${teamB}`). Two display bugs came from
+that scope being too loose: a doubled win count produced the impossible `"MIL wins series 8-0"`
+in a best-of-7, and the 16 oct. clincher did not show `"MIL wins series 4-0"` because a stale
+`"MIL leads 3-0"` propagated from an earlier game hid the final status.
+
+- **Latest-game status first** — `_latestStoredSeriesStatus()` sorts the series games by start
+  time and returns the last valid stored evolution: `"X wins series Y-Z"` on the clincher, or
+  `"X leads Y-Z"` / `"Series tied Y-Y"` while the series is ongoing. A decided series
+  (`wins`/`over`) found anywhere wins immediately over an earlier `leads`. That label is shown
+  on every game of the series (current and oldies alike); the win count is only recomputed when
+  no game carries a usable stored status.
+- **Impossible scores rejected** — `_isValidSeriesEvolution()` drops any evolution with more
+  than 4 wins for one team or more than 7 games total (`_parseSeriesScore()`). The display
+  (`_playoffSeriesDisplay()`) ignores such a stored label and falls through to the
+  latest/computed status, and the write paths refuse to store one, so a stored `"8-0"`
+  self-heals on the next valid evolution.
+- **Counting hardened** — `_computeSeriesStatus()` dedupes on two layers: same stored row
+  (`uniqueId`) plus same fixture slot (`_seriesSlotKey()` — same league, same two teams in
+  either order, same start time, so a duplicated fixture with the same teams at the same hour
+  only ever counts once), compares scores
+  numerically (string `"6"` vs `"10"` no longer miscompares), ignores tied/non-numeric scores,
+  and returns `''` instead of an impossible count when duplicates slip through (> 4 wins or
+  > 7 games).
+- **Forward-only writes** — `_mayReplaceSeriesStatus()` lets a stored evolution move from
+  `"leads 3-0"` to `"wins 4-0"` (victory, tie or final result) but never backwards (`"wins
+  4-0"` → `"leads 3-0"` is dropped). A game-number label (`"Game 3"`, `"NLCS - Game 4"`, via
+  `_isGameNumberLabel()`) only says *which* game of the series a document is: it belongs in
+  `seriesSummary`, is never stored in `seriesStatus`, and can never overwrite a stored
+  evolution (on a game with no status it is rerouted to the summary; a stored `"Game N"`
+  itself stays updatable so PWHL numbering still works). The stored advancement is still never wiped (empty and
+  non-evolution payloads are dropped as before). Applies in `create()`, `syncGameWithScore()`
+  and the series propagation, which now writes to every game of the strict series (same league
+  + season + both teams + phase 3) instead of only future games, skipping any game that is
+  already ahead.
+
+- **`backend/src/games/games.service.ts`** — `_parseSeriesScore`, `_isValidSeriesEvolution`,
+  `_mayReplaceSeriesStatus`, `_isGameNumberLabel`, `_seriesSlotKey`, `_gameSortTime`, `_latestStoredSeriesStatus`, hardened
+  `_computeSeriesStatus` + `_precomputeSeriesStatus`, forward-only guards in `create()` /
+  `syncGameWithScore()` / propagation, invalid-label bypass in `_playoffSeriesDisplay()`.
+- **`backend/src/games/tests/games.service.spec.ts`** — 11 new tests (latest-game final status,
+  ongoing-series status on every game, `"8-0"` ignored, > 7 games never counted, duplicated
+  fixture counted once, swapped home/away duplicate counted once, no backward
+  move, `"8-0"` rejected then self-healed, game-number label never overwrites an evolution,
+  game-number rerouted to summary, game-number blocked in score sync).
+- **`backend/docs/games/games.service.ts.md`** — series scope, latest-game priority, validity
+  and forward-only rules documented.
+
+
 ## Added: real DB deletion of old games + 1-year retention for preseason games
 
 `GameService.removeDuplicatesAndOlds()` (manual `DELETE /games/duplicate`) now really
