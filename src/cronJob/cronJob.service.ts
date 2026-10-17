@@ -292,7 +292,7 @@ export class CronService implements OnModuleInit {
     this.isFetchingOldiesInProgress = true;
     try {
       const currentYear = new Date().getFullYear();
-      const maxYearsBeforeDelete = this.gameService.maxYearBeforeDelete; // 6
+      const maxYearsBeforeDelete = this.gameService.maxYearBeforeDelete; // 7
       const minYear = currentYear - maxYearsBeforeDelete;
       const maxOldieYear = currentYear - 1; // Prior year (exclude in-progress season)
 

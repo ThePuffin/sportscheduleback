@@ -3,6 +3,33 @@
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
 
+## Fixed: games stored before the phase was persisted never got `recordSeasonType` backfilled (preseason retention blind spot)
+
+The oldies dedup (`getLeagueGames()` with `addMissingOnly: true`) decided whether a stored game
+was "already present" by comparing only `uniqueId`, both scores and both per-game records.
+`recordSeasonType` was **not** part of the comparison, so a game written before the phase was
+persisted — e.g. a 2021 NHL preseason game with no `recordSeasonType` field at all — was skipped
+as identical even though the fresh ESPN fetch carried `recordSeasonType: 1`. The fetched phase was
+discarded in memory and never reached `create()`.
+
+Consequence: the 1-year preseason retention in `removeDuplicatesAndOlds()`
+(`deleteMany({ recordSeasonType: 1, ... })`) can never match a document where the field is
+**absent**, so those preseason games survived until the generic 6-year oldies window instead of
+being deleted after one year. (They were added by ESPN — `getEachTeamSchedule()` always sets
+`recordSeasonType` — but the dedup gate threw the value away before the write.)
+
+- **`backend/src/games/games.service.ts`** — the `existingResults` projection fetches
+  `recordSeasonType`, and `sameResult` also compares the phase: a stored game missing the field
+  while the fetch carries one is **refreshed** through `create()`, which backfills it on the next
+  oldies run. A fetch that omits the phase (`undefined`/`null`) never forces a rewrite, so the
+  check still converges and a phase-less provider cannot trigger an endless refresh loop.
+- **`backend/src/games/tests/games.service.spec.ts`** — 2 regression tests: a stored game without
+  `recordSeasonType` is refreshed (and the field persisted), a stored game whose phase matches is
+  still skipped.
+- **`backend/docs/games/games.service.ts.md`** — deduplication bullets document the phase
+  comparison and its backfill behavior.
+
+
 ## Fixed: `POST /games/refresh/records` OOM (records-only mode in `_fetchUniqueGames()`)
 
 `refreshCurrentSeasonRecords()` collected the per-team tallies by fetching **every team's full

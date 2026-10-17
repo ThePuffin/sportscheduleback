@@ -67,7 +67,7 @@ export class GameService {
     private readonly refreshTimestampService: RefreshTimestampService,
   ) {}
 
-  maxYearBeforeDelete = 6;
+  maxYearBeforeDelete = 7;
   // Preseason games are only kept for this many years (they have little
   // historical value once the season is over). Applied in
   // `removeDuplicatesAndOlds()` via `recordSeasonType === 1`.
@@ -1997,9 +1997,11 @@ export class GameService {
       if (uniqueGames && uniqueGames.length > 0) {
         // Oldies recovery: only ever add missing games without overwriting an existing match.
         // A game is considered "already present" (same game) only when its uniqueId matches,
-        // both the home and the away scores match the stored ones AND the stored team records
-        // already match (or are absent) — so seasons fetched before per-game records existed
-        // are backfilled instead of being skipped forever.
+        // both the home and the away scores match the stored ones, AND the stored team records
+        // and season phase (`recordSeasonType`) already match (or are absent) — so seasons
+        // fetched before per-game records existed, and games stored before the phase was
+        // persisted (a preseason game invisible to the 1-year preseason retention), are
+        // backfilled instead of being skipped forever.
         // Otherwise we refresh it with the fresh (more complete) data.
         const existingResults = new Map<
           string,
@@ -2008,6 +2010,7 @@ export class GameService {
             awayTeamScore?: number;
             homeTeamRecord?: string;
             awayTeamRecord?: string;
+            recordSeasonType?: number;
           }
         >();
         if (addMissingOnly) {
@@ -2022,6 +2025,7 @@ export class GameService {
                   awayTeamScore: 1,
                   homeTeamRecord: 1,
                   awayTeamRecord: 1,
+                  recordSeasonType: 1,
                   _id: 0,
                 },
               )
@@ -2033,6 +2037,7 @@ export class GameService {
                 awayTeamScore: g?.awayTeamScore,
                 homeTeamRecord: g?.homeTeamRecord,
                 awayTeamRecord: g?.awayTeamRecord,
+                recordSeasonType: g?.recordSeasonType,
               });
             }
           }
@@ -2059,13 +2064,22 @@ export class GameService {
           game.isActive = true;
 
           if (addMissingOnly) {
-            // Treat as "already present" only ifthe stored game has the same result
-            // (id AND home/away scores) and already carries the same team records.
-            // The records comparison is what backfills games stored before per-game
-            // records were introduced.
+            // Treat as "already present" only if the stored game has the same result
+            // (id AND home/away scores), already carries the same team records, and the
+            // same season phase. The records comparison backfills games stored before
+            // per-game records were introduced; the `recordSeasonType` comparison
+            // backfills games stored before the phase was persisted, so a preseason
+            // game becomes visible to the 1-year preseason retention. The phase only
+            // forces a refresh when the fetch carries a value (a provider that omits
+            // it must not rewrite the stored game on every run).
             const stored = game?.uniqueId
               ? existingResults.get(game?.uniqueId)
               : undefined;
+            const fetchedPhase = game?.recordSeasonType;
+            const samePhase =
+              fetchedPhase === undefined ||
+              fetchedPhase === null ||
+              (stored?.recordSeasonType ?? null) === fetchedPhase;
             const sameResult =
               stored &&
               (stored.homeTeamScore ?? null) ===
@@ -2073,7 +2087,8 @@ export class GameService {
               (stored.awayTeamScore ?? null) ===
                 (game?.awayTeamScore ?? null) &&
               (stored.homeTeamRecord ?? '') === (game?.homeTeamRecord ?? '') &&
-              (stored.awayTeamRecord ?? '') === (game?.awayTeamRecord ?? '');
+              (stored.awayTeamRecord ?? '') === (game?.awayTeamRecord ?? '') &&
+              samePhase;
             if (game?.uniqueId && sameResult) {
               skippedExisting++;
               logInsertProgress(idx + 1);

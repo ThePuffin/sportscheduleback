@@ -2853,6 +2853,120 @@ describe('GameService', () => {
 
       createSpy.mockRestore();
     });
+
+    it('backfills a stored game that has no recordSeasonType', async () => {
+      const currentYear = new Date().getFullYear();
+      const pastTime = new Date();
+      pastTime.setHours(pastTime.getHours() - 2);
+
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      // Stored before `recordSeasonType` was persisted: same id, same scores,
+      // same records, but no phase at all — e.g. a 2021 NHL preseason game that
+      // the 1-year preseason retention can never match without the field.
+      mockGameModel.exec.mockResolvedValue([
+        {
+          uniqueId: 'existing-no-phase',
+          homeTeamScore: 3,
+          awayTeamScore: 1,
+          homeTeamRecord: '33-39-10',
+          awayTeamRecord: '42-32-7',
+        },
+      ]);
+
+      (service as any)._fetchUniqueGames = jest.fn().mockResolvedValue([
+        {
+          uniqueId: 'existing-no-phase',
+          league: League.NHL,
+          homeTeamId: 'NHL-BOS',
+          awayTeamId: 'NHL-TOR',
+          homeTeamScore: 3,
+          awayTeamScore: 1,
+          startTimeUTC: pastTime.toISOString(),
+          homeTeamRecord: '33-39-10',
+          awayTeamRecord: '42-32-7',
+          recordSeasonType: 1,
+        },
+      ]);
+      (service as any)._deleteUnlinkedTeams = jest
+        .fn()
+        .mockResolvedValue(undefined);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+        season: currentYear - 1,
+        addMissingOnly: true,
+      });
+
+      // Identical scores and records but a missing phase -> refreshed instead of
+      // skipped, so `create()` persists `recordSeasonType` and the game becomes
+      // visible to the preseason retention filter.
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          uniqueId: 'existing-no-phase',
+          recordSeasonType: 1,
+        }),
+      );
+
+      createSpy.mockRestore();
+    });
+
+    it('skips a stored game whose scores, records and phase already match', async () => {
+      const currentYear = new Date().getFullYear();
+      const pastTime = new Date();
+      pastTime.setHours(pastTime.getHours() - 2);
+
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue({} as any);
+
+      mockGameModel.exec.mockResolvedValue([
+        {
+          uniqueId: 'existing-with-phase',
+          homeTeamScore: 3,
+          awayTeamScore: 1,
+          homeTeamRecord: '33-39-10',
+          awayTeamRecord: '42-32-7',
+          recordSeasonType: 1,
+        },
+      ]);
+
+      (service as any)._fetchUniqueGames = jest.fn().mockResolvedValue([
+        {
+          uniqueId: 'existing-with-phase',
+          league: League.NHL,
+          homeTeamId: 'NHL-BOS',
+          awayTeamId: 'NHL-TOR',
+          homeTeamScore: 3,
+          awayTeamScore: 1,
+          startTimeUTC: pastTime.toISOString(),
+          homeTeamRecord: '33-39-10',
+          awayTeamRecord: '42-32-7',
+          recordSeasonType: 1,
+        },
+      ]);
+      (service as any)._deleteUnlinkedTeams = jest
+        .fn()
+        .mockResolvedValue(undefined);
+
+      await service.getLeagueGames({
+        league: League.NHL,
+        forceUpdate: true,
+        skipCascade: true,
+        season: currentYear - 1,
+        addMissingOnly: true,
+      });
+
+      // Both sides carry the same phase -> still skipped (the check converges).
+      expect(createSpy).not.toHaveBeenCalled();
+
+      createSpy.mockRestore();
+    });
   });
 
   describe('create: record protection', () => {

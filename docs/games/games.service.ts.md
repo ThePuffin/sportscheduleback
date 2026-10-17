@@ -268,9 +268,10 @@ games that have a complete home **and** away team. It logs added / skipped count
   season-specific records before the same save/update step. These historical per-game records never
   overwrite current `team.record`.
 - **Deduplication**: For a `uniqueId` already in the DB:
-  - If the `uniqueId` matches, both stored home/away scores equal the fetched ones **and** the stored `homeTeamRecord` / `awayTeamRecord` already match (or are absent) → **skipped** (not overwritten).
+  - If the `uniqueId` matches, both stored home/away scores equal the fetched ones, the stored `homeTeamRecord` / `awayTeamRecord` already match (or are absent) **and** the stored `recordSeasonType` matches the fetched phase (or the fetch carries no phase) → **skipped** (not overwritten).
   - If the `uniqueId` exists but the scores differ → treated as a stale/different result and **refreshed**.
   - If the scores match but the **team records** differ (typically a game stored before per-game records existed, i.e. `undefined` vs the fetched `"W-L-T"`) → **refreshed**, which backfills the record on the next oldies run. The comparison converges: once both sides carry the same value the game is skipped again.
+  - If the scores and records match but the game has **no stored `recordSeasonType`** while the fetch carries one (a game written before the phase was persisted) → **refreshed**, which backfills the phase so the game becomes visible to the 1-year preseason retention (`recordSeasonType: 1`). A fetch that omits the phase never forces a rewrite, so a provider without it cannot make the same game refresh on every run.
   - Only complete, missing games are created.
 - **Historical team records**: before inserting oldies games, missing home/away teams are upserted as inactive team documents using the ESPN team IDs from the game payload. Olympic recovery additionally scans each sport's full season scoreboard first, so countries absent from the current roster are included; existing active records are never overwritten by historical discovery. A current provider roster reactivates a stored team.
 
