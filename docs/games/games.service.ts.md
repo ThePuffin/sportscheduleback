@@ -197,11 +197,15 @@ every game of the strict series without ever moving one backwards.
 **ESPN fallback (`seriesSummary` → `seriesStatus`):** some ESPN endpoints (notably the
 score/schedule feed that carries no `competition.series.summary`) report the current series
 evolution only in the round label (`notes[0].headline`, mapped to `seriesSummary`) instead
-of `seriesStatus`. When `seriesStatus` is empty but `seriesSummary` carries a valid series
-evolution (`Series tied 2-2`, `MIL leads 3-0`, `MIL wins series 4-2`, …), it is promoted to
-`seriesStatus` so the forward-only replacement can run against the stored label. A stored
-stale evolution (e.g. `CLE leads series 2-1`) is therefore replaced by the fetched evolution
-(`Series tied 2-2`) on the next score sync or league refresh.
+of `seriesStatus`. `seriesSummary` takes precedence over `seriesStatus` when:
+  - `seriesStatus` is empty (ESPN omitted it), or
+  - `seriesSummary` carries a MORE ADVANCED evolution (more games played)
+    than `seriesStatus` (e.g. ESPN reports `"CLE leads series 2-1"` in
+    `seriesStatus` but `"Series tied 2-2"` in `seriesSummary`).
+  In both cases `seriesSummary` is promoted to `seriesStatus` so the
+  forward-only replacement can run against the stored label. A stored stale
+  evolution (e.g. `CLE leads series 2-1`) is therefore replaced by the fetched
+  evolution (`Series tied 2-2`) on the next score sync or league refresh.
 
 ### `refreshUndecidedPlayoffSeries(limit = 10)`
 

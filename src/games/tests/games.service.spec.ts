@@ -402,6 +402,32 @@ describe('GameService', () => {
         { $set: { seriesStatus: 'Series tied 2-2' } },
       );
     });
+
+    it('replaces a stale stored seriesStatus when ESPN seriesStatus is stale but seriesSummary is more advanced', async () => {
+      const game = buildGame();
+      game.seriesStatus = 'CLE leads series 2-1';
+      game.seriesSummary = 'ALCS - Game 4';
+
+      // ESPN reports seriesStatus with the OLD value ("CLE leads series 2-1")
+      // but seriesSummary with the NEW, more advanced value ("Series tied 2-2").
+      await (service as any).syncGameWithScore(
+        {
+          gameStatus: 'FINISHED',
+          isFinal: true,
+          homeTeamScore: 3,
+          awayTeamScore: 5,
+          seriesSummary: 'Series tied 2-2',
+          seriesStatus: 'CLE leads series 2-1',
+        },
+        game,
+      );
+
+      // seriesStatus must be replaced by the more advanced evolution from
+      // seriesSummary (total 4 > total 3).
+      expect(game.seriesSummary).toBe('Series tied 2-2');
+      expect(game.seriesStatus).toBe('Series tied 2-2');
+      expect(game.save).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('create — playoff series fields', () => {

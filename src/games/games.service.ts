@@ -798,15 +798,28 @@ export class GameService {
                 : '';
             // ESPN sometimes reports the series evolution in seriesSummary
             // rather than seriesStatus; promote it so the forward-only
-            // comparison can run against the stored evolution.
+            // comparison can run against the stored evolution. seriesSummary
+            // takes precedence when it carries a MORE ADVANCED evolution
+            // (more games played) than seriesStatus.
             let effectiveIncomingSeriesStatus = incomingSeriesStatus;
-            if (
-              !effectiveIncomingSeriesStatus &&
-              gameDto.seriesSummary &&
-              this._isSeriesEvolution(gameDto.seriesSummary.trim()) &&
-              this._isValidSeriesEvolution(gameDto.seriesSummary.trim())
-            ) {
-              effectiveIncomingSeriesStatus = gameDto.seriesSummary.trim();
+            if (gameDto.seriesSummary) {
+              const summaryTrimmed = gameDto.seriesSummary.trim();
+              if (
+                this._isSeriesEvolution(summaryTrimmed) &&
+                this._isValidSeriesEvolution(summaryTrimmed)
+              ) {
+                const currentScore = this._parseSeriesScore(
+                  effectiveIncomingSeriesStatus,
+                );
+                const summaryScore = this._parseSeriesScore(summaryTrimmed);
+                if (
+                  !currentScore ||
+                  (summaryScore && summaryScore.total > currentScore.total)
+                ) {
+                  effectiveIncomingSeriesStatus = summaryTrimmed;
+                  gameDto.seriesStatus = effectiveIncomingSeriesStatus;
+                }
+              }
             }
             const storedIsEvolution =
               this._isSeriesEvolution(storedSeriesStatus);
@@ -864,6 +877,20 @@ export class GameService {
               // seriesStatus is empty but seriesSummary carries a valid
               // evolution (ESPN sometimes reports it in the round label);
               // promote it so it is stored and displayed.
+              gameDto.seriesStatus = gameDto.seriesSummary.trim();
+            } else if (
+              incomingSeriesStatus &&
+              gameDto.seriesSummary &&
+              this._isSeriesEvolution(incomingSeriesStatus) &&
+              this._isValidSeriesEvolution(incomingSeriesStatus) &&
+              this._isSeriesEvolution(gameDto.seriesSummary.trim()) &&
+              this._isValidSeriesEvolution(gameDto.seriesSummary.trim()) &&
+              this._parseSeriesScore(gameDto.seriesSummary.trim())!.total >
+                this._parseSeriesScore(incomingSeriesStatus)!.total
+            ) {
+              // seriesStatus carries an older evolution but seriesSummary
+              // reports a more advanced one (more games played); prefer the
+              // newer label so the stored series status is corrected.
               gameDto.seriesStatus = gameDto.seriesSummary.trim();
             }
           }
@@ -4057,17 +4084,28 @@ export class GameService {
 
     // ESPN sometimes reports the current series evolution in the round label
     // (seriesSummary, from notes[0].headline) rather than in series.summary.
-    // When seriesStatus is empty but seriesSummary carries a valid evolution,
-    // use it as the fresh series status so a finished game can replace a stale
-    // stored evolution (e.g. "CLE leads series 2-1" → "Series tied 2-2").
+    // Use seriesSummary as the fresh series status when:
+    //   - seriesStatus is empty (ESPN omitted it), or
+    //   - seriesSummary carries a MORE ADVANCED evolution (more games played)
+    //     than seriesStatus (e.g. ESPN reports "CLE leads series 2-1" in
+    //     seriesStatus but "Series tied 2-2" in seriesSummary).
     let effectiveFreshSeriesStatus = freshSeriesStatus;
-    if (!effectiveFreshSeriesStatus && matchedScore.seriesSummary) {
+    if (matchedScore.seriesSummary) {
       const summaryTrimmed = matchedScore.seriesSummary.trim();
       if (
         this._isSeriesEvolution(summaryTrimmed) &&
         this._isValidSeriesEvolution(summaryTrimmed)
       ) {
-        effectiveFreshSeriesStatus = summaryTrimmed;
+        const currentScore = this._parseSeriesScore(
+          effectiveFreshSeriesStatus,
+        );
+        const summaryScore = this._parseSeriesScore(summaryTrimmed);
+        if (
+          !currentScore ||
+          (summaryScore && summaryScore.total > currentScore.total)
+        ) {
+          effectiveFreshSeriesStatus = summaryTrimmed;
+        }
       }
     }
 
