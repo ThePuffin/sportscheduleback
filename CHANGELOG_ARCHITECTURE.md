@@ -3,6 +3,45 @@
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
 
+## Fixed: stale MLB playoff `seriesStatus` not refreshed when ESPN reports the evolution only in `seriesSummary` (and not propagated to sibling series games)
+
+A finished MLB playoff game whose ESPN payload carries no `competition.series.summary`
+(so `seriesStatus` comes back empty) but reports the current series evolution in
+`notes[0].headline` (mapped to `seriesSummary`, e.g. `Series tied 2-2`) kept its stale
+stored `seriesStatus` (e.g. `CLE leads series 2-1`) on every refresh path. The score sync
+block in `syncGameWithScore()` was gated on a non-empty `seriesStatus`, so it never ran,
+and `_playoffSeriesDisplay()` prioritizes `seriesStatus` over `seriesSummary` — the wrong
+label kept showing.
+
+Additionally, the correction was not propagated to the other games of the same series:
+Game 1, 2, 3 and 5 of the same ALDS kept displaying the old `seriesStatus` even after Game 4
+was refreshed.
+
+- **`backend/src/games/games.service.ts`**
+  - `syncGameWithScore()`: when `seriesStatus` is empty but `seriesSummary` carries a valid
+    series evolution (`Series tied 2-2`, `MIL leads 3-0`, `MIL wins series 4-2`, …), the
+    summary is promoted to `seriesStatus` and runs through the forward-only replacement
+    (`_mayReplaceSeriesStatus()`), so a stored stale evolution is replaced by the fetched one.
+    After the primary game's `seriesStatus` is corrected, an `updateMany` propagates the new
+    label to every other game of the same series (same league, same two teams in either
+    home/away direction, playoff games only identified by a non-empty `seriesSummary`).
+    Game-number labels (`Game 3`), non-evolution labels and backward moves (`wins 4-0` →
+    `leads 3-0`) still never overwrite a stored evolution.
+  - `create()`: the same ESPN `seriesSummary` → `seriesStatus` promotion runs on the schedule
+    refresh upsert path, for both new and existing games.
+  - Oldies dedup (`getLeagueGames()` with `addMissingOnly: true`): the `existingResults`
+    projection now fetches `seriesStatus`, and `sameResult` also compares it. A stored game
+    whose `seriesStatus` differs from the freshly fetched one is **refreshed** through
+    `create()` instead of being skipped, so the oldies cron also corrects stale series labels.
+- **`backend/src/games/tests/games.service.spec.ts`** — 2 regression tests: a finished game
+  with empty `seriesStatus` but a valid `seriesSummary` evolution replaces its stored stale
+  `seriesStatus`; and refreshing one game of a series propagates the new `seriesStatus` to
+  all other games of the same series.
+- **`backend/docs/games/games.service.ts.md`** — documents the ESPN `seriesSummary` →
+  `seriesStatus` fallback in `create()`/`syncGameWithScore()` and adds `seriesStatus` to the
+  oldies dedup comparison.
+
+
 ## Fixed: games stored before the phase was persisted never got `recordSeasonType` backfilled (preseason retention blind spot)
 
 The oldies dedup (`getLeagueGames()` with `addMissingOnly: true`) decided whether a stored game

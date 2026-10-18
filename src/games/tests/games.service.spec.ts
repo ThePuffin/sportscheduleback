@@ -337,6 +337,71 @@ describe('GameService', () => {
       expect(propagateSpy).toHaveBeenCalledWith('MLB', 'MLB-LAD', '100-62');
       propagateSpy.mockRestore();
     });
+
+    it('replaces a stored series evolution when the fresh payload has no seriesStatus but a valid seriesSummary evolution', async () => {
+      const game = buildGame();
+      // Reproduces the reported bug: stored "CLE leads series 2-1", ESPN
+      // reports the current evolution only in seriesSummary ("Series tied 2-2")
+      // while seriesStatus comes back empty.
+      game.seriesStatus = 'CLE leads series 2-1';
+      game.seriesSummary = 'ALDS - Game 3';
+
+      await (service as any).syncGameWithScore(
+        {
+          gameStatus: 'FINISHED',
+          isFinal: true,
+          homeTeamScore: 7,
+          awayTeamScore: 3,
+          homeTeamRecord: '100-62',
+          awayTeamRecord: '97-65',
+          seriesSummary: 'Series tied 2-2',
+          seriesStatus: '',
+        },
+        game,
+      );
+
+      expect(game.seriesSummary).toBe('Series tied 2-2');
+      expect(game.seriesStatus).toBe('Series tied 2-2');
+      expect(game.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('propagates the refreshed series status to all other games of the same series', async () => {
+      const game = buildGame();
+      game._id = 'game-4-id';
+      game.seriesStatus = 'CLE leads series 2-1';
+      game.seriesSummary = 'ALDS - Game 4';
+
+      await (service as any).syncGameWithScore(
+        {
+          gameStatus: 'FINISHED',
+          isFinal: true,
+          homeTeamScore: 7,
+          awayTeamScore: 3,
+          seriesSummary: 'Series tied 2-2',
+          seriesStatus: '',
+        },
+        game,
+      );
+
+      // The primary game is updated.
+      expect(game.seriesStatus).toBe('Series tied 2-2');
+
+      // All other games of the same series (same league, same two teams,
+      // either home/away direction) are updated too.
+      expect(mockGameModel.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          league: League.MLB,
+          _id: { $ne: 'game-4-id' },
+          $or: [
+            { homeTeamId: 'MLB-MIL', awayTeamId: 'MLB-LAD' },
+            { homeTeamId: 'MLB-LAD', awayTeamId: 'MLB-MIL' },
+          ],
+          seriesSummary: { $exists: true, $nin: [null, ''] },
+          seriesStatus: { $ne: 'Series tied 2-2' },
+        }),
+        { $set: { seriesStatus: 'Series tied 2-2' } },
+      );
+    });
   });
 
   describe('create — playoff series fields', () => {

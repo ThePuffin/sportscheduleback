@@ -194,6 +194,15 @@ A stored non-evolution status (PWHL's `Game 2`) still accepts any non-empty fres
 one). The same rule applies in `syncGameWithScore()`, and the series propagation writes to
 every game of the strict series without ever moving one backwards.
 
+**ESPN fallback (`seriesSummary` → `seriesStatus`):** some ESPN endpoints (notably the
+score/schedule feed that carries no `competition.series.summary`) report the current series
+evolution only in the round label (`notes[0].headline`, mapped to `seriesSummary`) instead
+of `seriesStatus`. When `seriesStatus` is empty but `seriesSummary` carries a valid series
+evolution (`Series tied 2-2`, `MIL leads 3-0`, `MIL wins series 4-2`, …), it is promoted to
+`seriesStatus` so the forward-only replacement can run against the stored label. A stored
+stale evolution (e.g. `CLE leads series 2-1`) is therefore replaced by the fetched evolution
+(`Series tied 2-2`) on the next score sync or league refresh.
+
 ### `getLeagueGames(params)`
 
 Refreshes a specific league’s game data. It:
@@ -268,7 +277,7 @@ games that have a complete home **and** away team. It logs added / skipped count
   season-specific records before the same save/update step. These historical per-game records never
   overwrite current `team.record`.
 - **Deduplication**: For a `uniqueId` already in the DB:
-  - If the `uniqueId` matches, both stored home/away scores equal the fetched ones, the stored `homeTeamRecord` / `awayTeamRecord` already match (or are absent) **and** the stored `recordSeasonType` matches the fetched phase (or the fetch carries no phase) → **skipped** (not overwritten).
+  - If the `uniqueId` matches, both stored home/away scores equal the fetched ones, the stored `homeTeamRecord` / `awayTeamRecord` already match (or are absent), the stored `seriesStatus` equals the fetched one (or both are empty), **and** the stored `recordSeasonType` matches the fetched phase (or the fetch carries no phase) → **skipped** (not overwritten).
   - If the `uniqueId` exists but the scores differ → treated as a stale/different result and **refreshed**.
   - If the scores match but the **team records** differ (typically a game stored before per-game records existed, i.e. `undefined` vs the fetched `"W-L-T"`) → **refreshed**, which backfills the record on the next oldies run. The comparison converges: once both sides carry the same value the game is skipped again.
   - If the scores and records match but the game has **no stored `recordSeasonType`** while the fetch carries one (a game written before the phase was persisted) → **refreshed**, which backfills the phase so the game becomes visible to the 1-year preseason retention (`recordSeasonType: 1`). A fetch that omits the phase never forces a rewrite, so a provider without it cannot make the same game refresh on every run.

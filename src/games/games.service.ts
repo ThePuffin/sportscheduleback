@@ -796,15 +796,33 @@ export class GameService {
               typeof gameDto.seriesStatus === 'string'
                 ? gameDto.seriesStatus.trim()
                 : '';
+            // ESPN sometimes reports the series evolution in seriesSummary
+            // rather than seriesStatus; promote it so the forward-only
+            // comparison can run against the stored evolution.
+            let effectiveIncomingSeriesStatus = incomingSeriesStatus;
+            if (
+              !effectiveIncomingSeriesStatus &&
+              gameDto.seriesSummary &&
+              this._isSeriesEvolution(gameDto.seriesSummary.trim()) &&
+              this._isValidSeriesEvolution(gameDto.seriesSummary.trim())
+            ) {
+              effectiveIncomingSeriesStatus = gameDto.seriesSummary.trim();
+            }
             const storedIsEvolution =
               this._isSeriesEvolution(storedSeriesStatus);
             // NOTE: a stored game-number label ("Game 2") is deliberately NOT
             // an evolution, so the PWHL non-empty rule below still updates it.
             const incomingIsEvolution =
-              this._isSeriesEvolution(incomingSeriesStatus);
-            if (!incomingSeriesStatus || (storedIsEvolution && !incomingIsEvolution)) {
+              this._isSeriesEvolution(effectiveIncomingSeriesStatus);
+            if (
+              !effectiveIncomingSeriesStatus ||
+              (storedIsEvolution && !incomingIsEvolution)
+            ) {
               delete gameDto.seriesStatus;
-            } else if (storedIsEvolution && this._isGameNumberLabel(incomingSeriesStatus)) {
+            } else if (
+              storedIsEvolution &&
+              this._isGameNumberLabel(effectiveIncomingSeriesStatus)
+            ) {
               // Belt and braces: a game-number label is a non-evolution, but
               // it must *explicitly* never replace an evolution — it is not
               // even a candidate status, just a round label for the summary.
@@ -812,7 +830,10 @@ export class GameService {
             } else if (
               storedIsEvolution &&
               incomingIsEvolution &&
-              !this._mayReplaceSeriesStatus(storedSeriesStatus, incomingSeriesStatus)
+              !this._mayReplaceSeriesStatus(
+                storedSeriesStatus,
+                effectiveIncomingSeriesStatus
+              )
             ) {
               delete gameDto.seriesStatus;
             }
@@ -834,6 +855,16 @@ export class GameService {
               !this._isValidSeriesEvolution(incomingSeriesStatus)
             ) {
               delete gameDto.seriesStatus;
+            } else if (
+              !incomingSeriesStatus &&
+              gameDto.seriesSummary &&
+              this._isSeriesEvolution(gameDto.seriesSummary.trim()) &&
+              this._isValidSeriesEvolution(gameDto.seriesSummary.trim())
+            ) {
+              // seriesStatus is empty but seriesSummary carries a valid
+              // evolution (ESPN sometimes reports it in the round label);
+              // promote it so it is stored and displayed.
+              gameDto.seriesStatus = gameDto.seriesSummary.trim();
             }
           }
 
@@ -2011,6 +2042,7 @@ export class GameService {
             homeTeamRecord?: string;
             awayTeamRecord?: string;
             recordSeasonType?: number;
+            seriesStatus?: string;
           }
         >();
         if (addMissingOnly) {
@@ -2026,6 +2058,7 @@ export class GameService {
                   homeTeamRecord: 1,
                   awayTeamRecord: 1,
                   recordSeasonType: 1,
+                  seriesStatus: 1,
                   _id: 0,
                 },
               )
@@ -2038,6 +2071,7 @@ export class GameService {
                 homeTeamRecord: g?.homeTeamRecord,
                 awayTeamRecord: g?.awayTeamRecord,
                 recordSeasonType: g?.recordSeasonType,
+                seriesStatus: g?.seriesStatus,
               });
             }
           }
@@ -2088,6 +2122,7 @@ export class GameService {
                 (game?.awayTeamScore ?? null) &&
               (stored.homeTeamRecord ?? '') === (game?.homeTeamRecord ?? '') &&
               (stored.awayTeamRecord ?? '') === (game?.awayTeamRecord ?? '') &&
+              (stored.seriesStatus ?? '') === (game?.seriesStatus ?? '') &&
               samePhase;
             if (game?.uniqueId && sameResult) {
               skippedExisting++;
@@ -3867,6 +3902,23 @@ export class GameService {
         : '';
     const storedSyncStatus =
       typeof game.seriesStatus === 'string' ? game.seriesStatus.trim() : '';
+
+    // ESPN sometimes reports the current series evolution in the round label
+    // (seriesSummary, from notes[0].headline) rather than in series.summary.
+    // When seriesStatus is empty but seriesSummary carries a valid evolution,
+    // use it as the fresh series status so a finished game can replace a stale
+    // stored evolution (e.g. "CLE leads series 2-1" → "Series tied 2-2").
+    let effectiveFreshSeriesStatus = freshSeriesStatus;
+    if (!effectiveFreshSeriesStatus && matchedScore.seriesSummary) {
+      const summaryTrimmed = matchedScore.seriesSummary.trim();
+      if (
+        this._isSeriesEvolution(summaryTrimmed) &&
+        this._isValidSeriesEvolution(summaryTrimmed)
+      ) {
+        effectiveFreshSeriesStatus = summaryTrimmed;
+      }
+    }
+
     if (this._isGameNumberLabel(freshSeriesStatus)) {
       // Reroute to the round label — unless the stored status is itself a
       // game number (PWHL labels every game "Game N"): then the plain
@@ -3876,23 +3928,65 @@ export class GameService {
         if (!game.seriesSummary) game.seriesSummary = freshSeriesStatus;
       }
     }
-    if ((matchedScore as any).seriesStatus && freshSeriesStatus) {
+    // Use effectiveFreshSeriesStatus (may fall back to seriesSummary) for the
+    // series evolution update; only act when there is a fresh value to compare.
+    if (effectiveFreshSeriesStatus) {
       if (!storedSyncStatus) {
         if (
-          !this._isSeriesEvolution(freshSeriesStatus) ||
-          this._isValidSeriesEvolution(freshSeriesStatus)
+          !this._isSeriesEvolution(effectiveFreshSeriesStatus) ||
+          this._isValidSeriesEvolution(effectiveFreshSeriesStatus)
         ) {
-          game.seriesStatus = matchedScore.seriesStatus;
+          game.seriesStatus = effectiveFreshSeriesStatus;
         }
       } else if (
         !this._isSeriesEvolution(storedSyncStatus) &&
-        freshSeriesStatus !== storedSyncStatus
+        effectiveFreshSeriesStatus !== storedSyncStatus
       ) {
-        game.seriesStatus = matchedScore.seriesStatus;
+        game.seriesStatus = effectiveFreshSeriesStatus;
       } else if (
-        this._mayReplaceSeriesStatus(storedSyncStatus, freshSeriesStatus)
+        this._mayReplaceSeriesStatus(
+          storedSyncStatus,
+          effectiveFreshSeriesStatus
+        )
       ) {
-        game.seriesStatus = matchedScore.seriesStatus;
+        game.seriesStatus = effectiveFreshSeriesStatus;
+      }
+    }
+
+    // Propagate the refreshed series status to every other game of the same
+    // series (same league, same two teams) so the whole series displays the
+    // current label instead of a stale one. Only playoff games (identified by
+    // a non-empty seriesSummary) are touched, so regular-season rematches
+    // between the same teams are never affected.
+    if (
+      game._id &&
+      game.seriesStatus &&
+      game.league &&
+      game.homeTeamId &&
+      game.awayTeamId
+    ) {
+      try {
+        await this.gameModel.updateMany(
+          {
+            league: game.league,
+            _id: { $ne: game._id },
+            $or: [
+              {
+                homeTeamId: game.homeTeamId,
+                awayTeamId: game.awayTeamId,
+              },
+              {
+                homeTeamId: game.awayTeamId,
+                awayTeamId: game.homeTeamId,
+              },
+            ],
+            seriesSummary: { $exists: true, $nin: [null, ''] },
+            seriesStatus: { $ne: game.seriesStatus },
+          },
+          { $set: { seriesStatus: game.seriesStatus } },
+        ).exec();
+      } catch {
+        // Propagation is best-effort: the primary game is already updated.
       }
     }
 
