@@ -32,6 +32,10 @@ describe('CronService', () => {
     getLastRecoveryTimestamp: jest.fn().mockResolvedValue(null),
     addRecoveryTimestamp: jest.fn().mockResolvedValue(undefined),
     isScoreRecoveryRunning: false,
+    refreshUndecidedPlayoffSeries: jest.fn().mockResolvedValue({
+      updated: 0,
+      series: [],
+    }),
     // Mocked Mongoose model: chainable find/sort/limit/lean/exec returning [].
     // Empty array per league → rotation calls needRefresh(league, { data: [] }),
     // which returns true (nothing stored → refresh needed).
@@ -43,7 +47,16 @@ describe('CronService', () => {
               exec: jest.fn().mockResolvedValue([]),
             }),
           }),
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue([]),
+          }),
         }),
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue([]),
+        }),
+      }),
+      updateMany: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
       }),
     },
   };
@@ -144,6 +157,29 @@ describe('CronService', () => {
       expect(mockGameService.getOldiesGames).toHaveBeenCalledWith(
         String(minYear),
         expect.any(String),
+      );
+      (Math.random as jest.Mock).mockRestore();
+    });
+
+    it('calls refreshUndecidedPlayoffSeries after the oldies refresh', async () => {
+      jest.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0);
+
+      mockGameService.getSeasonStatus.mockResolvedValue({
+        league: League.NFL,
+        season: new Date().getFullYear() - 1,
+        obtained: 3,
+        stored: 2,
+        complete: false,
+        isCurrentSeason: false,
+      });
+
+      await service.getOldGames();
+
+      expect(mockGameService.refreshUndecidedPlayoffSeries).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(mockGameService.refreshUndecidedPlayoffSeries).toHaveBeenCalledWith(
+        10,
       );
       (Math.random as jest.Mock).mockRestore();
     });

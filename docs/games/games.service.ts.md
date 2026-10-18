@@ -203,6 +203,27 @@ evolution (`Series tied 2-2`, `MIL leads 3-0`, `MIL wins series 4-2`, …), it i
 stale evolution (e.g. `CLE leads series 2-1`) is therefore replaced by the fetched evolution
 (`Series tied 2-2`) on the next score sync or league refresh.
 
+### `refreshUndecidedPlayoffSeries(limit = 10)`
+
+Finds playoff series (`recordSeasonType: 3`) whose `seriesStatus` has no declared winner
+(no "wins"/"over") and corrects them by computing the winner from the stored home/away
+scores of every game in the series. Up to `limit` series are picked **at random** (Fisher-Yates
+shuffle) so the same ones are not processed on every run.
+
+For each picked series:
+
+1. All games of the series (same league, season year, same two teams in either home/away
+   direction) are loaded from MongoDB.
+2. Wins are counted per team from `homeTeamScore` / `awayTeamScore`. Games with null scores
+   are skipped.
+3. The series winner is determined: 4 wins needed for best-of-7 (6+ games played), 3 wins for
+   best-of-5 (≤ 5 games played).
+4. If a team has clearly won, `seriesStatus` is set to `"{winner} wins series {W}-{L}"` on
+   **every game of the series** via `updateMany`, so the whole series displays the correct
+   result — including oldies.
+
+Returns `{ updated: number, series: string[] }`.
+
 ### `getLeagueGames(params)`
 
 Refreshes a specific league’s game data. It:

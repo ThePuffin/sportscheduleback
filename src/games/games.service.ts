@@ -1689,6 +1689,158 @@ export class GameService {
     }
   }
 
+  /**
+   * Refreshes the seriesStatus of up to `limit` playoff series that have no
+   * declared winner (no "wins"/"over" in seriesStatus) but where all games of
+   * the series have been played and one team clearly won. The new label
+   * (e.g. "MIL wins series 4-2") is written to every game of the series so the
+   * whole series displays the correct result.
+   *
+   * Series are picked at random so the same ones are not processed on every run.
+   */
+  async refreshUndecidedPlayoffSeries(limit = 10): Promise<{ updated: number; series: string[] }> {
+    const now = new Date();
+
+    // Find playoff games with no declared winner in seriesStatus
+    const undecided = await this.gameModel
+      .find(
+        {
+          recordSeasonType: 3,
+          isActive: true,
+          $or: [
+            { seriesStatus: { $exists: false } },
+            { seriesStatus: '' },
+            { seriesStatus: { $not: /wins|over/i } },
+          ],
+        },
+        {
+          uniqueId: 1,
+          league: 1,
+          homeTeamId: 1,
+          awayTeamId: 1,
+          startTimeUTC: 1,
+          homeTeamScore: 1,
+          awayTeamScore: 1,
+          seriesStatus: 1,
+          _id: 1,
+        },
+      )
+      .lean()
+      .exec();
+
+    // Group by series: league + season year + both teams (sorted)
+    const seriesMap = new Map<
+      string,
+      {
+        league: string;
+        seasonYear: number;
+        teamA: string;
+        teamB: string;
+        gameIds: string[];
+      }
+    >();
+
+    for (const g of undecided) {
+      const seasonYear = new Date(g.startTimeUTC).getFullYear();
+      const teams = [g.homeTeamId, g.awayTeamId].sort().join('|');
+      const key = `${g.league}|${seasonYear}|${teams}`;
+      if (!seriesMap.has(key)) {
+        seriesMap.set(key, {
+          league: g.league,
+          seasonYear,
+          teamA: g.homeTeamId,
+          teamB: g.awayTeamId,
+          gameIds: [],
+        });
+      }
+      seriesMap.get(key)!.gameIds.push(g._id.toString());
+    }
+
+    // Pick up to `limit` series at random (Fisher-Yates shuffle)
+    const seriesKeys = Array.from(seriesMap.keys());
+    for (let i = seriesKeys.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [seriesKeys[i], seriesKeys[j]] = [seriesKeys[j], seriesKeys[i]];
+    }
+    const picked = seriesKeys.slice(0, limit);
+
+    let updated = 0;
+    const seriesUpdated: string[] = [];
+
+    for (const key of picked) {
+      const info = seriesMap.get(key)!;
+      // Fetch ALL games of this series (not just the undecided ones) to count wins
+      const seasonStart = new Date(info.seasonYear, 0, 1).toISOString();
+      const seasonEnd = new Date(info.seasonYear + 1, 0, 1).toISOString();
+      const seriesGames = await this.gameModel
+        .find({
+          league: info.league,
+          recordSeasonType: 3,
+          $or: [
+            { homeTeamId: info.teamA, awayTeamId: info.teamB },
+            { homeTeamId: info.teamB, awayTeamId: info.teamA },
+          ],
+          startTimeUTC: { $gte: seasonStart, $lt: seasonEnd },
+        })
+        .lean()
+        .exec();
+
+      if (seriesGames.length === 0) continue;
+
+      // Count wins per team
+      let winsA = 0;
+      let winsB = 0;
+      let gamesPlayed = 0;
+      for (const g of seriesGames) {
+        if (g.homeTeamScore == null || g.awayTeamScore == null) continue;
+        gamesPlayed++;
+        const homeIsTeamA = g.homeTeamId === info.teamA;
+        const homeWin = g.homeTeamScore > g.awayTeamScore;
+        if (homeIsTeamA) {
+          if (homeWin) winsA++; else winsB++;
+        } else {
+          if (homeWin) winsB++; else winsA++;
+        }
+      }
+
+      // Determine series winner (best-of-7: 4 wins; best-of-5: 3 wins)
+      const winsNeeded = gamesPlayed <= 5 ? 3 : 4;
+      let winner: string | null = null;
+      if (winsA >= winsNeeded) winner = info.teamA;
+      else if (winsB >= winsNeeded) winner = info.teamB;
+
+      if (!winner) continue; // No clear winner yet
+
+      const loser = winner === info.teamA ? info.teamB : info.teamA;
+      const winnerWins = winner === info.teamA ? winsA : winsB;
+      const loserWins = winner === info.teamA ? winsB : winsA;
+      const newStatus = `${winner} wins series ${winnerWins}-${loserWins}`;
+
+      // Update all games of this series
+      await this.gameModel
+        .updateMany(
+          {
+            league: info.league,
+            recordSeasonType: 3,
+            $or: [
+              { homeTeamId: info.teamA, awayTeamId: info.teamB },
+              { homeTeamId: info.teamB, awayTeamId: info.teamA },
+            ],
+            startTimeUTC: { $gte: seasonStart, $lt: seasonEnd },
+          },
+          { $set: { seriesStatus: newStatus } },
+        )
+        .exec();
+
+      updated += seriesGames.length;
+      seriesUpdated.push(
+        `${info.league} ${info.seasonYear}: ${winner} beats ${loser} ${winnerWins}-${loserWins}`,
+      );
+    }
+
+    return { updated, series: seriesUpdated };
+  }
+
   async getLeagueGames(params): Promise<any> {
     const {
       league,

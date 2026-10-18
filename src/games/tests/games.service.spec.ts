@@ -4628,4 +4628,144 @@ describe('GameService', () => {
       );
     });
   });
+
+  describe('refreshUndecidedPlayoffSeries', () => {
+    it('returns no updates when there are no undecided playoff series', async () => {
+      mockGameModel.find.mockReturnThis();
+      mockGameModel.lean.mockReturnThis();
+      mockGameModel.exec.mockResolvedValue([]);
+
+      const result = await (service as any).refreshUndecidedPlayoffSeries(10);
+
+      expect(result).toEqual({ updated: 0, series: [] });
+      expect(mockGameModel.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recordSeasonType: 3,
+          isActive: true,
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('returns no updates when no series has a clear winner', async () => {
+      // Two undecided games of the same series, neither team has 3+ wins
+      const game1 = {
+        _id: 'g1',
+        league: League.MLB,
+        homeTeamId: 'MLB-MIL',
+        awayTeamId: 'MLB-LAD',
+        startTimeUTC: '2026-10-10T00:00:00.000Z',
+        homeTeamScore: 5,
+        awayTeamScore: 3,
+        seriesStatus: '',
+      };
+      const game2 = {
+        _id: 'g2',
+        league: League.MLB,
+        homeTeamId: 'MLB-MIL',
+        awayTeamId: 'MLB-LAD',
+        startTimeUTC: '2026-10-12T00:00:00.000Z',
+        homeTeamScore: 2,
+        awayTeamScore: 7,
+        seriesStatus: '',
+      };
+
+      mockGameModel.find
+        .mockReturnValueOnce({
+          lean: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue([game1, game2]),
+        })
+        .mockReturnValueOnce({
+          lean: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue([game1, game2]),
+        });
+
+      const result = await (service as any).refreshUndecidedPlayoffSeries(10);
+
+      // 1-1: no team has 3 wins (best-of-5) or 4 wins (best-of-7)
+      expect(result).toEqual({ updated: 0, series: [] });
+      expect(mockGameModel.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('updates all games of a series when one team clearly won', async () => {
+      const seasonStart = new Date(2026, 0, 1).toISOString();
+      const seasonEnd = new Date(2027, 0, 1).toISOString();
+
+      // Undecided games (no seriesStatus winner)
+      const undecidedGames = [
+        {
+          _id: 'g1',
+          league: League.MLB,
+          homeTeamId: 'MLB-MIL',
+          awayTeamId: 'MLB-LAD',
+          startTimeUTC: '2026-10-08T00:00:00.000Z',
+          homeTeamScore: 5,
+          awayTeamScore: 3,
+          seriesStatus: '',
+        },
+        {
+          _id: 'g2',
+          league: League.MLB,
+          homeTeamId: 'MLB-LAD',
+          awayTeamId: 'MLB-MIL',
+          startTimeUTC: '2026-10-10T00:00:00.000Z',
+          homeTeamScore: 1,
+          awayTeamScore: 8,
+          seriesStatus: '',
+        },
+        {
+          _id: 'g3',
+          league: League.MLB,
+          homeTeamId: 'MLB-MIL',
+          awayTeamId: 'MLB-LAD',
+          startTimeUTC: '2026-10-12T00:00:00.000Z',
+          homeTeamScore: 2,
+          awayTeamScore: 6,
+          seriesStatus: '',
+        },
+        {
+          _id: 'g4',
+          league: League.MLB,
+          homeTeamId: 'MLB-LAD',
+          awayTeamId: 'MLB-MIL',
+          startTimeUTC: '2026-10-14T00:00:00.000Z',
+          homeTeamScore: 0,
+          awayTeamScore: 4,
+          seriesStatus: '',
+        },
+      ];
+
+      mockGameModel.find
+        .mockReturnValueOnce({
+          lean: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue(undecidedGames),
+        })
+        // Second call: fetch ALL games of the series (same 4 games)
+        .mockReturnValueOnce({
+          lean: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue(undecidedGames),
+        });
+
+      mockGameModel.updateMany.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ modifiedCount: 4 }),
+      });
+
+      const result = await (service as any).refreshUndecidedPlayoffSeries(10);
+
+      expect(result.updated).toBe(4);
+      expect(result.series.length).toBe(1);
+      expect(result.series[0]).toContain('MLB-MIL beats MLB-LAD');
+      expect(mockGameModel.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          league: League.MLB,
+          recordSeasonType: 3,
+          startTimeUTC: {
+            $gte: seasonStart,
+            $lt: seasonEnd,
+          },
+        }),
+        { $set: { seriesStatus: 'MLB-MIL wins series 3-1' } },
+      );
+    });
+  });
 });

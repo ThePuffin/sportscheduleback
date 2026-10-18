@@ -346,6 +346,20 @@ export class CronService implements OnModuleInit {
           error,
         );
       }
+
+      // Refresh up to 10 playoff series without a declared winner so the whole
+      // series displays the correct "XXX wins series X-Y" label. Series are
+      // picked at random so the same ones are not processed on every run.
+      try {
+        const result = await this.gameService.refreshUndecidedPlayoffSeries(10);
+        if (result.updated > 0) {
+          console.info(
+            `[Cron] Oldies playoff series refresh: updated ${result.updated} game(s) across ${result.series.length} series: ${result.series.join('; ')}`,
+          );
+        }
+      } catch (err) {
+        console.error('[Cron] Error refreshing undecided playoff series:', err);
+      }
     } finally {
       this.isFetchingOldiesInProgress = false;
     }

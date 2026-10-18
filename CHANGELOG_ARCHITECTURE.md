@@ -3,6 +3,34 @@
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
 
+## Added: `refreshUndecidedPlayoffSeries()` — corrects playoff series with no declared winner
+
+The oldies daily cron (`getOldGames()` at 10:00 AM) now calls
+`GameService.refreshUndecidedPlayoffSeries(10)` after its main refresh. This finds up to 10
+playoff series (`recordSeasonType: 3`) whose `seriesStatus` has no declared winner
+(no "wins"/"over"), picks them at random so the same ones are not processed on every run,
+computes the winner from the stored home/away scores of every game in the series, and writes
+the correct label (e.g. `"MIL wins series 3-1"`) to **every game of the series** — including
+oldies.
+
+- **`backend/src/games/games.service.ts`** — new public method
+  `refreshUndecidedPlayoffSeries(limit = 10)`: finds undecided playoff series via MongoDB
+  (`seriesStatus` without "wins"/"over"), groups them by series (league + season + both teams),
+  picks up to `limit` at random, counts wins per team from `homeTeamScore`/`awayTeamScore`,
+  determines the winner (4 wins for best-of-7 / 3 wins for best-of-5), and updates all games
+  of the winning series via `updateMany`.
+- **`backend/src/cronJob/cronJob.service.ts`** — `getOldGames()` calls
+  `this.gameService.refreshUndecidedPlayoffSeries(10)` after its main oldies refresh,
+  wrapped in its own try/catch so a failure never blocks the oldies flow.
+- **`backend/src/games/tests/games.service.spec.ts`** — 3 regression tests: no updates when
+  there are no undecided series; no updates when no team has a clear winner; all games of a
+  series are updated with the correct `"XXX wins series X-Y"` label when a team clearly won.
+- **`backend/src/cronJob/tests/cronJob.service.spec.ts`** — 1 test: `getOldGames()` calls
+  `refreshUndecidedPlayoffSeries(10)` after the oldies refresh.
+- **`backend/docs/games/games.service.ts.md`** — documents `refreshUndecidedPlayoffSeries()`.
+- **`backend/docs/cronJob/cronJob.service.ts.md`** — documents the new step in `getOldGames()`.
+
+
 ## Fixed: stale MLB playoff `seriesStatus` not refreshed when ESPN reports the evolution only in `seriesSummary` (and not propagated to sibling series games)
 
 A finished MLB playoff game whose ESPN payload carries no `competition.series.summary`
