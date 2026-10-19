@@ -3,6 +3,20 @@
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
 
+## Changed: `GET /games/league/:league/results` bounded to "5000 results or 4 years" by default
+
+The league-results route defaulted to the full retention window (`maxYearBeforeDelete` = 7 years) and capped at 5000 results applied to the **oldest** rows (`filterGames` sorts by `startTimeUTC` ascending before limiting). Any client sending no bound therefore received thousands of games — mostly ancient ones for leagues with huge schedules (the college leagues) — and it was the most recent results that got truncated.
+
+`findResultsByLeague()` now defaults to a **4-year window** (`leagueResultsYearsToKeep`) and still caps at **5000 results** (`leagueResultsMaxResults`): "5000 results or 4 years", whichever comes first. The underlying query runs **newest-first** (`filterGames` gained a `sortDirection` option, default unchanged `asc`) so the cap keeps the most recent games, and `filterGames` reverses the enriched rows before the day grouping so the returned `gamesByDay` payload stays chronological — every other consumer keeps the exact previous behaviour. An explicit `startDate` / `maxResults` still overrides the defaults, and `findResultsByTeam()` (team selection) is deliberately untouched.
+
+The frontend Schedule "All" view sends its own `startDate` (`yearsBeforeCurrentYear(4)`), which now aligns exactly with the backend default window.
+
+### Changes
+
+- **`backend/src/games/games.service.ts`** — new `leagueResultsYearsToKeep = 4` and `leagueResultsMaxResults = 5000` fields; `findResultsByLeague()` uses them as defaults and passes `sortDirection: 'desc'`; `filterGames()` gains `sortDirection` (default `asc` → `startTimeUTC: 1`) and reverses the enriched rows under `desc` to preserve the chronological `gamesByDay` contract; JSDoc added.
+- **`backend/src/games/tests/games.service.spec.ts`** — new `findResultsByLeague` suite (4-year/5000 defaults, newest-first query with chronological payload, explicit bounds forwarded, score-filtered days dropped).
+- **`backend/docs/games/games.service.ts.md`**, **`backend/docs/games/games.controller.ts.md`** — defaults and sort behaviour documented.
+
 ## Removed: dead `favoriteTeams` support from `GET /games/league-day/:gameDate`
 
 The route used to accept a `favoriteTeams` query param and, when it matched games of the day, prepend a leading `FAVORITES` group (a duplicate view — the same games stayed in their league group). The frontend day view no longer sends any favorites list: the star FAVORITES chip filters favorite-team games client-side, on every date, so the param and the group were never produced anymore. Both are now removed so the API and its docs only describe what actually runs.

@@ -4560,6 +4560,98 @@ describe('GameService', () => {
     });
   });
 
+  describe('findResultsByLeague', () => {
+    const finishedGame = (
+      uniqueId: string,
+      gameDate: string,
+      startTimeUTC: string,
+    ) => ({
+      uniqueId,
+      league: League.NHL,
+      homeTeamId: 'NHL-BOS',
+      awayTeamId: 'NHL-TOR',
+      teamSelectedId: 'NHL-BOS',
+      gameDate,
+      startTimeUTC,
+      gameStatus: 'FINISHED',
+      isActive: true,
+      selectedTeam: true,
+      recordSeasonType: 2,
+      homeTeamScore: 2,
+      awayTeamScore: 1,
+    });
+
+    beforeEach(() => {
+      mockTeamService.findAll.mockResolvedValue([]);
+    });
+
+    it('defaults to the 4-year window and the 5000-result cap', async () => {
+      mockGameModel.exec.mockResolvedValue([]);
+
+      await service.findResultsByLeague('NHL');
+
+      const fourYearsAgo = new Date();
+      fourYearsAgo.setFullYear(fourYearsAgo.getFullYear() - 4);
+      const expectedStartDate = `${fourYearsAgo.getFullYear()}-${String(
+        fourYearsAgo.getMonth() + 1,
+      ).padStart(2, '0')}-${String(fourYearsAgo.getDate()).padStart(2, '0')}`;
+
+      const filter = mockGameModel.find.mock.calls[0][0];
+      expect(filter.isActive).toBe(true);
+      expect(filter.league).toBe('NHL');
+      expect(filter.gameDate.$gte).toBe(expectedStartDate);
+      expect(mockGameModel.limit).toHaveBeenCalledWith(5000);
+    });
+
+    it('queries newest-first so the cap keeps the most recent games, and returns days chronologically', async () => {
+      // The DB answers newest-first (as the query asks): the descending sort
+      // is an implementation detail of the cap, the payload must stay
+      // chronological for every consumer.
+      mockGameModel.exec.mockResolvedValue([
+        finishedGame('NHL-2', '2025-12-02', '2025-12-02T19:00:00.000Z'),
+        finishedGame('NHL-1', '2025-12-01', '2025-12-01T19:00:00.000Z'),
+      ]);
+
+      const result = await service.findResultsByLeague(
+        'NHL',
+        '2022-01-01',
+        5000,
+      );
+
+      expect(mockGameModel.sort).toHaveBeenCalledWith({ startTimeUTC: -1 });
+      expect(Object.keys(result)).toEqual(['2025-12-01', '2025-12-02']);
+      expect(result['2025-12-01'].map((game: any) => game.uniqueId)).toEqual([
+        'NHL-1',
+      ]);
+    });
+
+    it('forwards an explicit startDate and maxResults', async () => {
+      mockGameModel.exec.mockResolvedValue([]);
+
+      await service.findResultsByLeague('NCAAB', '2024-06-15', 1200);
+
+      const filter = mockGameModel.find.mock.calls[0][0];
+      expect(filter.gameDate.$gte).toBe('2024-06-15');
+      expect(filter.league).toBe('NCAAB');
+      expect(mockGameModel.limit).toHaveBeenCalledWith(1200);
+    });
+
+    it('drops days left empty by the score filter', async () => {
+      mockGameModel.exec.mockResolvedValue([
+        finishedGame('NHL-1', '2025-12-01', '2025-12-01T19:00:00.000Z'),
+        {
+          ...finishedGame('NHL-3', '2025-12-02', '2025-12-02T19:00:00.000Z'),
+          homeTeamScore: null,
+          awayTeamScore: null,
+        },
+      ]);
+
+      const result = await service.findResultsByLeague('NHL');
+
+      expect(Object.keys(result)).toEqual(['2025-12-01']);
+    });
+  });
+
   describe('findUsedTeamIds / purgeStaleTeamsWithoutGames', () => {
     it('findUsedTeamIds unions teamSelectedId + homeTeamId + awayTeamId of active games', async () => {
       mockGameModel.distinct.mockImplementation((field: string) => ({

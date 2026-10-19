@@ -517,6 +517,17 @@ for that gender. If an upcoming Olympic team request triggers a refresh, the ser
 the aggregate league (`OLYMPICS-MEN` or `OLYMPICS-WOMEN`) rather than the incomplete `OLYMPICS`
 prefix.
 
+### `findResultsByLeague()`
+
+Completed results of a whole league, bounded by "**5000 results or 4 years**" when the client sends
+no bound: `startDate` defaults to `leagueResultsYearsToKeep = 4` years ago and `maxResults` to
+`leagueResultsMaxResults = 5000`; an explicit `startDate` / `maxResults` overrides either default.
+The underlying `filterGames` query runs **newest-first** (`sortDirection: 'desc'`) so the cap keeps
+the most recent games, and `filterGames` reverses the enriched rows before the day grouping, so the
+returned `gamesByDay` payload stays chronological whatever the sort direction. A team selection
+(`findResultsByTeam()`) is deliberately unbounded (outside the global retention window): a team
+plays a few dozen games per season.
+
 ### `findByLeague()` / `findByDate()` / `findByDateHour()` / `findByDateLeague()`
 
 Read-only schedule views used by the frontend tabs. On an empty result (no games for
