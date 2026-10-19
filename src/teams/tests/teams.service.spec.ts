@@ -712,7 +712,7 @@ describe('TeamService', () => {
       ).toEqual(['NHL-BOS', 'NHL-TOR', 'NBA-LAL']);
     });
 
-    it('gère un tableau vide ou undefined', () => {
+    it('handles an empty array or undefined', () => {
       expect(service['dedupOlympicTeams']([])).toEqual([]);
       expect(
         service['dedupOlympicTeams'](undefined as unknown as any[]),

@@ -72,11 +72,11 @@ export class GameService {
   // historical value once the season is over). Applied in
   // `removeDuplicatesAndOlds()` via `recordSeasonType === 1`.
   preseasonYearsToKeep = 1;
-  // League-results bounds served by `findResultsByLeague()` when the client
-  // sends none: "5000 results or 4 years", whichever comes first. A team
-  // selection (`findResultsByTeam()`) keeps the full retention window.
-  leagueResultsYearsToKeep = 4;
-  leagueResultsMaxResults = 5000;
+  // League-results cap served by `findResultsByLeague()` when the client sends
+  // no bound: at most 2500 completed games (the most recent ones, newest-first
+  // query). A team selection (`findResultsByTeam()`) keeps the full retention
+  // window.
+  leagueResultsMaxResults = 2500;
   // Purge games that are still active/resolved-less several months after their start
   // (e.g. a PWHL game stuck on 2026-05-11 whose final result can never be fetched).
   staleGameMaxAgeDays = 90;
@@ -196,7 +196,7 @@ export class GameService {
     const expandedIds = new Set<string>();
     for (const teamSelectedId of teamSelectedIds) {
       const id = teamSelectedId.trim().toUpperCase();
-      // Format unifié (frontend/backend Teams.tsx): OLYMPICS-{GENDER}-{COUNTRY}
+      // Unified format (frontend/backend Teams.tsx): OLYMPICS-{GENDER}-{COUNTRY}
       const unifiedMatch = id.match(/^OLYMPICS-(MEN|WOMEN)-(.+)$/);
       if (unifiedMatch) {
         const [, gender, country] = unifiedMatch;
@@ -204,7 +204,7 @@ export class GameService {
         expandedIds.add(`OLYMPICS-BASKETBALL-${gender}-${country}`);
         continue;
       }
-      // Format sport-specific (matchs stockés en DB): OLYMPICS-{HOCKEY|BASKETBALL}-{GENDER}-{COUNTRY}
+      // Sport-specific format (matches stored in DB): OLYMPICS-{HOCKEY|BASKETBALL}-{GENDER}-{COUNTRY}
       const sportMatch = id.match(
         /^OLYMPICS-(?:HOCKEY|BASKETBALL)-(MEN|WOMEN)-(.+)$/,
       );
@@ -557,8 +557,8 @@ export class GameService {
       return '';
     }
 
-    // Un seul match joué ne constitue pas une série avec évolution :
-    // on laisse tomber sur seriesSummary (ex: "NFC Divisional Playoffs").
+    // A single played game is not a series with an evolution:
+    // fall back to seriesSummary (e.g. "NFC Divisional Playoffs").
     if (completedGames <= 1 || (team1Wins === 0 && team2Wins === 0)) {
       return '';
     }
@@ -2839,27 +2839,21 @@ export class GameService {
   }
 
   /**
-   * Completed results of a whole league, bounded by "5000 results or 4 years"
-   * when the client sends no bound: `startDate` defaults to
-   * `leagueResultsYearsToKeep` years ago and `maxResults` to
-   * `leagueResultsMaxResults`. The underlying query runs **newest-first** so
-   * the cap keeps the most recent games; `filterGames` then restores the
-   * chronological order of the returned `gamesByDay` payload. A team
-   * selection (`findResultsByTeam()`) is deliberately unbounded (outside the
-   * global retention window).
+   * Completed results of a whole league, capped at `leagueResultsMaxResults`
+   * (2500) completed games when the client sends no bound. No default `startDate`
+   * is applied: the whole retention window is scanned, but the newest-first
+   * query keeps only the 2500 most recent games, so a league with thousands of
+   * games (mainly the college ones) stays bounded. The query runs
+   * **newest-first** (`sortDirection: 'desc'`) so the cap keeps the most recent
+   * games; `filterGames` then restores chronological order of the returned
+   * `gamesByDay` payload. A team selection (`findResultsByTeam()`) is
+   * deliberately unbounded (outside the global retention window).
    */
   async findResultsByLeague(
     league: string,
     startDate?: string,
     maxResults?: number,
   ) {
-    if (!startDate) {
-      const fewYearsAgo = new Date();
-      fewYearsAgo.setFullYear(
-        fewYearsAgo.getFullYear() - this.leagueResultsYearsToKeep,
-      );
-      startDate = readableDate(fewYearsAgo);
-    }
     maxResults = maxResults || this.leagueResultsMaxResults;
 
     const today = readableDate(new Date());
@@ -2926,9 +2920,12 @@ export class GameService {
       filter.selectedTeam = selectedTeam;
     }
 
-    const effectiveStartDate = startDate || readableDate(new Date());
-    filter.gameDate = { $gte: effectiveStartDate };
-
+    if (startDate || endDate) {
+      filter.gameDate = {};
+    }
+    if (startDate) {
+      filter.gameDate.$gte = startDate;
+    }
     if (endDate) {
       filter.gameDate.$lte = endDate;
     }

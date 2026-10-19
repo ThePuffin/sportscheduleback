@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TeamService } from '../../teams/teams.service';
 import { Colors, DEFAULT_TEAM_COLORS } from '../../utils/Colors';
 import { League } from '../../utils/enum';
+import { readableDate } from '../../utils/date';
 import { HockeyData } from '../../utils/fetchData/hockeyData';
 import * as utils from '../../utils/utils';
 import { GameService } from '../games.service';
@@ -1302,7 +1303,7 @@ describe('GameService', () => {
         ];
         const current = { ...playoffGame() };
         const result = (service as any)._computeSeriesStatus(seriesGames, current);
-        // Un seul match joué : pas d'évolution de série, on laisse tomber sur seriesSummary.
+        // A single played game: no series evolution, fall back to seriesSummary.
         expect(result).toBe('');
       });
 
@@ -4585,22 +4586,18 @@ describe('GameService', () => {
       mockTeamService.findAll.mockResolvedValue([]);
     });
 
-    it('defaults to the 4-year window and the 5000-result cap', async () => {
+    it('applies no startDate bound and caps at 2500 results', async () => {
       mockGameModel.exec.mockResolvedValue([]);
 
       await service.findResultsByLeague('NHL');
 
-      const fourYearsAgo = new Date();
-      fourYearsAgo.setFullYear(fourYearsAgo.getFullYear() - 4);
-      const expectedStartDate = `${fourYearsAgo.getFullYear()}-${String(
-        fourYearsAgo.getMonth() + 1,
-      ).padStart(2, '0')}-${String(fourYearsAgo.getDate()).padStart(2, '0')}`;
-
       const filter = mockGameModel.find.mock.calls[0][0];
       expect(filter.isActive).toBe(true);
       expect(filter.league).toBe('NHL');
-      expect(filter.gameDate.$gte).toBe(expectedStartDate);
-      expect(mockGameModel.limit).toHaveBeenCalledWith(5000);
+      expect(filter.gameDate.$gte).toBeUndefined();
+      expect(filter.gameDate.$lte).toBe(readableDate(new Date()));
+      expect(mockGameModel.limit).toHaveBeenCalledWith(2500);
+      expect(mockGameModel.sort).toHaveBeenCalledWith({ startTimeUTC: -1 });
     });
 
     it('queries newest-first so the cap keeps the most recent games, and returns days chronologically', async () => {

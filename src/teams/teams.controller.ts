@@ -25,7 +25,7 @@ export class TeamsController {
     // the unfiltered catalog — the behavior every existing caller relies on.
     const teams = await this.TeamService.findAll(undefined, { minGames });
     // Olympic deduplication on HTTP output: one entry per country and gender
-    // (OLYMPICS-{MEN|WOMEN}-{PAYS}) so the selector does not display the same
+    // (OLYMPICS-{MEN|WOMEN}-{COUNTRY}) so the selector does not display the same
     // country twice (hockey + basketball). The representative ID is unified to
     // `OLYMPICS-{GENDER}-{COUNTRY}` (e.g. `OLYMPICS-WOMEN-USA`) instead of
     // keeping a sport-specific ID such as `OLYMPICS-HOCKEY-WOMEN-USA` /

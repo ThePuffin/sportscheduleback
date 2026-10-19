@@ -133,8 +133,8 @@ by counting wins:
 - **`_computeSeriesStatus(seriesGames, currentGame)`** — returns the latest stored evolution
   when one exists, otherwise counts wins per team regardless of home/away side. Dedupe is
   two-layer: same stored row (`uniqueId`) and same fixture slot (`_seriesSlotKey()` — same
-  league, same two teams in either order, same start time), so a duplicated fixture (mêmes
-  équipes à la même heure) only ever counts once. Numeric score comparison, tied/non-numeric
+  league, same two teams in either order, same start time), so a duplicated fixture (same
+  teams at the same hour) only ever counts once. Numeric score comparison, tied/non-numeric
   scores ignored. Returns `X leads Y-Z`, `Series tied Y-Y` or `X wins series Y-Z`. A series is
   considered decided at 4+ wins (covers best-of-7 and best-of-5), or at 3 wins with 5 completed
   games (best-of-5 clincher). Returns `''` when no game has been played, when only one game has
@@ -519,14 +519,15 @@ prefix.
 
 ### `findResultsByLeague()`
 
-Completed results of a whole league, bounded by "**5000 results or 4 years**" when the client sends
-no bound: `startDate` defaults to `leagueResultsYearsToKeep = 4` years ago and `maxResults` to
-`leagueResultsMaxResults = 5000`; an explicit `startDate` / `maxResults` overrides either default.
-The underlying `filterGames` query runs **newest-first** (`sortDirection: 'desc'`) so the cap keeps
-the most recent games, and `filterGames` reverses the enriched rows before the day grouping, so the
-returned `gamesByDay` payload stays chronological whatever the sort direction. A team selection
-(`findResultsByTeam()`) is deliberately unbounded (outside the global retention window): a team
-plays a few dozen games per season.
+Completed results of a whole league, capped at `leagueResultsMaxResults = 2500` completed games when
+the client sends no bound. No default `startDate` is applied: the whole retention window is scanned,
+but the newest-first query keeps only the 2500 most recent games, so a league with thousands of games
+(staying bounded). The underlying `filterGames` query runs **newest-first** (`sortDirection: 'desc'`)
+so the cap keeps the most recent games, and `filterGames` reverses the enriched rows before the day
+grouping, so the returned `gamesByDay` payload stays chronological whatever the sort direction. An
+explicit `startDate` / `maxResults` overrides either default. A team selection (`findResultsByTeam()`)
+is deliberately unbounded (outside the global retention window): a team plays a few dozen games per
+season.
 
 ### `findByLeague()` / `findByDate()` / `findByDateHour()` / `findByDateLeague()`
 
