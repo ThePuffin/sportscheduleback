@@ -237,21 +237,18 @@ describe('GamesController', () => {
         undefined,
         undefined,
         undefined,
-        undefined,
       );
     });
 
-    it('should forward leagues, pagination and favoriteTeams', async () => {
+    it('should forward leagues and pagination', async () => {
       const date = '2024-10-10';
       const leagues = 'NHL,NBA';
-      const favoriteTeams = 'NHL-BOS,MLB-CHC';
-      await controller.findByDateLeague(date, leagues, 15, 15, favoriteTeams);
+      await controller.findByDateLeague(date, leagues, 15, 15);
       expect(service.findByDateLeague).toHaveBeenCalledWith(
         date,
         leagues,
         15,
         15,
-        favoriteTeams,
       );
     });
   });

@@ -4531,33 +4531,28 @@ export class GameService {
    * 12-hour status guard) but grouped by **league** instead of by time slot.
    *
    * Used by the frontend day view for past dates, where a league is a more
-   * meaningful section than a kick-off hour. Everything (grouping, ordering,
-   * favorites extraction) is computed here so the client only renders the
-   * payload:
+   * meaningful section than a kick-off hour. Everything (grouping, ordering)
+   * is computed here so the client only renders the payload:
    *
    * ```
    * {
    *   groups: [
-   *     { key: 'FAVORITES', games: [...] }, // only when favoriteTeams matches
-   *     { key: 'MLB', games: [...] },       // leagues in alphabetical order
+   *     { key: 'MLB', games: [...] }, // leagues in alphabetical order
    *     { key: 'NBA', games: [...] },
    *   ]
    * }
    * ```
    *
-   * The `FAVORITES` group is a *duplicate* view: those games also stay in
-   * their league group. Within every group the games are ordered from oldest
-   * to most recent (`startTimeUTC` ascending).
-   *
-   * `favoriteTeams` is a comma / space / `+` separated list of team
-   * `uniqueId`s (e.g. `NHL-BOS,MLB-CHC`).
+   * Within every group the games are ordered from oldest to most recent
+   * (`startTimeUTC` ascending). Favorite-team games are *not* extracted into
+   * their own section anymore: the frontend star FAVORITES chip filters them
+   * client-side, inside each league group.
    */
   async findByDateLeague(
     gameDate: string,
     leagues?: string,
     maxResults?: number,
     skip?: number,
-    favoriteTeams?: string,
   ): Promise<{ groups: { key: string; games: any[] }[] }> {
     const games = await this._findEnrichedGamesForDay(
       gameDate,
@@ -4575,22 +4570,6 @@ export class GameService {
 
     const groups: { key: string; games: any[] }[] = [];
 
-    const favoriteIds = (favoriteTeams ?? '')
-      .split(/[ ,+]+/)
-      .map((teamId) => teamId.trim())
-      .filter((teamId) => teamId.length > 0);
-
-    if (favoriteIds.length > 0) {
-      const favoriteGames = games.filter(
-        (game) =>
-          favoriteIds.includes(game.homeTeamId) ||
-          favoriteIds.includes(game.awayTeamId),
-      );
-      if (favoriteGames.length > 0) {
-        groups.push({ key: 'FAVORITES', games: favoriteGames });
-      }
-    }
-
     const gamesByLeague = new Map<string, any[]>();
 
     games.forEach((game) => {
@@ -4606,10 +4585,6 @@ export class GameService {
     const byStartTimeAsc = (gameA: any, gameB: any) =>
       new Date(gameA.startTimeUTC).getTime() -
       new Date(gameB.startTimeUTC).getTime();
-
-    if (groups.length > 0) {
-      groups[0].games.sort(byStartTimeAsc);
-    }
 
     Array.from(gamesByLeague.keys())
       .sort((leagueA, leagueB) => leagueA.localeCompare(leagueB))

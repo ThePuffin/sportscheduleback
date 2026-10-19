@@ -4502,28 +4502,18 @@ describe('GameService', () => {
       mockTeamService.findAll.mockResolvedValue([]);
     });
 
-    it('groups the day by league (alphabetical order) and puts favorites first', async () => {
+    it('sorts games oldest-to-most-recent inside every league group', async () => {
       mockGameModel.exec.mockResolvedValue([nhlGame2, nbaGame, nhlGame]);
 
-      const result = await service.findByDateLeague(
-        '2026-01-10',
-        undefined,
-        undefined,
-        undefined,
-        'NHL-BOS',
-      );
+      const result = await service.findByDateLeague('2026-01-10');
 
       expect(result.groups.map((group) => group.key)).toEqual([
-        'FAVORITES',
         League.NBA,
         League.NHL,
       ]);
-      // The favorite game is duplicated in its league group.
-      expect(result.groups[0].games).toHaveLength(1);
-      expect(result.groups[0].games[0].uniqueId).toBe('NHL-1');
       // Games are ordered from oldest to most recent within each group,
       // even though the DB returned them in reverse order.
-      expect(result.groups[2].games.map((game) => game.uniqueId)).toEqual([
+      expect(result.groups[1].games.map((game) => game.uniqueId)).toEqual([
         'NHL-1',
         'NHL-2',
       ]);
@@ -4538,40 +4528,6 @@ describe('GameService', () => {
         League.MLB,
         League.NBA,
         League.NHL,
-      ]);
-    });
-
-    it('omits the favorites group when no favorite team plays that day', async () => {
-      mockGameModel.exec.mockResolvedValue([nhlGame, nbaGame]);
-
-      const result = await service.findByDateLeague(
-        '2026-01-10',
-        undefined,
-        undefined,
-        undefined,
-        'MLB-CHC',
-      );
-
-      expect(result.groups.map((group) => group.key)).toEqual([
-        League.NBA,
-        League.NHL,
-      ]);
-    });
-
-    it('matches favorites on the away team as well', async () => {
-      mockGameModel.exec.mockResolvedValue([nhlGame, nbaGame]);
-
-      const result = await service.findByDateLeague(
-        '2026-01-10',
-        undefined,
-        undefined,
-        undefined,
-        'NBA-BOS',
-      );
-
-      expect(result.groups[0].key).toBe('FAVORITES');
-      expect(result.groups[0].games.map((game) => game.uniqueId)).toEqual([
-        'NBA-1',
       ]);
     });
 

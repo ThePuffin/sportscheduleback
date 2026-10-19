@@ -117,14 +117,12 @@ export class GamesController {
     maxResults?: number,
     @Query('skip', new ParseIntPipe({ optional: true }))
     skip?: number,
-    @Query('favoriteTeams') favoriteTeams?: string,
   ) {
     return this.GameService.findByDateLeague(
       gameDate,
       leagues,
       maxResults,
       skip,
-      favoriteTeams,
     );
   }
 

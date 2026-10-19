@@ -547,19 +547,18 @@ query behind the day views:
 
 ```
 { groups: [
-    { key: 'FAVORITES', games: [...] },  // only when `favoriteTeams` matches
-    { key: 'MLB', games: [...] },        // leagues in alphabetical order
+    { key: 'MLB', games: [...] },  // leagues in alphabetical order
     { key: 'NBA', games: [...] } ] }
 ```
 
-- `favoriteTeams` (query param, `,` / space / `+` separated team `uniqueId`s) builds a leading
-  `FAVORITES` section; those games are **also** kept in their league section (a duplicate view).
 - League sections are ordered alphabetically (`localeCompare`; unknown/empty leagues fall back to
   the `OTHER` key, sorted like any other league name).
 - Games are ordered from oldest to most recent (`startTimeUTC` ascending) inside every section.
+- There is **no favorites section**: favorite-team games stay only in their league section and the
+  frontend star FAVORITES chip filters them client-side (the route takes no `favoriteTeams` param).
 
-All the grouping, ordering and favorites extraction happen server-side, so the client renders
-the payload as-is (it only applies its own league/team/bookmark chips filters).
+All the grouping and ordering happen server-side, so the client renders
+the payload as-is (it only applies its own league/team/favorites/bookmarks chips filters).
 
 ### `fetchGamesScores()`
 

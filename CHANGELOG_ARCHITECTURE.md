@@ -3,6 +3,20 @@
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
 
+## Removed: dead `favoriteTeams` support from `GET /games/league-day/:gameDate`
+
+The route used to accept a `favoriteTeams` query param and, when it matched games of the day, prepend a leading `FAVORITES` group (a duplicate view — the same games stayed in their league group). The frontend day view no longer sends any favorites list: the star FAVORITES chip filters favorite-team games client-side, on every date, so the param and the group were never produced anymore. Both are now removed so the API and its docs only describe what actually runs.
+
+The endpoint itself is unchanged otherwise: same grouping by league (alphabetical), same `startTimeUTC` ordering inside each group, same `leagues` / `maxResults` / `skip` params and same enrichment.
+
+### Changes
+
+- **`backend/src/games/games.controller.ts`** — `findByDateLeague` no longer reads/forwards the `favoriteTeams` query param.
+- **`backend/src/games/games.service.ts`** — `findByDateLeague(gameDate, leagues?, maxResults?, skip?)` no longer parses a favorites list, no longer builds the `FAVORITES` group (and no longer needs the leading-group sort); JSDoc updated.
+- **`backend/src/games/tests/games.controller.spec.ts`** — forwarding tests drop the `favoriteTeams` argument.
+- **`backend/src/games/tests/games.service.spec.ts`** — the `findByDateLeague` suite loses the favorites cases (favorites first, omitted when no favorite plays, away-team match) and keeps grouping, alphabetical order, chronological order within each group, leagues filter + pagination and the empty-day case.
+- **`backend/docs/games/games.controller.ts.md`**, **`backend/docs/games/games.service.ts.md`** — route/method descriptions updated (no favorites section).
+
 ## Added: `refreshUndecidedPlayoffSeries()` — corrects playoff series with no declared winner
 
 The oldies daily cron (`getOldGames()` at 10:00 AM) now calls

@@ -27,7 +27,7 @@ This controller exposes the HTTP API for game data operations.
 - `GET /games/dates/closest` — returns the closest past and upcoming game dates (`previousDate`/`nextDate`), optionally scoped by `leagues` and/or `teamSelectedIds`, relative to an optional reference `date` (defaults to today)
 - `GET /games/date/:gameDate` — returns games for a specific date
 - `GET /games/hour/:gameDate` — returns games grouped by hour slots
-- `GET /games/league-day/:gameDate` — returns games grouped by **league** (query params: `leagues`, `maxResults`, `skip`, `favoriteTeams`); adds a leading `FAVORITES` group when `favoriteTeams` matches games of that day. Used by the frontend day view for past dates.
+- `GET /games/league-day/:gameDate` — returns games grouped by **league** (query params: `leagues`, `maxResults`, `skip`). Used by the frontend day view for past dates; favorite-team games are filtered client-side by the frontend (the route never receives any favorites list).
 - `GET /games/league/:league` — returns games for a league
 - `GET /games/:uniqueId` — returns a single game
 
