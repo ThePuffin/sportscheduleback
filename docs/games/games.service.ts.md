@@ -519,15 +519,7 @@ prefix.
 
 ### `findResultsByLeague()`
 
-Completed results of a whole league, capped at `leagueResultsMaxResults = 2500` completed games when
-the client sends no bound. No default `startDate` is applied: the whole retention window is scanned,
-but the newest-first query keeps only the 2500 most recent games, so a league with thousands of games
-(staying bounded). The underlying `filterGames` query runs **newest-first** (`sortDirection: 'desc'`)
-so the cap keeps the most recent games, and `filterGames` reverses the enriched rows before the day
-grouping, so the returned `gamesByDay` payload stays chronological whatever the sort direction. An
-explicit `startDate` / `maxResults` overrides either default. A team selection (`findResultsByTeam()`)
-is deliberately unbounded (outside the global retention window): a team plays a few dozen games per
-season.
+Completed results of a whole league. Without an explicit client bound, `startDate` defaults to `maxYearBeforeDelete` (7) years ago and `maxResults` to 5000, applied oldest-first by the shared `filterGames` query. An explicit `startDate` / `maxResults` overrides either default. A team selection (`findResultsByTeam()`) uses the same defaults: a team plays a few dozen games per season, so no tighter bound applies on either side.
 
 ### `findByLeague()` / `findByDate()` / `findByDateHour()` / `findByDateLeague()`
 

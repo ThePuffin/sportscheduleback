@@ -72,11 +72,6 @@ export class GameService {
   // historical value once the season is over). Applied in
   // `removeDuplicatesAndOlds()` via `recordSeasonType === 1`.
   preseasonYearsToKeep = 1;
-  // League-results cap served by `findResultsByLeague()` when the client sends
-  // no bound: at most 2500 completed games (the most recent ones, newest-first
-  // query). A team selection (`findResultsByTeam()`) keeps the full retention
-  // window.
-  leagueResultsMaxResults = 2500;
   // Purge games that are still active/resolved-less several months after their start
   // (e.g. a PWHL game stuck on 2026-05-11 whose final result can never be fetched).
   staleGameMaxAgeDays = 90;
@@ -2838,23 +2833,19 @@ export class GameService {
       .slice(0, safeLimit);
   }
 
-  /**
-   * Completed results of a whole league, capped at `leagueResultsMaxResults`
-   * (2500) completed games when the client sends no bound. No default `startDate`
-   * is applied: the whole retention window is scanned, but the newest-first
-   * query keeps only the 2500 most recent games, so a league with thousands of
-   * games (mainly the college ones) stays bounded. The query runs
-   * **newest-first** (`sortDirection: 'desc'`) so the cap keeps the most recent
-   * games; `filterGames` then restores chronological order of the returned
-   * `gamesByDay` payload. A team selection (`findResultsByTeam()`) is
-   * deliberately unbounded (outside the global retention window).
-   */
   async findResultsByLeague(
     league: string,
     startDate?: string,
     maxResults?: number,
   ) {
-    maxResults = maxResults || this.leagueResultsMaxResults;
+    if (!startDate) {
+      const fewYearsAgo = new Date();
+      fewYearsAgo.setFullYear(
+        fewYearsAgo.getFullYear() - this.maxYearBeforeDelete,
+      );
+      startDate = readableDate(fewYearsAgo);
+    }
+    maxResults = maxResults || 5000;
 
     const today = readableDate(new Date());
 
@@ -2865,7 +2856,6 @@ export class GameService {
       clean: true,
       selectedTeam: true,
       maxResults,
-      sortDirection: 'desc',
     });
 
     for (const date in games) {
@@ -2912,7 +2902,6 @@ export class GameService {
     selectedTeam = undefined,
     isHome = undefined,
     clean = undefined,
-    sortDirection = undefined,
   }) {
     const filter: any = { isActive: true };
 
@@ -2920,12 +2909,9 @@ export class GameService {
       filter.selectedTeam = selectedTeam;
     }
 
-    if (startDate || endDate) {
-      filter.gameDate = {};
-    }
-    if (startDate) {
-      filter.gameDate.$gte = startDate;
-    }
+    const effectiveStartDate = startDate || readableDate(new Date());
+    filter.gameDate = { $gte: effectiveStartDate };
+
     if (endDate) {
       filter.gameDate.$lte = endDate;
     }
@@ -2950,7 +2936,7 @@ export class GameService {
 
     const filtredGames = await this.gameModel
       .find(filter)
-      .sort({ startTimeUTC: sortDirection === 'desc' ? -1 : 1 })
+      .sort({ startTimeUTC: 1 })
       .skip(skip ? Number.parseInt(skip, 10) : 0)
       .limit(maxResults ? Number.parseInt(maxResults, 10) : 0)
       .lean()
@@ -2975,12 +2961,6 @@ export class GameService {
           this._enrichGameWithTeamData(game, teamsMap),
         )
       : [];
-    // A descending query only exists so `limit` keeps the most recent games;
-    // the payload itself stays chronological (day keys, and within-day order
-    // after the per-team grouping below) for every consumer.
-    if (sortDirection === 'desc') {
-      games.reverse();
-    }
     const gamesByDay = {};
     const uniqueTeamSelectedIds = teamSelectedIds
       ? this.expandOlympicTeamIds(teamSelectedIds.split(',').map((item) => item.trim()).filter(Boolean))

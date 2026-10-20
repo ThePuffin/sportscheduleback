@@ -3,7 +3,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TeamService } from '../../teams/teams.service';
 import { Colors, DEFAULT_TEAM_COLORS } from '../../utils/Colors';
 import { League } from '../../utils/enum';
-import { readableDate } from '../../utils/date';
 import { HockeyData } from '../../utils/fetchData/hockeyData';
 import * as utils from '../../utils/utils';
 import { GameService } from '../games.service';
@@ -4586,40 +4585,25 @@ describe('GameService', () => {
       mockTeamService.findAll.mockResolvedValue([]);
     });
 
-    it('applies no startDate bound and caps at 2500 results', async () => {
+    it('defaults to the retention window and the 5000-result cap', async () => {
       mockGameModel.exec.mockResolvedValue([]);
 
       await service.findResultsByLeague('NHL');
 
+      const fewYearsAgo = new Date();
+      fewYearsAgo.setFullYear(
+        fewYearsAgo.getFullYear() - service.maxYearBeforeDelete,
+      );
+      const expectedStartDate = `${fewYearsAgo.getFullYear()}-${String(
+        fewYearsAgo.getMonth() + 1,
+      ).padStart(2, '0')}-${String(fewYearsAgo.getDate()).padStart(2, '0')}`;
+
       const filter = mockGameModel.find.mock.calls[0][0];
       expect(filter.isActive).toBe(true);
       expect(filter.league).toBe('NHL');
-      expect(filter.gameDate.$gte).toBeUndefined();
-      expect(filter.gameDate.$lte).toBe(readableDate(new Date()));
-      expect(mockGameModel.limit).toHaveBeenCalledWith(2500);
-      expect(mockGameModel.sort).toHaveBeenCalledWith({ startTimeUTC: -1 });
-    });
-
-    it('queries newest-first so the cap keeps the most recent games, and returns days chronologically', async () => {
-      // The DB answers newest-first (as the query asks): the descending sort
-      // is an implementation detail of the cap, the payload must stay
-      // chronological for every consumer.
-      mockGameModel.exec.mockResolvedValue([
-        finishedGame('NHL-2', '2025-12-02', '2025-12-02T19:00:00.000Z'),
-        finishedGame('NHL-1', '2025-12-01', '2025-12-01T19:00:00.000Z'),
-      ]);
-
-      const result = await service.findResultsByLeague(
-        'NHL',
-        '2022-01-01',
-        5000,
-      );
-
-      expect(mockGameModel.sort).toHaveBeenCalledWith({ startTimeUTC: -1 });
-      expect(Object.keys(result)).toEqual(['2025-12-01', '2025-12-02']);
-      expect(result['2025-12-01'].map((game: any) => game.uniqueId)).toEqual([
-        'NHL-1',
-      ]);
+      expect(filter.gameDate.$gte).toBe(expectedStartDate);
+      expect(mockGameModel.limit).toHaveBeenCalledWith(5000);
+      expect(mockGameModel.sort).toHaveBeenCalledWith({ startTimeUTC: 1 });
     });
 
     it('forwards an explicit startDate and maxResults', async () => {

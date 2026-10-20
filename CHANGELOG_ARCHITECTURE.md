@@ -3,18 +3,6 @@
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
 
-## Changed: `GET /games/league/:league/results` capped at 2500 results, no default date bound
-
-The league-results route defaulted to the full retention window (`maxYearBeforeDelete` = 7 years) and capped at 5000 results applied to the **oldest** rows. Any client sending no bound therefore received thousands of games — mostly ancient ones for leagues with huge schedules (the college leagues) — and it was the most recent results that got truncated.
-
-`findResultsByLeague()` now caps the response at **2500 completed games** (`leagueResultsMaxResults`) when the client sends no bound. No default `startDate` is applied: the whole retention window is scanned, but the newest-first query keeps only the 2500 most recent games, so a league with thousands of games stays bounded. `filterGames()` only adds the `gameDate` lower bound when `startDate` is explicitly provided. `findResultsByTeam()` (team selection) is deliberately untouched and keeps the full retention window — a team plays a few dozen games per season.
-
-### Changes
-
-- **`backend/src/games/games.service.ts`** — `leagueResultsMaxResults` reduced from 5000 to **2500**; `leagueResultsYearsToKeep` removed; `findResultsByLeague()` no longer applies a default `startDate` (no date bound); `filterGames()` only sets `gameDate.$gte` when `startDate` is provided; JSDoc updated.
-- **`backend/src/games/tests/games.service.spec.ts`** — `findResultsByLeague` suite updated: no `startDate` bound by default, cap at 2500, newest-first sort; explicit bounds still forwarded.
-- **`backend/docs/games/games.service.ts.md`** — defaults and sort behaviour documented.
-
 ## Removed: dead `favoriteTeams` support from `GET /games/league-day/:gameDate`
 
 The route used to accept a `favoriteTeams` query param and, when it matched games of the day, prepend a leading `FAVORITES` group (a duplicate view — the same games stayed in their league group). The frontend day view no longer sends any favorites list: the star FAVORITES chip filters favorite-team games client-side, on every date, so the param and the group were never produced anymore. Both are now removed so the API and its docs only describe what actually runs.
