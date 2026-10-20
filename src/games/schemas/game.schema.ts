@@ -158,3 +158,14 @@ GameSchema.index({ isActive: 1, awayTeamId: 1, startTimeUTC: -1 });
 // preseason games) has to be evaluated there; without it every active game
 // document would be fetched just to check its phase and then be grouped.
 GameSchema.index({ isActive: 1, teamSelectedId: 1, recordSeasonType: 1 });
+
+// Serves `filterGames()` when it is called with a league + date range +
+// teamSelectedId: Mongo can then satisfy the whole `$match`/`$sort` from the
+// index instead of scanning and filtering the result set in memory.
+GameSchema.index({
+  isActive: 1,
+  league: 1,
+  gameDate: 1,
+  teamSelectedId: 1,
+  startTimeUTC: 1,
+});

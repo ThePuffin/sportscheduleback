@@ -3,6 +3,26 @@
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
 
+
+## Optimised: `filterGames()` historical query + compound index
+
+`filterGames()` previously re-ran `games.filter()` for every (date × team) combination when grouping
+games by day — O(days × teams × games). It now indexes the fetched games once in a `Map` keyed by
+`gameDate|teamSelectedId` (O(games + days × teams)). A compound index
+`{ isActive: 1, league: 1, gameDate: 1, teamSelectedId: 1, startTimeUTC: 1 }` was added to
+`GameSchema` so the Mongo `$match`/`$sort` is served entirely from the index instead of a collection
+scan.
+
+### Changes
+
+- **`backend/src/games/schemas/game.schema.ts`** — added compound index
+  `{ isActive: 1, league: 1, gameDate: 1, teamSelectedId: 1, startTimeUTC: 1 }`.
+- **`backend/src/games/games.service.ts`** — `filterGames()` builds a `Map` of games by
+  `gameDate|teamSelectedId` before the day loop and looks up via `Map.get()` instead of repeated
+  `games.filter()`.
+- **`backend/docs/games/games.service.ts.md`** — documented the compound index and the in-memory
+  optimisation.
+
 ## Removed: dead `favoriteTeams` support from `GET /games/league-day/:gameDate`
 
 The route used to accept a `favoriteTeams` query param and, when it matched games of the day, prepend a leading `FAVORITES` group (a duplicate view — the same games stayed in their league group). The frontend day view no longer sends any favorites list: the star FAVORITES chip filters favorite-team games client-side, on every date, so the param and the group were never produced anymore. Both are now removed so the API and its docs only describe what actually runs.

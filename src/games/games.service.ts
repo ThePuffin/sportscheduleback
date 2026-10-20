@@ -2966,6 +2966,18 @@ export class GameService {
       ? this.expandOlympicTeamIds(teamSelectedIds.split(',').map((item) => item.trim()).filter(Boolean))
       : this.getTeams(undefined, games);
 
+    // Index the fetched games in memory once: key = "YYYY-MM-DD|teamSelectedId".
+    // This avoids re-running games.filter() for every (date × team) combination
+    // in the loop below, which was O(days × teams × games).
+    const gamesByDateAndTeam = new Map<string, any[]>();
+    for (const game of games) {
+      if (!game.isActive) continue;
+      const key = `${game.gameDate}|${game.teamSelectedId}`;
+      const bucket = gamesByDateAndTeam.get(key);
+      if (bucket) bucket.push(game);
+      else gamesByDateAndTeam.set(key, [game]);
+    }
+
     // Use actual query results to define boundaries if dates aren't provided
     const resultDates = games.map((game) => new Date(game.gameDate).getTime());
     let minDate =
@@ -2986,12 +2998,7 @@ export class GameService {
       const currentDate = readableDate(date);
       const gamesOfDay = [];
       uniqueTeamSelectedIds.forEach((teamSelectedId) => {
-        const gameOfDay = games.filter(
-          (game) =>
-            game.gameDate === currentDate &&
-            game.teamSelectedId === teamSelectedId &&
-            game.isActive === true,
-        );
+        const gameOfDay = gamesByDateAndTeam.get(`${currentDate}|${teamSelectedId}`) || [];
         if (
           !gameOfDay.length &&
           !league &&

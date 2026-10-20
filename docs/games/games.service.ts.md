@@ -505,6 +505,15 @@ it returned an incomplete history for the opponent.
   The schema also declares `{ isActive: 1, teamSelectedId: 1, recordSeasonType: 1 }`, which serves
   the per-team game counts of `GET /teams?minGames=…` entirely from the index — including the
   preseason exclusion (see `TeamService.countActiveGamesByTeam()`).
+  A compound index `{ isActive: 1, league: 1, gameDate: 1, teamSelectedId: 1, startTimeUTC: 1 }`
+  is declared on `GameSchema` (`game.schema.ts`) so `filterGames()` with league + date range +
+  `teamSelectedId` is served entirely from the index instead of scanning the result set.
+
+### `filterGames()` in-memory optimisation
+
+Before grouping games by day, the fetched results are indexed once in a `Map` keyed by
+`gameDate|teamSelectedId` instead of calling `games.filter()` for every (date × team) combination.
+This reduces the grouping complexity from O(days × teams × games) to O(games + days × teams).
 
 ### `findByTeam()` / `findResultsByTeam()`
 
