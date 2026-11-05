@@ -228,6 +228,28 @@ For each picked series:
 
 Returns `{ updated: number, series: string[] }`.
 
+### `refreshTbdPlayoffGames()`
+
+Finds active playoff games (`recordSeasonType: 3`, `isActive: true`) where either
+`homeTeamId`/`awayTeamId` or `homeTeamShort`/`awayTeamShort` contains "TBD" (To Be
+Determined, case-insensitive). TBD is used by ESPN when the opponent for a playoff
+game is not yet known (e.g. the winner of another series hasn't been decided).
+
+For each league that has TBD playoff games, re-fetches the full schedule with
+`forceUpdate: true`. The `sameResult` guard in `getLeagueGames()` now also compares
+home/away team IDs, so a stored TBD that ESPN has since resolved into a real team
+is rewritten with the real name, logo, date and venue.
+
+After the refresh, any remaining TBD games are deleted when the playoff series
+has started (the opponent already has scored playoff games this season in this
+league) **and** the TBD side is not a real team that exists in the team database
+(via `teamService.findOne()`). This preserves legitimate college teams
+abbreviated "TBD" (e.g. NCCABB-TBD) while removing orphaned placeholders that
+will never resolve and would otherwise keep showing a dummy shield with no
+logo, date or venue.
+
+Returns `{ updated: number, deleted: number, leagues: string[] }`.
+
 ### `getLeagueGames(params)`
 
 Refreshes a specific league’s game data. It:

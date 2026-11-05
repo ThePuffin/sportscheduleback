@@ -4,6 +4,35 @@
 
 
 
+## Fixed: TBD (To Be Determined) playoff placeholders never resolved
+
+Playoff games where ESPN returns "TBD" as one of the teams (the opponent is not yet known,
+e.g. the winner of another series) were never updated: once stored with TBD, the match kept
+showing the placeholder shield, no team logo, and no date/venue even after ESPN resolved the
+real team.
+
+Root cause: the `sameResult` dedup guard in `getLeagueGames()` compared only scores, per-game
+records, series status and season phase — **not** the team IDs. When ESPN later re-fetched the
+same game with a real team but identical (null) scores, `sameResult` was `true` and `create()`
+was skipped, so the TBD placeholder persisted forever.
+
+- **`backend/src/games/games.service.ts`**:
+  - `existingResults` projection and Map type now include `homeTeamId`, `awayTeamId`,
+    `homeTeamShort`, `awayTeamShort`.
+  - `sameResult` now also compares home/away team IDs, so a stored TBD that ESPN has resolved
+    into a real team is rewritten through `create()` with the real name, logo, date and venue.
+  - New public method `refreshTbdPlayoffGames()`: finds active playoff games (`recordSeasonType: 3`)
+    with TBD as home or away team, re-fetches each affected league with `forceUpdate: true`, then
+    deletes any remaining TBD games when the playoff series has started (the opponent already has
+    scored playoff games this season in this league) **and** the TBD side is not a real team that
+    exists in the team database. This preserves legitimate college teams abbreviated "TBD"
+    (e.g. NCCABB-TBD) while removing orphaned placeholders that will never resolve.
+- **`backend/src/cronJob/cronJob.service.ts`**: `getOldGames()` now calls
+  `refreshTbdPlayoffGames()` after `refreshUndecidedPlayoffSeries()`, wrapped in its own
+  try/catch so a failure never blocks the oldies flow.
+- **`backend/docs/games/games.service.ts.md`** — documents `refreshTbdPlayoffGames()`.
+- **`backend/docs/cronJob/cronJob.service.ts.md`** — documents the new cron step.
+
 ## Added: shared outbound HTTP client with timeout, de-duplication and concurrency cap
 
 The backend now routes all outbound provider calls (ESPN, HockeyTech/NHL/PWHL, Ligue Magnus scraping)

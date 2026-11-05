@@ -360,6 +360,21 @@ export class CronService implements OnModuleInit {
       } catch (err) {
         console.error('[Cron] Error refreshing undecided playoff series:', err);
       }
+
+      // Resolve TBD (To Be Determined) placeholders in playoff games. Re-fetches
+      // each league that still has TBD playoff teams so ESPN's resolved team name,
+      // logo, date and venue are written back. Orphaned TBD games whose team does
+      // not exist in the database are deleted.
+      try {
+        const tbdResult = await this.gameService.refreshTbdPlayoffGames();
+        if (tbdResult.updated > 0 || tbdResult.deleted > 0) {
+          console.info(
+            `[Cron] TBD playoff resolution: processed ${tbdResult.updated} TBD game(s) across ${tbdResult.leagues.join(', ')}, deleted ${tbdResult.deleted} orphaned game(s).`,
+          );
+        }
+      } catch (err) {
+        console.error('[Cron] Error resolving TBD playoff games:', err);
+      }
     } finally {
       this.isFetchingOldiesInProgress = false;
     }

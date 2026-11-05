@@ -1868,6 +1868,197 @@ export class GameService {
     return { updated, series: seriesUpdated };
   }
 
+  /**
+   * Refreshes playoff games that still carry a "TBD" (To Be Determined)
+   * placeholder as one of the teams. TBD is used by ESPN when the opponent
+   * for a playoff game is not yet known (e.g. the winner of another series
+   * hasn't been decided).
+   *
+   * For each league that has TBD playoff games, re-fetches the full schedule
+   * with `forceUpdate: true`. The `sameResult` guard in `getLeagueGames()`
+   * now also compares home/away team IDs, so a stored TBD that ESPN has since
+   * resolved into a real team will be rewritten with the real name, logo,
+   * date and venue.
+   *
+   * After the refresh, any remaining TBD games whose team does not exist in
+   * the team database are deleted (they are orphaned placeholders that will
+   * never resolve).
+   */
+  async refreshTbdPlayoffGames(): Promise<{
+    updated: number;
+    deleted: number;
+    leagues: string[];
+  }> {
+    // Find active playoff games with TBD as home or away team
+    const tbdGames = await this.gameModel
+      .find(
+        {
+          recordSeasonType: 3,
+          isActive: true,
+          $or: [
+            { homeTeamId: /TBD/i },
+            { awayTeamId: /TBD/i },
+            { homeTeamShort: /TBD/i },
+            { awayTeamShort: /TBD/i },
+          ],
+        },
+        {
+          uniqueId: 1,
+          league: 1,
+          homeTeamId: 1,
+          awayTeamId: 1,
+          homeTeamShort: 1,
+          awayTeamShort: 1,
+          _id: 1,
+        },
+      )
+      .lean()
+      .exec();
+
+    if (tbdGames.length === 0) {
+      return { updated: 0, deleted: 0, leagues: [] };
+    }
+
+    // Group by league
+    const leaguesWithTbd = new Set<string>();
+    for (const g of tbdGames) {
+      leaguesWithTbd.add(g.league);
+    }
+
+    const updatedLeagues: string[] = [];
+
+    // Re-fetch each league that has TBD games
+    for (const league of leaguesWithTbd) {
+      try {
+        await this.getLeagueGames({
+          league,
+          forceUpdate: true,
+          skipCascade: true,
+        });
+        updatedLeagues.push(league);
+        console.info(
+          `[TBD] Re-fetched league ${league} to resolve ${tbdGames.filter(
+            (g) => g.league === league,
+          ).length} TBD playoff game(s).`,
+        );
+      } catch (err) {
+        console.error(
+          `[TBD] Error re-fetching league ${league} for TBD resolution:`,
+          err,
+        );
+      }
+    }
+
+    // After refresh, find remaining TBD games and delete orphaned ones
+    const stillTbd = await this.gameModel
+      .find(
+        {
+          recordSeasonType: 3,
+          isActive: true,
+          $or: [
+            { homeTeamId: /TBD/i },
+            { awayTeamId: /TBD/i },
+            { homeTeamShort: /TBD/i },
+            { awayTeamShort: /TBD/i },
+          ],
+        },
+        {
+          uniqueId: 1,
+          homeTeamId: 1,
+          awayTeamId: 1,
+          homeTeamShort: 1,
+          awayTeamShort: 1,
+          startTimeUTC: 1,
+          _id: 1,
+        },
+      )
+      .lean()
+      .exec();
+
+    let deleted = 0;
+    const now = new Date();
+
+    for (const g of stillTbd) {
+      // Identify which side carries the TBD placeholder (home or away).
+      // We check both id and short abbreviation because ESPN may populate one
+      // but not the other.
+      const homeIsTbd =
+        /TBD/i.test(g.homeTeamId ?? '') || /TBD/i.test(g.homeTeamShort ?? '');
+      const awayIsTbd =
+        /TBD/i.test(g.awayTeamId ?? '') || /TBD/i.test(g.awayTeamShort ?? '');
+
+      if (!homeIsTbd && !awayIsTbd) continue; // safety: should not happen
+
+      // The team id / short abbreviation to verify against the database.
+      // If both sides say TBD (should not happen in practice), check home first.
+      const tbdTeamId = homeIsTbd ? g.homeTeamId : g.awayTeamId;
+      const tbdTeamShort = homeIsTbd ? g.homeTeamShort : g.awayTeamShort;
+
+      // The opponent (real team) of this match.
+      const opponentId = homeIsTbd ? g.awayTeamId : g.homeTeamId;
+
+      // Look up the TBD team specifically. Real college teams can legitimately
+      // be abbreviated "TBD" (e.g. NCCABB-TBD), so we only delete when the TBD
+      // placeholder itself does not exist as a team in the database.
+      const tbdTeamExists =
+        tbdTeamId && (await this.teamService.findOne(tbdTeamId)) !== null;
+
+      // Also check by short abbreviation as a fallback (some providers store
+      // the abbrev but not the full id, or vice-versa).
+      const tbdShortExists =
+        tbdTeamShort &&
+        tbdTeamShort !== tbdTeamId &&
+        (await this.teamService.findOne(tbdTeamShort)) !== null;
+
+      const isRealTbdTeam = tbdTeamExists || tbdShortExists;
+
+      // Determine the season year of this game.
+      const seasonYear = g.startTimeUTC
+        ? new Date(g.startTimeUTC).getFullYear()
+        : now.getFullYear();
+      const seasonStart = new Date(seasonYear, 0, 1).toISOString();
+      const seasonEnd = new Date(seasonYear + 1, 0, 1).toISOString();
+
+      // Has the playoff series started for the opponent? We check whether the
+      // opponent already has any playoff game with a score this season in this
+      // league. If yes, any remaining TBD match involving this opponent will
+      // never resolve (TBD is a placeholder for a team that was never decided),
+      // so the match should be removed.
+      const opponentHasPlayedPlayoff = await this.gameModel.exists({
+        league: g.league,
+        recordSeasonType: 3,
+        startTimeUTC: { $gte: seasonStart, $lt: seasonEnd },
+        $or: [
+          { homeTeamId: opponentId, homeTeamScore: { $ne: null } },
+          { awayTeamId: opponentId, awayTeamScore: { $ne: null } },
+        ],
+      });
+
+      const seriesStarted = !!opponentHasPlayedPlayoff;
+
+      // Delete when:
+      //   - the playoff series has started (opponent already has scored games),
+      //   - AND the TBD side is NOT a real university team that exists in the DB
+      if (seriesStarted && !isRealTbdTeam) {
+        await this.gameModel.deleteOne({ _id: g._id }).exec();
+        deleted++;
+        console.info(
+          `[TBD] Deleted TBD playoff game ${g.uniqueId} (series started, tbd side: ${
+            homeIsTbd ? 'home' : 'away'
+          }, tbd id: ${tbdTeamId}, tbd short: ${tbdTeamShort}, opponent: ${
+            opponentId
+          }, league: ${g.league}, season: ${seasonYear})`,
+        );
+      }
+    }
+
+    return {
+      updated: tbdGames.length,
+      deleted,
+      leagues: updatedLeagues,
+    };
+  }
+
   async getLeagueGames(params): Promise<any> {
     const {
       league,
@@ -2222,6 +2413,10 @@ export class GameService {
             awayTeamRecord?: string;
             recordSeasonType?: number;
             seriesStatus?: string;
+            homeTeamId?: string;
+            awayTeamId?: string;
+            homeTeamShort?: string;
+            awayTeamShort?: string;
           }
         >();
         if (addMissingOnly) {
@@ -2238,6 +2433,10 @@ export class GameService {
                   awayTeamRecord: 1,
                   recordSeasonType: 1,
                   seriesStatus: 1,
+                  homeTeamId: 1,
+                  awayTeamId: 1,
+                  homeTeamShort: 1,
+                  awayTeamShort: 1,
                   _id: 0,
                 },
               )
@@ -2251,6 +2450,10 @@ export class GameService {
                 awayTeamRecord: g?.awayTeamRecord,
                 recordSeasonType: g?.recordSeasonType,
                 seriesStatus: g?.seriesStatus,
+                homeTeamId: g?.homeTeamId,
+                awayTeamId: g?.awayTeamId,
+                homeTeamShort: g?.homeTeamShort,
+                awayTeamShort: g?.awayTeamShort,
               });
             }
           }
@@ -2302,6 +2505,15 @@ export class GameService {
               (stored.homeTeamRecord ?? '') === (game?.homeTeamRecord ?? '') &&
               (stored.awayTeamRecord ?? '') === (game?.awayTeamRecord ?? '') &&
               (stored.seriesStatus ?? '') === (game?.seriesStatus ?? '') &&
+              // **TBD fix**: a stored TBD (To Be Determined) placeholder must
+              // never be considered "the same result" as a freshly resolved
+              // real team. Comparing home/away team IDs ensures that when ESPN
+              // resolves a playoff TBD into an actual team, the stored game is
+              // re-written with the real team name, logo, date and venue.
+              (stored.homeTeamId ?? '') === (game?.homeTeamId ?? '') &&
+              (stored.awayTeamId ?? '') === (game?.awayTeamId ?? '') &&
+              (stored.homeTeamShort ?? '') === (game?.homeTeamShort ?? '') &&
+              (stored.awayTeamShort ?? '') === (game?.awayTeamShort ?? '') &&
               samePhase;
             if (game?.uniqueId && sameResult) {
               skippedExisting++;
