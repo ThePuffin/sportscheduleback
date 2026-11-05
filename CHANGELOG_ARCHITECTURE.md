@@ -4,6 +4,17 @@
 
 
 
+## Changed: `refreshLeaguesOneByOne()` cron — every 3 minutes, suspended 4 AM–11 AM NY
+
+The league rotation cron now ticks every **3 minutes** (instead of 10) but is **suspended between 4 AM and 11 AM New York** (`America/New_York`). Ticks inside that window are no-ops, keeping the rotation off the peak morning window while still running frequently outside of it.
+
+### Changes
+
+- **`backend/src/cronJob/cronJob.service.ts`** — `@Cron('*/3 * * * *')` (was `*/10`); the time-window guard inverted from `nyHour < 4 || nyHour >= 11` (run 4–11 AM) to `nyHour >= 4 && nyHour < 12` (skip 4 AM–noon). JSDoc updated.
+- **`backend/docs/cronJob/cronJob.service.ts.md`** — cron table row updated to reflect the new schedule and suspension window.
+
+
+
 ## Fixed: TBD (To Be Determined) playoff placeholders never resolved
 
 Playoff games where ESPN returns "TBD" as one of the teams (the opponent is not yet known,

@@ -113,19 +113,20 @@ export class CronService implements OnModuleInit {
 
   /**
    * League rotation — replaces the former six fixed daily per-league crons
-   * (2 AM-7 AM). A single 10-minute cron refreshes ONE league per tick,
+   * (2 AM-7 AM). A single 3-minute cron refreshes ONE league per tick,
    * walking through the whole `League` enum in order:
    *
-   * - The cycle opens at **4 AM New York** (`America/New_York`) every day and
-   *   ticks only between 4 AM and 11 AM NY; ticks outside the window are no-ops
-   *   (a full list takes ~2 h50, well inside the window).
+   * - The cycle ticks every 3 minutes but is **suspended between 4 AM and
+   *   11 AM New York** (`America/New_York`); ticks inside that window are no-ops.
+   *   This keeps the rotation off the peak morning window while still running
+   *   frequently outside of it.
    * - One league per tick: a slow third-party fetch for one league can no
    *   longer block the others, and `getLeagueGames`'s internal freshness
    *   (1-hour timestamp) / staleness (1/3/7 days) gates keep warm ticks cheap.
    * - Season-gated: `isCurrentSeason` / `isPlayoffsPeriod` (10-day cached
    *   league dates) skip off-season leagues without hitting third-party APIs.
    * - When the list is complete, nothing runs until the **next day** — the
-   *   cursor resets when a new NY calendar day's window opens (2 AM).
+   *   cursor resets when a new NY calendar day starts.
    * - The slot is consumed BEFORE awaiting so a slow refresh never
    *   double-runs the same league; a restart resets the cursor, which just
    *   re-walks the (fresh) leagues skipped by the gates.
@@ -133,7 +134,7 @@ export class CronService implements OnModuleInit {
    *   (`7-59/12`) crons, and those skip while this rotation runs (see
    *   `isHeavyRefreshRunning`) so the cycles never overlap.
    */
-  @Cron('*/10 * * * *') // EVERY 10 MINUTES — one league per tick (window: 4 AM-11 AM NY)
+  @Cron('*/3 * * * *') // EVERY 3 MINUTES — one league per tick (suspended 4 AM-11 AM NY)
   async refreshLeaguesOneByOne() {
     const leagueValues = Object.values(League);
 
@@ -141,7 +142,7 @@ export class CronService implements OnModuleInit {
       new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }),
     );
     const nyHour = nyNow.getHours();
-    if (nyHour < 4 || nyHour >= 11) return; // window: 4 AM-11 AM New York
+    if (nyHour >= 4 && nyHour < 11) return; // suspended: 4 AM-11 AM New York
 
     const dayKey = nyNow.toISOString().split('T')[0];
     // New NY day (or first tick after a restart) → reset the cycle
