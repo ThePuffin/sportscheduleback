@@ -4,6 +4,15 @@
 
 Provides NHL and PWHL team, schedule, standings, and score data adapters.
 
+## HTTP client
+
+All NHL / HockeyTech / PWHL outbound requests now go through the shared HTTP client
+(`backend/src/utils/httpClient.ts`) via a local `hockeyFetch()` wrapper: 15s timeout, 1 network retry
+with exponential backoff, in-flight de-duplication (identical concurrent calls share one upstream
+round-trip) and the concurrency cap (default 6). The live PWHL feed (`getPWHLRealTimeData()`) is
+additionally cached for 15 s (`HOCKEY_LIVE_CACHE_TTL_MS`) so the frontend's 30 s polling from many
+devices collapses into a single upstream call per feed.
+
 ## PWHL Historical Seasons
 
 HockeyTech gives **pre-season, regular season and playoffs their own `season_id`**, and several of

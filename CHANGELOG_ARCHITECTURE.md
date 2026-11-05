@@ -4,6 +4,34 @@
 
 
 
+## Added: shared outbound HTTP client with timeout, de-duplication and concurrency cap
+
+The backend now routes all outbound provider calls (ESPN, HockeyTech/NHL/PWHL, Ligue Magnus scraping)
+through a shared client (`src/utils/httpClient.ts`) instead of calling `fetch` directly. The crons and
+data updates are **untouched** — they keep running on the same schedule and persist the same games —
+but they stop issuing duplicate or unbounded upstream requests.
+
+Three mechanisms, transparent to callers:
+- **Hard timeout** (default 15 s) so a hanging connection can never block a refresh.
+- **In-flight de-duplication**: concurrent calls with the same URL/body share a single network round-trip.
+- **Concurrency cap** (default 6, `HTTP_MAX_CONCURRENT_REQUESTS` env) + optional short-TTL cache (15 s for
+  live scores) to collapse frontend polling bursts into one upstream call.
+
+### Changes
+- **`backend/src/utils/httpClient.ts`** — new shared client: `httpRequest()`, `HttpResponse`,
+  `clearHttpResponseCache()`, `getHttpStats()`.
+- **`backend/src/utils/fetchData/espnAllData.ts`** — `fetchWithRetry()` delegates to `httpRequest()`;
+  `getESPNGameScore()` caches live scores 15 s (`ESPN_LIVE_SCORE_CACHE_TTL_MS`). `fetchWithTimeout()`
+  removed (superseded by the client).
+- **`backend/src/utils/fetchData/hockeyData.ts`** — all NHL / HockeyTech / PWHL fetches go through a
+  local `hockeyFetch()` wrapper (15s timeout, 1 retry); the live PWHL feed caches 15 s.
+- **`backend/src/utils/fetchData/scrappingData.ts`** — `fetchWithTimeout()` delegates to `httpRequest()`.
+- **`backend/src/utils/httpClient.spec.ts`** — new tests: de-duplication, TTL cache, concurrency cap,
+  retries, timeout abort, stats cleanup.
+- **`backend/docs/utils/httpClient.ts.md`** — new documentation.
+- **`backend/docs/utils/fetchData/espnAllData.ts.md`**, **`backend/docs/utils/fetchData/hockeyData.ts.md`**,
+  **`backend/docs/utils/fetchData/scrappingData.ts.md`** — updated to describe the shared client.
+
 ## Optimised: `filterGames()` historical query + compound index
 
 `filterGames()` previously re-ran `games.filter()` for every (date × team) combination when grouping

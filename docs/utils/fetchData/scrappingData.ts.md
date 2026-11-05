@@ -18,9 +18,9 @@ GET https://liguemagnus.com/wp-admin/admin-ajax.php?action=get_rencontres&phase_
 ```
 
 That endpoint answers JSON produced from the hockeynet.fr feed, so the scraper talks to it directly
-with the global `fetch` (same stack as `hockeyData.ts` / `espnAllData.ts`, no new dependency). The
-`User-Agent`/`Accept` headers mirror the browser identity used for ESPN, and the request carries the
-same 15s `AbortController` timeout idea as `fetchWithTimeout()` in `espnAllData.ts`.
+through the shared HTTP client (`backend/src/utils/httpClient.ts`): `fetchWithTimeout()` now delegates
+to `httpRequest()`, which applies a 15s timeout, 1 retry, in-flight de-duplication and the concurrency
+cap. The `User-Agent`/`Accept` headers mirror the browser identity used for ESPN.
 
 ## Endpoint parameters
 

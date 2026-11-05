@@ -416,22 +416,25 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
   });
 
   it('starts pre-season with zero records without reusing regular-season standings', async () => {
-    mockFeed({
-      '10': [
-        game({
-          id: 'pre-1',
-          date_played: '2026-10-15',
-          GameDateISO8601: '2026-10-15T00:00:00',
-          home_team_code: 'BOS',
-          visiting_team_code: 'MIN',
-          final: '0',
-          status: '1',
-          game_status: 'Scheduled',
-        }),
-      ],
-    }, {
-      '11': { BOS: '12-3-1', MIN: '10-4-2' },
-    });
+    mockFeed(
+      {
+        '10': [
+          game({
+            id: 'pre-1',
+            date_played: '2026-10-15',
+            GameDateISO8601: '2026-10-15T00:00:00',
+            home_team_code: 'BOS',
+            visiting_team_code: 'MIN',
+            final: '0',
+            status: '1',
+            game_status: 'Scheduled',
+          }),
+        ],
+      },
+      {
+        '11': { BOS: '12-3-1', MIN: '10-4-2' },
+      },
+    );
 
     const scores = await hockeyData.getPWHLScores('2026-10-15');
 
@@ -567,7 +570,7 @@ describe('HockeyData.getPWHLScores — season resolution', () => {
           visiting_team_code: 'MIN',
         }),
       ],
-      'default': [
+      default: [
         game({
           id: '2024-25-final',
           date_played: '2025-01-01',
@@ -650,8 +653,12 @@ describe('HockeyData.getPWHLStandings — current regular season resolution', ()
     const records = await new HockeyData().getPWHLStandings();
 
     expect(records).toEqual({ BOS: '20-5-4' });
+    // The traffic now goes through the shared HTTP client, which calls
+    // `fetch(url, init)` — so the URL is the first argument and the options
+    // object is the second.
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining('view=statviewtype'),
+      expect.anything(),
     );
     const standingsUrl = (global.fetch as jest.Mock).mock.calls
       .map(([url]) => String(url))

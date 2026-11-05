@@ -14,6 +14,8 @@
  * (games) and `TeamType` (teams) for the database is a later step.
  */
 
+import { httpRequest, HttpResponse } from '../httpClient';
+
 /** WordPress AJAX endpoint behind https://liguemagnus.com/calendrier/. */
 const LIGUE_MAGNUS_AJAX_URL = 'https://liguemagnus.com/wp-admin/admin-ajax.php';
 
@@ -137,21 +139,21 @@ type RencontresResponse = {
 /**
  * Fetch with a hard timeout, the same idea as `fetchWithTimeout()` in
  * `espnAllData.ts`: a hanging request must not block a refresh forever.
+ *
+ * It goes through the shared HTTP client, so concurrent identical requests
+ * (the same page requested twice during a refresh) share a single upstream
+ * call instead of hitting the site twice.
  */
 const fetchWithTimeout = async (
   url: string,
   timeoutMs: number = LIGUE_MAGNUS_FETCH_TIMEOUT_MS,
-): Promise<Response> => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      headers: { ...LIGUE_MAGNUS_HEADERS },
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
+): Promise<HttpResponse> => {
+  return httpRequest(url, {
+    headers: { ...LIGUE_MAGNUS_HEADERS },
+    timeoutMs,
+    retries: 1,
+    retryDelayMs: 500,
+  });
 };
 
 /** Build the endpoint URL for one page of rencontres. */

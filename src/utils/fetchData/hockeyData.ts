@@ -8,10 +8,32 @@ import type {
   TeamType,
 } from '../../utils/interface/team';
 import { getTeamColors } from '../Colors';
+import { httpRequest } from '../httpClient';
 import { PWHLGameAPI } from '../interface/gamePWHL';
 import { capitalize, getLuminance } from '../utils';
 const leagueName = League.NHL;
 const pwhlAPI = 'https://lscluster.hockeytech.com/feed/';
+
+// Hard timeout of a single HockeyTech / NHL call. Without it a hanging
+// connection could block a refresh forever.
+const HOCKEY_FETCH_TIMEOUT_MS = 15000;
+
+// The live PWHL feed is polled by every connected client; a short cache
+// collapses those concurrent polls into a single upstream call.
+const HOCKEY_LIVE_CACHE_TTL_MS = 15000;
+
+/**
+ * Fetch helper for the hockey providers: hard timeout, de-duplication of
+ * concurrent identical calls and an optional short-lived cache. It keeps the
+ * existing `response.ok` / `response.json()` contract of the raw `fetch`.
+ */
+const hockeyFetch = (url: string, options: { cacheTtlMs?: number } = {}) =>
+  httpRequest(url, {
+    timeoutMs: HOCKEY_FETCH_TIMEOUT_MS,
+    retries: 1,
+    retryDelayMs: 500,
+    cacheTtlMs: options.cacheTtlMs ?? 0,
+  });
 
 /**
  * Known PWHL team-code aliases -> canonical code.
@@ -66,7 +88,7 @@ export class HockeyData {
    * Fetch the list of PWHL seasons (by default ordered from most recent to oldest).
    */
   private async getPWHLSeasons(): Promise<PWHLSeason[]> {
-    const response = await fetch(
+    const response = await hockeyFetch(
       `${pwhlAPI}index.php?feed=modulekit&view=seasons&key=446521baf8c38984&client_code=pwhl&fmt=json`,
     );
     const json = await response.json();
@@ -80,7 +102,7 @@ export class HockeyData {
    * why the season must always be resolved explicitly when reading history.
    */
   private async getPWHLSchedule(seasonId?: string): Promise<PWHLGameAPI[]> {
-    const response = await fetch(
+    const response = await hockeyFetch(
       `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl${
         seasonId ? `&season_id=${seasonId}` : ''
       }`,
@@ -271,7 +293,7 @@ export class HockeyData {
     try {
       let allTeams: TeamNHL[];
 
-      const fetchedTeams = await fetch(
+      const fetchedTeams = await hockeyFetch(
         'https://api-web.nhle.com/v1/standings/now',
       );
       const fetchTeams = await fetchedTeams.json();
@@ -328,7 +350,7 @@ export class HockeyData {
     try {
       const leagueName = League.PWHL;
 
-      const fetchedTeams = await fetch(
+      const fetchedTeams = await hockeyFetch(
         `${pwhlAPI}index.php?feed=modulekit&view=teamsbyseason&key=446521baf8c38984&client_code=pwhl&fmt=json`,
       );
       const fetchTeams: PWHLResponse = await fetchedTeams.json();
@@ -431,7 +453,6 @@ export class HockeyData {
         error instanceof Error ? error.message : String(error),
       );
     }
-
   }
 
   getHockeySchedule = async (
@@ -529,7 +550,7 @@ export class HockeyData {
       let fetchGames;
       if (league === League.NHL) {
         const seasonParam = season ? `${season}${season + 1}` : 'now';
-        const fetchedGames = await fetch(
+        const fetchedGames = await hockeyFetch(
           `https://api-web.nhle.com/v1/club-schedule-season/${id}/${seasonParam}`,
         );
         const tempGames = await fetchedGames.json();
@@ -547,7 +568,7 @@ export class HockeyData {
               `${pwhlAPI}?feed=modulekit&view=schedule&key=446521baf8c38984&client_code=pwhl`,
             ];
         const fetchedSchedules = await Promise.all(
-          urls.map((url) => fetch(url).then((res) => res.json())),
+          urls.map((url) => hockeyFetch(url).then((res) => res.json())),
         );
         const allFetchGames = fetchedSchedules.flatMap(
           (json) => json?.SiteKit?.Schedule || [],
@@ -579,7 +600,7 @@ export class HockeyData {
 
       if (!seasonId) return {};
 
-      const standingsResponse = await fetch(
+      const standingsResponse = await hockeyFetch(
         `${pwhlAPI}index.php?feed=modulekit&view=statviewtype&stat=conference&type=standings&season_id=${seasonId}&key=446521baf8c38984&client_code=pwhl&fmt=json`,
       );
       const standingsJson = await standingsResponse.json();
@@ -671,7 +692,7 @@ export class HockeyData {
 
   private async getNHLStandingsForDate(date: string) {
     try {
-      const response = await fetch(
+      const response = await hockeyFetch(
         `https://api-web.nhle.com/v1/standings/${date}`,
       );
       const json = await response.json();
@@ -687,7 +708,7 @@ export class HockeyData {
       console.error(`Error fetching NHL standings for ${date}:`, error);
       return {};
     }
-  };
+  }
 
   private applyNHLHistoricalRecords(allGames: Record<string, GameFormatted[]>) {
     const games = Object.values(allGames).flat() as any[];
@@ -714,10 +735,7 @@ export class HockeyData {
         string,
         { wins: number; losses: number; otLosses: number }
       >();
-      const recordsAtGame = new Map<
-        string,
-        { home: string; away: string }
-      >();
+      const recordsAtGame = new Map<string, { home: string; away: string }>();
       const teamRecord = (teamId: string) => {
         if (!records.has(teamId)) {
           records.set(teamId, { wins: 0, losses: 0, otLosses: 0 });
@@ -783,7 +801,6 @@ export class HockeyData {
           copy.awayTeamRecord = recordsForGame.away;
         }
       }
-
     }
 
     for (const game of games) {
@@ -1108,11 +1125,13 @@ export class HockeyData {
       const key = 'AIzaSyBVn0Gr6zIFtba-hQy3StkifD8bb7Hi68A';
 
       const [liveRes, clockRes] = await Promise.all([
-        fetch(
+        hockeyFetch(
           `https://leaguestat-b9523.firebaseio.com/svf/pwhl.json?auth=${auth}&key=${key}`,
+          { cacheTtlMs: HOCKEY_LIVE_CACHE_TTL_MS },
         ).catch(() => null),
-        fetch(
+        hockeyFetch(
           `https://leaguestat-b9523.firebaseio.com/svf/pwhl/runningclock.json?auth=${auth}`,
+          { cacheTtlMs: HOCKEY_LIVE_CACHE_TTL_MS },
         ).catch(() => null),
       ]);
 

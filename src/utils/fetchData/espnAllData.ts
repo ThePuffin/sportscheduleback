@@ -1,5 +1,6 @@
 import { readableDate } from '../../utils/date';
 import { CollegeLeague, League } from '../../utils/enum';
+import { httpRequest } from '../httpClient';
 import { getTeamColors } from '../Colors';
 import type { ESPNTeam, TeamType } from '../interface/team';
 import { UniversityLogos } from '../UniversityLogos';
@@ -61,6 +62,11 @@ export const getESPNTeamLogo = (
 // refresh for an unbounded amount of time (undici's default is very long).
 const ESPN_FETCH_TIMEOUT_MS = 15000;
 
+// How long an ESPN live-score response may be reused before it is fetched
+// again. The frontend polls the live scores every 30 s from every connected
+// device; without this short cache, N devices = N upstream calls per poll.
+const ESPN_LIVE_SCORE_CACHE_TTL_MS = 15000;
+
 // Small pacing gap between per-team batches in getTeamsSchedule(): without it
 // the oldies crawl fires hundreds of team-schedule requests back-to-back and
 // ESPN's Akamai edge starts answering with transient 403 "Access Denied" pages.
@@ -77,39 +83,20 @@ const ESPN_DEFAULT_HEADERS: Record<string, string> = {
   Accept: 'application/json, text/plain, */*',
 };
 
-const fetchWithTimeout = (
-  url: string,
-  timeoutMs: number = ESPN_FETCH_TIMEOUT_MS,
-  options: RequestInit = {},
-) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  const mergedOptions: RequestInit = {
-    ...options,
-    headers: { ...ESPN_DEFAULT_HEADERS, ...(options.headers || {}) },
-    signal: controller.signal,
-  };
-  return fetch(url, mergedOptions).finally(() => clearTimeout(timeout));
-};
-
 // Retry transient network errors (timeouts are often momentary). Throws the last
 // error once all retries are exhausted, so the existing try/catch still works.
-const fetchWithRetry = async (url: string, retries = 1) => {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await fetchWithTimeout(url);
-    } catch (error) {
-      lastError = error;
-      if (attempt < retries) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, 500 * (attempt + 1)),
-        );
-      }
-    }
-  }
-  throw lastError;
-};
+//
+// The retries run inside the shared HTTP client, so a burst of concurrent
+// callers (several clients polling the live scores at the same time, the
+// oldies crawl fetching the same team schedule twice, ...) triggers a single
+// sequence of upstream calls instead of one sequence per caller.
+const fetchWithRetry = async (url: string, retries = 1) =>
+  httpRequest(url, {
+    headers: ESPN_DEFAULT_HEADERS,
+    timeoutMs: ESPN_FETCH_TIMEOUT_MS,
+    retries,
+    retryDelayMs: 500,
+  });
 
 // Fetches ESPN with the global timeout + one retry, then parses JSON only when
 // the response is a successful JSON payload. Fails open (returns null) for
@@ -2566,7 +2553,18 @@ export const getESPNGameScore = async (leagueKey: string, gameId: string) => {
     if (!leagueConfigs[leagueKey]) return null;
     const { sport, league } = leagueConfigs[leagueKey];
     const url = `${espnAPI}${sport}/${league}/summary?event=${gameId}`;
-    const res = await fetchWithRetry(url);
+    // The live score endpoint is polled by every connected client every 30 s,
+    // and each poll asks ESPN for one summary per live game. The responses are
+    // therefore cached for a short window: concurrent polls (and the retries
+    // of a single poll) share a single upstream call instead of one call per
+    // client. The TTL is short enough for the score to stay accurate.
+    const res = await httpRequest(url, {
+      headers: ESPN_DEFAULT_HEADERS,
+      timeoutMs: ESPN_FETCH_TIMEOUT_MS,
+      retries: 1,
+      retryDelayMs: 500,
+      cacheTtlMs: ESPN_LIVE_SCORE_CACHE_TTL_MS,
+    });
     if (!res.ok) return null;
     const data = await res.json();
 
