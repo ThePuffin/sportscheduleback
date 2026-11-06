@@ -1100,9 +1100,9 @@ export class GameService {
         if (!inSeason) continue;
 
         leagues.push(league);
-        // Dry run: the games are fetched but never persisted (no save / no
-        // deactivation), only the per-team tallies are collected.
-        await this._fetchUniqueGames(league, undefined, teamRecords);
+        // Records-only refresh: fetch team tallies without building game
+        // payloads, saving games, or deactivating existing ones.
+        await this._fetchUniqueGames(league, undefined, teamRecords, true);
       } catch (error) {
         console.error(
           `[Records] Could not refresh records for ${league}:`,
@@ -1360,14 +1360,16 @@ export class GameService {
    * the oldies cron job, and by `refreshCurrentSeasonRecords()` (which only
    * harvests the `teamRecords` side effect).
    *
-   * When `teamRecords` is given, it is filled with the most recent tally of
-   * every team of the league, harvested from the schedule that is already being
-   * fetched — the only source for leagues whose scoreboard carries no records.
+   * When `teamRecords` is given in full-schedule mode, it is filled with the
+   * most recent tally of every team, harvested from the fetched schedules.
+   * `recordsOnly` explicitly selects the lightweight team-detail path used by
+   * `refreshCurrentSeasonRecords`; a map alone must not suppress game fetching.
    */
   private async _fetchUniqueGames(
     normalizedLeague: string,
     season?: number,
     teamRecords?: Map<string, string>,
+    recordsOnly = false,
   ) {
     const leagueTeams = await this.teamService.findAll([normalizedLeague]);
     if (season && normalizedLeague.includes('OLYMPICS')) {
@@ -1392,7 +1394,7 @@ export class GameService {
     // full-schedule path (getLeagueGames). The records-only mode builds no
     // game payloads, so it skips the logo lookup entirely.
     let leagueLogos: Record<string, string> | undefined;
-    if (normalizedLeague === League.PWHL || teamRecords === undefined) {
+    if (normalizedLeague === League.PWHL || !recordsOnly) {
       leagueLogos = await this.getTeamsLogo(leagueTeams);
     }
 
@@ -1407,7 +1409,7 @@ export class GameService {
     // deduplication set, no applySeasonFinalRecords pass is ever built here.
     // getLeagueGames() and the oldies dry-run still use the full schedule
     // path below.
-    if (teamRecords) {
+    if (recordsOnly) {
       let detailFetched = 0;
       let fallbackFetched = 0;
       let failed = 0;
@@ -2262,6 +2264,7 @@ export class GameService {
         normalizedLeague,
         season,
         teamRecords,
+        false,
       );
       if (
         normalizedLeague === League.PWHL &&
