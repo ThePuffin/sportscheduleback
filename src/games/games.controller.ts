@@ -221,11 +221,30 @@ export class GamesController {
         404,
       );
     }
-    return this.GameService.getLeagueGames({
+    const result = await this.GameService.getLeagueGames({
       league,
       forceUpdate: true,
       skipCascade: true,
     });
+    // Also resolve TBD placeholders for this league's playoff games so that
+    // orphaned TBD matches (series started, TBD is not a real team) are removed
+    // without requiring a separate /refresh/tbd call.
+    try {
+      const tbdResult = await this.GameService.refreshTbdPlayoffGames(
+        normalizedLeague,
+      );
+      if (tbdResult.deleted > 0) {
+        console.info(
+          `[Refresh ${normalizedLeague}] TBD cleanup: deleted ${tbdResult.deleted} orphaned TBD game(s).`,
+        );
+      }
+    } catch (err) {
+      console.error(
+        `[Refresh ${normalizedLeague}] Error during TBD cleanup:`,
+        err,
+      );
+    }
+    return result;
   }
 
   @Post('/sync/recent')

@@ -1884,24 +1884,30 @@ export class GameService {
    * the team database are deleted (they are orphaned placeholders that will
    * never resolve).
    */
-  async refreshTbdPlayoffGames(): Promise<{
+  async refreshTbdPlayoffGames(league?: string): Promise<{
     updated: number;
     deleted: number;
     leagues: string[];
   }> {
+    // Build the query filter, optionally scoped to a single league.
+    const baseFilter: any = {
+      recordSeasonType: 3,
+      isActive: true,
+      $or: [
+        { homeTeamId: /TBD/i },
+        { awayTeamId: /TBD/i },
+        { homeTeamShort: /TBD/i },
+        { awayTeamShort: /TBD/i },
+      ],
+    };
+    if (league) {
+      baseFilter.league = league.toUpperCase().trim();
+    }
+
     // Find active playoff games with TBD as home or away team
     const tbdGames = await this.gameModel
       .find(
-        {
-          recordSeasonType: 3,
-          isActive: true,
-          $or: [
-            { homeTeamId: /TBD/i },
-            { awayTeamId: /TBD/i },
-            { homeTeamShort: /TBD/i },
-            { awayTeamShort: /TBD/i },
-          ],
-        },
+        baseFilter,
         {
           uniqueId: 1,
           league: 1,
@@ -1927,29 +1933,38 @@ export class GameService {
 
     const updatedLeagues: string[] = [];
 
-    // Re-fetch each league that has TBD games
-    for (const league of leaguesWithTbd) {
-      try {
-        await this.getLeagueGames({
-          league,
-          forceUpdate: true,
-          skipCascade: true,
-        });
-        updatedLeagues.push(league);
-        console.info(
-          `[TBD] Re-fetched league ${league} to resolve ${tbdGames.filter(
-            (g) => g.league === league,
-          ).length} TBD playoff game(s).`,
-        );
-      } catch (err) {
-        console.error(
-          `[TBD] Error re-fetching league ${league} for TBD resolution:`,
-          err,
-        );
+    // When called without a specific league (cron path), re-fetch each affected
+    // league so ESPN can resolve TBD into a real team. When called with a
+    // specific league (refreshByLeague path), the re-fetch was already done by
+    // getLeagueGames(), so we skip it to avoid a redundant fetch.
+    if (!league) {
+      for (const l of leaguesWithTbd) {
+        try {
+          await this.getLeagueGames({
+            league: l,
+            forceUpdate: true,
+            skipCascade: true,
+          });
+          updatedLeagues.push(l);
+          console.info(
+            `[TBD] Re-fetched league ${l} to resolve ${tbdGames.filter(
+              (g) => g.league === l,
+            ).length} TBD playoff game(s).`,
+          );
+        } catch (err) {
+          console.error(
+            `[TBD] Error re-fetching league ${l} for TBD resolution:`,
+            err,
+          );
+        }
       }
+    } else {
+      updatedLeagues.push(league.toUpperCase().trim());
     }
 
-    // After refresh, find remaining TBD games and delete orphaned ones
+    // After the re-fetch attempt, find remaining TBD games and delete orphaned
+    // ones. This runs independently of whether getLeagueGames() returned games,
+    // so off-season leagues still get their orphaned TBD matches cleaned up.
     const stillTbd = await this.gameModel
       .find(
         {
@@ -1964,6 +1979,7 @@ export class GameService {
         },
         {
           uniqueId: 1,
+          league: 1,
           homeTeamId: 1,
           awayTeamId: 1,
           homeTeamShort: 1,
@@ -1974,6 +1990,10 @@ export class GameService {
       )
       .lean()
       .exec();
+
+    console.info(
+      `[TBD] Found ${stillTbd.length} remaining TBD playoff game(s) after re-fetch.`,
+    );
 
     let deleted = 0;
     const now = new Date();

@@ -32,15 +32,23 @@ was skipped, so the TBD placeholder persisted forever.
     `homeTeamShort`, `awayTeamShort`.
   - `sameResult` now also compares home/away team IDs, so a stored TBD that ESPN has resolved
     into a real team is rewritten through `create()` with the real name, logo, date and venue.
-  - New public method `refreshTbdPlayoffGames()`: finds active playoff games (`recordSeasonType: 3`)
-    with TBD as home or away team, re-fetches each affected league with `forceUpdate: true`, then
-    deletes any remaining TBD games when the playoff series has started (the opponent already has
-    scored playoff games this season in this league) **and** the TBD side is not a real team that
-    exists in the team database. This preserves legitimate college teams abbreviated "TBD"
-    (e.g. NCCABB-TBD) while removing orphaned placeholders that will never resolve.
+  - New public method `refreshTbdPlayoffGames(league?)`: finds active playoff games
+    (`recordSeasonType: 3`) with TBD as home or away team. Accepts an optional `league`
+    parameter: when omitted (cron path), re-fetches each affected league with
+    `forceUpdate: true`; when provided (refresh-by-league path), skips the re-fetch
+    because `getLeagueGames()` was already called by the caller. Then deletes any
+    remaining TBD games when the playoff series has started (the opponent already has
+    scored playoff games this season in this league) **and** the TBD side is not a real
+    team that exists in the team database. This preserves legitimate college teams
+    abbreviated "TBD" (e.g. NCCABB-TBD) while removing orphaned placeholders that will
+    never resolve.
 - **`backend/src/cronJob/cronJob.service.ts`**: `getOldGames()` now calls
-  `refreshTbdPlayoffGames()` after `refreshUndecidedPlayoffSeries()`, wrapped in its own
-  try/catch so a failure never blocks the oldies flow.
+  `refreshTbdPlayoffGames()` (no league arg) after `refreshUndecidedPlayoffSeries()`,
+  wrapped in its own try/catch so a failure never blocks the oldies flow.
+- **`backend/src/games/games.controller.ts`**: `refreshByLeague()` now also calls
+  `refreshTbdPlayoffGames(league)` after `getLeagueGames()` so TBD placeholders are
+  resolved automatically when refreshing a single league. The dedicated
+  `POST /games/refresh/tbd` endpoint has been removed in favour of this integration.
 - **`backend/docs/games/games.service.ts.md`** — documents `refreshTbdPlayoffGames()`.
 - **`backend/docs/cronJob/cronJob.service.ts.md`** — documents the new cron step.
 
