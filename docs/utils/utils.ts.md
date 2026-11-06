@@ -46,6 +46,12 @@ Checks whether a requested date range overlaps the active season/playoff period 
 
 Decides whether a league should be refreshed based on age of the current game data.
 
+### `seasonUtils`
+
+Provides a shared object containing `isCurrentSeason`, `isPlayoffsPeriod`, and
+`needRefresh`. Season-dependent services call through this object so the helpers
+can be replaced consistently in tests running with native ESM modules.
+
 ## Data Flow
 
 1. The service asks these helpers whether a league is currently active.

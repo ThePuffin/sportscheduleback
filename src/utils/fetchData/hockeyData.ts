@@ -513,7 +513,7 @@ export class HockeyData {
           }
         } catch (error) {
           console.error(
-            `Error fetching schedule for hockey team ${error.id}:`,
+            `Error fetching schedule for hockey team ${team.id}:`,
             error,
           );
           throw team;

@@ -1,19 +1,11 @@
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Model } from 'mongoose';
-import * as fs from 'node:fs';
+import fs from 'node:fs';
 import { Game } from '../../games/schemas/game.schema';
 import { TeamType } from '../../utils/interface/team';
 import { Team } from '../schemas/team.schema';
 import { TeamService } from '../teams.service';
-
-// Mock the fs module to avoid writing to disk during tests
-jest.mock('node:fs', () => ({
-  promises: {
-    readFile: jest.fn(),
-    writeFile: jest.fn(),
-  },
-}));
 
 // A mocked team object
 const mockTeam: TeamType = {
@@ -92,6 +84,7 @@ describe('TeamService', () => {
   });
 
   afterEach(async () => {
+    jest.restoreAllMocks();
     await module.close();
   });
 
@@ -617,14 +610,16 @@ describe('TeamService', () => {
 
   describe('readExistingFile', () => {
     it('should return file content if file exists', async () => {
-      (fs.promises.readFile as jest.Mock).mockResolvedValue('content_data');
+      jest
+        .spyOn(fs.promises, 'readFile')
+        .mockResolvedValue('content_data' as never);
 
       const content = await service['readExistingFile']('some/path.ts');
       expect(content).toBe('content_data');
     });
 
     it('should return empty string if file reading fails', async () => {
-      (fs.promises.readFile as jest.Mock).mockRejectedValue(
+      jest.spyOn(fs.promises, 'readFile').mockRejectedValue(
         new Error('File not found'),
       );
 
@@ -654,8 +649,8 @@ describe('TeamService', () => {
       };
       (model.find as jest.Mock).mockReturnValue(findChain);
       jest.spyOn(service, 'findAllLeagues').mockResolvedValue(['NCAA']);
-      (fs.promises.readFile as jest.Mock).mockResolvedValue('');
-      (fs.promises.writeFile as jest.Mock).mockResolvedValue(undefined);
+      jest.spyOn(fs.promises, 'readFile').mockResolvedValue('' as never);
+      jest.spyOn(fs.promises, 'writeFile').mockResolvedValue(undefined);
 
       await service['generateLeaguesTeamsAndColorsFiles']();
 

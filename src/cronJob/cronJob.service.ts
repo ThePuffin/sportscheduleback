@@ -1,10 +1,11 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { GameService } from '../games/games.service';
+import { RefreshTimestampService } from '../games/refresh-timestamps.service';
 import { TeamService } from '../teams/teams.service';
 import { readableDate } from '../utils/date';
 import { League } from '../utils/enum';
-import { needRefresh } from '../utils/utils';
+import { seasonUtils } from '../utils/utils';
 
 @Injectable()
 export class CronService implements OnModuleInit {
@@ -22,6 +23,7 @@ export class CronService implements OnModuleInit {
   constructor(
     private readonly teamService: TeamService,
     private readonly gameService: GameService,
+    private readonly refreshTimestampService: RefreshTimestampService,
   ) {}
 
   private get isHeavyRefreshRunning(): boolean {
@@ -35,36 +37,6 @@ export class CronService implements OnModuleInit {
     setTimeout(() => {
       this.fetchGamesScoresAtStartup();
     }, 30000);
-
-    // Recovery fetch at restart (2 min after boot). The read routes
-    // (findAll / findByDate / findByDateHour) are read-only since the
-    // call-time refresh removal, so a cold or stale DB would stay empty
-    // until the next daily/monthly cron (up to ~24 h). This one-shot
-    // `getAllGames(false, new Date())` fills that gap:
-    // - season-gated per league (`isCurrentSeason` / `isPlayoffsPeriod`
-    //   with today as boundary): off-season leagues are skipped;
-    // - warm restarts are cheap: `getLeagueGames`'s 1-hour timestamp
-    //   freshness + `needRefresh` staleness gates skip already-fresh
-    //   leagues, and each attempt stamps the league so a restart loop
-    //   makes progress instead of re-fetching;
-    // - fetches teams first when the teams collection is empty (fresh
-    //   deploy), which `checkLeagueGamesAvailability` cannot do (its
-    //   threshold compares against a zero team count).
-    console.info(
-      '[Cron] Server restart: Scheduling recovery games fetch (getAllGames, season-gated)...',
-    );
-    // --- Fix for restart loop ---
-    // On a crash/OOM, Render restarts the server almost immediately. Each restart used to
-    // re-schedule a full `getAllGames` recovery 2 min later, while the PREVIOUS recovery
-    // (or its `findAll()` tail from the pre-fix era) was still OOM-ing → restart → recovery
-    // → OOM, forever. Gate the recovery on a dedicated `recovery` RefreshTimestamp: if one
-    // already exists within the last 6 h, the previous instance clearly made progress (or
-    // already finished), so this boot skips the heavy fetch. 6 h is short enough to cover a
-    // legitimate cold-start recovery but long enough to absorb any boot-storm from a crash
-    // loop without replaying the full refresh each time.
-    setTimeout(() => {
-      this.getAllGamesRecovery();
-    }, 120000);
   }
 
   /**
@@ -78,29 +50,6 @@ export class CronService implements OnModuleInit {
     }
   }
 
-  /**
-   * One-shot `getAllGames(false, new Date())` at boot, guarded by a `recovery`
-   * RefreshTimestamp so we never replay a full refresh while a previous one is
-   * still settling from an OOM-induced restart.
-   */
-  private async getAllGamesRecovery(): Promise<void> {
-    const lastRecovery = await this.gameService.getLastRecoveryTimestamp();
-    if (lastRecovery) {
-      console.info(
-        '[Cron] Recovery games fetch skipped — a recovery already ran within the last 6 hours (last: ' +
-          lastRecovery.toISOString() +
-          ').',
-      );
-      return;
-    }
-    try {
-      await this.gameService.getAllGames(false, new Date());
-      await this.gameService.addRecoveryTimestamp();
-    } catch (err) {
-      console.error('[Cron] recovery getAllGames error:', err);
-    }
-  }
-
   @Cron('30 0 1 * *') // EVERY MONTH AT 0:30AM
   async updateTeams() {
     await this.teamService.getTeams();
@@ -109,6 +58,19 @@ export class CronService implements OnModuleInit {
   @Cron('0 1 1 * *') // EVERY MONTH AT 1AM
   async updateAllGames() {
     await this.gameService.getAllGames();
+  }
+
+  @Cron('0 3 * * *', { timeZone: 'UTC' })
+  async pruneRefreshTimestamps() {
+    try {
+      const deletedCount =
+        await this.refreshTimestampService.pruneOldTimestamps();
+      console.info(
+        `[Cron] Refresh timestamp retention complete: deleted ${deletedCount} old record(s); keeping the latest 40.`,
+      );
+    } catch (err) {
+      console.error('[Cron] Error pruning old refresh timestamps:', err);
+    }
   }
 
   /**
@@ -214,9 +176,11 @@ export class CronService implements OnModuleInit {
           .limit(2)
           .lean()
           .exec();
-        needsRefresh = await needRefresh(league, { data: anyGames });
+        needsRefresh = await seasonUtils.needRefresh(league, { data: anyGames });
       } else {
-        needsRefresh = await needRefresh(league, { data: gamesForLeague });
+        needsRefresh = await seasonUtils.needRefresh(league, {
+          data: gamesForLeague,
+        });
       }
     } catch {
       // On error, assume refresh is needed
@@ -502,18 +466,13 @@ export class CronService implements OnModuleInit {
 
     this.isFinalizingSeasonRecords = true;
     try {
-      console.info(
-        '[Cron] Running finished-season records finalization...',
-      );
+      console.info('[Cron] Running finished-season records finalization...');
       const result = await this.gameService.finalizeFinishedSeasonRecords();
       console.info(
         `[Cron] Finished-season finalization done: ${result.leagues.length} league(s) (${result.leagues.join(', ') || 'none'}), ${result.gamesUpdated} game record(s) frozen, ${result.teamsReset} team record(s) reset.`,
       );
     } catch (err) {
-      console.error(
-        '[Cron] Error running finished-season finalization:',
-        err,
-      );
+      console.error('[Cron] Error running finished-season finalization:', err);
     } finally {
       this.isFinalizingSeasonRecords = false;
     }

@@ -122,8 +122,12 @@ describe('Utility Functions', () => {
 
     describe('doesDateRangeOverlapLeaguePeriod', () => {
       it('should return true when the range overlaps the regular season', async () => {
-        jest.spyOn(utilsModule, 'isCurrentSeason').mockResolvedValue(true);
-        jest.spyOn(utilsModule, 'isPlayoffsPeriod').mockResolvedValue(false);
+        jest
+          .spyOn(utilsModule.seasonUtils, 'isCurrentSeason')
+          .mockResolvedValue(true);
+        jest
+          .spyOn(utilsModule.seasonUtils, 'isPlayoffsPeriod')
+          .mockResolvedValue(false);
 
         await expect(
           doesDateRangeOverlapLeaguePeriod(
@@ -135,8 +139,12 @@ describe('Utility Functions', () => {
       });
 
       it('should return true when the range overlaps the playoffs', async () => {
-        jest.spyOn(utilsModule, 'isCurrentSeason').mockResolvedValue(false);
-        jest.spyOn(utilsModule, 'isPlayoffsPeriod').mockResolvedValue(true);
+        jest
+          .spyOn(utilsModule.seasonUtils, 'isCurrentSeason')
+          .mockResolvedValue(false);
+        jest
+          .spyOn(utilsModule.seasonUtils, 'isPlayoffsPeriod')
+          .mockResolvedValue(true);
 
         await expect(
           doesDateRangeOverlapLeaguePeriod(
@@ -148,8 +156,12 @@ describe('Utility Functions', () => {
       });
 
       it('should return false when the range overlaps neither season nor playoffs', async () => {
-        jest.spyOn(utilsModule, 'isCurrentSeason').mockResolvedValue(false);
-        jest.spyOn(utilsModule, 'isPlayoffsPeriod').mockResolvedValue(false);
+        jest
+          .spyOn(utilsModule.seasonUtils, 'isCurrentSeason')
+          .mockResolvedValue(false);
+        jest
+          .spyOn(utilsModule.seasonUtils, 'isPlayoffsPeriod')
+          .mockResolvedValue(false);
 
         await expect(
           doesDateRangeOverlapLeaguePeriod(

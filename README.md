@@ -32,17 +32,24 @@
 $ yarn install
 ```
 
+The backend targets Node.js 24.15.0. Render reads this version from
+`.node-version`; `package.json` also constrains the supported Node 24 range, and
+the Docker image uses the same pinned runtime.
+
 ## Compile and run the project
 
 ```bash
-# development
-$ yarn run start
+# build (constrained heap for Render's 512 MB instance)
+npm run build
+
+# production (runs compiled output without a second TypeScript compilation)
+$ npm start
 
 # watch mode
-$ yarn run start:dev
+$ npm run start:dev
 
 # production mode
-$ yarn run start:prod
+$ npm run start:prod
 ```
 
 ## Run tests
@@ -59,6 +66,9 @@ $ yarn run test:cov
 ```
 
 ## Deployment
+
+Use the backend directory as the Render service root (or deploy this directory as
+the repository root) so Render applies the Node version specified above.
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 

@@ -7,7 +7,7 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 ## Key Features
 
 - Starts an initial score recovery cycle after server startup
-- **Schedules a season-gated recovery games fetch at startup (`getAllGames(false, new Date())` after 2 min)**
+- Starts only a score refresh 30 seconds after startup; schedule imports are handled by the one-league-at-a-time rotation cron to avoid a startup memory spike
 - Refreshes team data on a monthly schedule
 - Refreshes league game data on scheduled times
 - Periodically fetches scores for live games
@@ -18,7 +18,8 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 
 | Job                              | Schedule               | Purpose                                             |
 | -------------------------------- | ---------------------- | --------------------------------------------------- |
-| `onModuleInit()` recovery        | Once at startup (+2 min) | Season-gated `getAllGames(false, new Date())` — fills a cold/stale DB outside cron windows |
+| `onModuleInit()` score refresh   | Once at startup (+30 sec) | Fetches scores; schedule imports are left to `refreshLeaguesOneByOne()` to avoid a full-league startup memory spike |
+| `pruneRefreshTimestamps()`       | Daily at 03:00 UTC     | Deletes refresh timestamp records older than the 40 most recent |
 | **`refreshLeaguesOneByOne()`**   | **Every 3 min (suspended 4 AM-11 AM NY)** | **League rotation: ONE league per tick through the `League` enum, frequency-gated by `needRefresh()` (playoffs: 1 day, season: 3 days, off-season: 7 days), stops until the next day once the list is complete. Ticks every 3 minutes but is suspended between 4 AM and 11 AM New York.** |
 | `updateTeams()`                  | Monthly (0:30 AM, 1st) | Refresh all teams                                   |
 | `updateAllGames()`               | Monthly (1:00 AM, 1st) | Full league refresh                                 |
@@ -30,6 +31,13 @@ This service runs scheduled background jobs for refreshing teams, games and scor
 | **`finalizeFinishedSeasonRecords()`** | **Every ~15 days (`0 5 1,16 * *` = 1st & 16th, 5 AM UTC)** | **For leagues with no game started in 2 months: freeze the end-of-season tally onto their games, then reset `team.record` to zero** |
 | **`purgeStaleTeams()`**           | **Weekly Sunday 4AM UTC**       | **Games retention cleanup first (`removeDuplicatesAndOlds`: 6-year games, 1-year preseason, duplicates), then refresh teams + delete teams stale for more than 2 months with no active game (fail-soft: a cleanup failure never blocks the team purge)** |
 | **`monitorDiskCapacity()`**      | **Every hour (`0 */1 * * *`)** | **Disk usage check & purge of the oldest month**     |
+
+## Refresh timestamp retention (`pruneRefreshTimestamps`)
+
+Runs once daily at 03:00 UTC. `RefreshTimestampService.pruneOldTimestamps()` keeps the
+40 newest records across all leagues and refresh types (`manual`, `auto`, and `recovery`)
+and deletes any older records. If fewer than 41 records exist, no records are deleted.
+Failures are logged without disrupting the other scheduled jobs.
 
 ## Team records refresh (`refreshTeamRecordsMorning` / `refreshTeamRecordsAfternoon`)
 

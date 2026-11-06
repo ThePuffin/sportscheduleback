@@ -246,7 +246,8 @@ export class TeamService {
       return allActivesTeams;
     } catch (error) {
       console.error(error);
-      throw new Error('Error fetching teams: ' + error.message);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error('Error fetching teams: ' + message);
     } finally {
       this.isFetchingTeams[leagueKey] = false;
     }

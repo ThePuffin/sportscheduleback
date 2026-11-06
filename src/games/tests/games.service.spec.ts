@@ -758,7 +758,7 @@ describe('GameService', () => {
     it('should trigger getLeagueGames when games count is below threshold (30% of teams)', async () => {
       // Mock isCurrentSeason to return true only for NHL to isolate the test
       const isCurrentSeasonSpy = jest
-        .spyOn(utils, 'isCurrentSeason')
+        .spyOn(utils.seasonUtils, 'isCurrentSeason')
         .mockImplementation(async (league) => league === League.NHL);
       const getLeagueGamesSpy = jest
         .spyOn(service, 'getLeagueGames')
@@ -787,7 +787,7 @@ describe('GameService', () => {
 
     it('should not refresh games if count is above or equal to threshold', async () => {
       const isCurrentSeasonSpy = jest
-        .spyOn(utils, 'isCurrentSeason')
+        .spyOn(utils.seasonUtils, 'isCurrentSeason')
         .mockImplementation(async (league) => league === League.NHL);
       const getLeagueGamesSpy = jest
         .spyOn(service, 'getLeagueGames')
@@ -836,7 +836,7 @@ describe('GameService', () => {
     it('should mark a past season as complete when all obtained games are stored', async () => {
       // A past season (isCurrentSeason returns false for the representative date)
       const isCurrentSeasonSpy = jest
-        .spyOn(utils, 'isCurrentSeason')
+        .spyOn(utils.seasonUtils, 'isCurrentSeason')
         .mockResolvedValue(false);
 
       const status = await service.getSeasonStatus(League.NHL, 2023);
@@ -859,7 +859,7 @@ describe('GameService', () => {
 
     it('should mark a past season as incomplete when DB has fewer games than the API', async () => {
       const isCurrentSeasonSpy = jest
-        .spyOn(utils, 'isCurrentSeason')
+        .spyOn(utils.seasonUtils, 'isCurrentSeason')
         .mockResolvedValue(false);
       mockGameModel.countDocuments.mockResolvedValue(2);
 
@@ -875,7 +875,7 @@ describe('GameService', () => {
     it('should not trust the comparison for the current season (always complete)', async () => {
       // Current season -> isCurrentSeason returns true
       const isCurrentSeasonSpy = jest
-        .spyOn(utils, 'isCurrentSeason')
+        .spyOn(utils.seasonUtils, 'isCurrentSeason')
         .mockResolvedValue(true);
       // DB would be partial (e.g. mid-season)
       mockGameModel.countDocuments.mockResolvedValue(1);
@@ -1522,22 +1522,26 @@ describe('GameService', () => {
     });
 
     it('should only fetch in-season leagues and persist their tallies', async () => {
-      const inSeason = jest.spyOn(utils, 'isCurrentSeason');
+      const inSeason = jest.spyOn(utils.seasonUtils, 'isCurrentSeason');
       inSeason.mockImplementation(
         async (league: string) => league === League.NHL,
       );
-      jest.spyOn(utils, 'isPlayoffsPeriod').mockResolvedValue(false);
+      jest
+        .spyOn(utils.seasonUtils, 'isPlayoffsPeriod')
+        .mockResolvedValue(false);
 
       const fetchSpy = jest
         .spyOn(service as any, '_fetchUniqueGames')
         .mockImplementation(
           async (
-            _league: string,
-            _season: number | undefined,
-            teamRecords?: Map<string, string>,
+            _league,
+            _season,
+            teamRecords,
           ) => {
-            teamRecords?.set('NHL-BOS', '20-15-5');
-            teamRecords?.set('NHL-TOR', '18-17-5');
+            if (teamRecords instanceof Map) {
+              teamRecords.set('NHL-BOS', '20-15-5');
+              teamRecords.set('NHL-TOR', '18-17-5');
+            }
             return [];
           },
         );
@@ -1563,20 +1567,24 @@ describe('GameService', () => {
     });
 
     it('should include leagues in playoffs even outside the regular season', async () => {
-      jest.spyOn(utils, 'isCurrentSeason').mockResolvedValue(false);
       jest
-        .spyOn(utils, 'isPlayoffsPeriod')
+        .spyOn(utils.seasonUtils, 'isCurrentSeason')
+        .mockResolvedValue(false);
+      jest
+        .spyOn(utils.seasonUtils, 'isPlayoffsPeriod')
         .mockImplementation(async (league: string) => league === League.NBA);
 
       jest
         .spyOn(service as any, '_fetchUniqueGames')
         .mockImplementation(
           async (
-            _league: string,
-            _season: number | undefined,
-            teamRecords?: Map<string, string>,
+            _league,
+            _season,
+            teamRecords,
           ) => {
-            teamRecords?.set('NBA-LAL', '40-20');
+            if (teamRecords instanceof Map) {
+              teamRecords.set('NBA-LAL', '40-20');
+            }
             return [];
           },
         );
@@ -1593,8 +1601,12 @@ describe('GameService', () => {
     });
 
     it('should skip every league when none is in season and write nothing', async () => {
-      jest.spyOn(utils, 'isCurrentSeason').mockResolvedValue(false);
-      jest.spyOn(utils, 'isPlayoffsPeriod').mockResolvedValue(false);
+      jest
+        .spyOn(utils.seasonUtils, 'isCurrentSeason')
+        .mockResolvedValue(false);
+      jest
+        .spyOn(utils.seasonUtils, 'isPlayoffsPeriod')
+        .mockResolvedValue(false);
       const fetchSpy = jest.spyOn(service as any, '_fetchUniqueGames');
       const updateRecordsSpy = jest.spyOn(
         mockTeamService as any,
@@ -1610,16 +1622,18 @@ describe('GameService', () => {
 
     it('should keep processing the other leagues when one fetch fails', async () => {
       jest
-        .spyOn(utils, 'isCurrentSeason')
+        .spyOn(utils.seasonUtils, 'isCurrentSeason')
         .mockImplementation(async (league: string) =>
           [League.NHL, League.NBA].includes(league as never),
         );
-      jest.spyOn(utils, 'isPlayoffsPeriod').mockResolvedValue(false);
+      jest
+        .spyOn(utils.seasonUtils, 'isPlayoffsPeriod')
+        .mockResolvedValue(false);
       jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
       jest
         .spyOn(service as any, '_fetchUniqueGames')
-        .mockImplementation(async (league: string) => {
+        .mockImplementation(async (league) => {
           if (league === League.NHL) throw new Error('ESPN down');
           return [];
         });
@@ -1635,18 +1649,22 @@ describe('GameService', () => {
 
     it("propagates the fresh tallies onto each team's season games", async () => {
       jest
-        .spyOn(utils, 'isCurrentSeason')
+        .spyOn(utils.seasonUtils, 'isCurrentSeason')
         .mockImplementation(async (league: string) => league === League.NHL);
-      jest.spyOn(utils, 'isPlayoffsPeriod').mockResolvedValue(false);
+      jest
+        .spyOn(utils.seasonUtils, 'isPlayoffsPeriod')
+        .mockResolvedValue(false);
       jest
         .spyOn(service as any, '_fetchUniqueGames')
         .mockImplementation(
           async (
-            _league: string,
-            _season: number | undefined,
-            teamRecords?: Map<string, string>,
+            _league,
+            _season,
+            teamRecords,
           ) => {
-            teamRecords?.set('NHL-BOS', '20-15-5');
+            if (teamRecords instanceof Map) {
+              teamRecords.set('NHL-BOS', '20-15-5');
+            }
             return [];
           },
         );
@@ -1668,9 +1686,11 @@ describe('GameService', () => {
 
     it('should never persist any game', async () => {
       jest
-        .spyOn(utils, 'isCurrentSeason')
-        .mockImplementation(async (league: string) => league === League.NHL);
-      jest.spyOn(utils, 'isPlayoffsPeriod').mockResolvedValue(false);
+        .spyOn(utils.seasonUtils, 'isCurrentSeason')
+        .mockImplementation(async (league) => league === League.NHL);
+      jest
+        .spyOn(utils.seasonUtils, 'isPlayoffsPeriod')
+        .mockResolvedValue(false);
       const fetchSpy = jest
         .spyOn(service as any, '_fetchUniqueGames')
         .mockResolvedValue([{ uniqueId: 'NHL-BOS-NHL-TOR' }]);

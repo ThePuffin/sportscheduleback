@@ -349,8 +349,8 @@ export const doesDateRangeOverlapLeaguePeriod = async (
 
   const cursor = new Date(rangeStart);
   while (cursor <= rangeEnd) {
-    const isSeason = await isCurrentSeason(leagueName, cursor);
-    const isPlayoffs = await isPlayoffsPeriod(leagueName, cursor);
+    const isSeason = await seasonUtils.isCurrentSeason(leagueName, cursor);
+    const isPlayoffs = await seasonUtils.isPlayoffsPeriod(leagueName, cursor);
     if (isSeason || isPlayoffs) {
       return true;
     }
@@ -379,8 +379,8 @@ export const isPlayoffsPeriod = async (leagueName: string, date?: Date) => {
 };
 
 const numberOfDaysToRefresh = async (leagueName: string) => {
-  if (await isPlayoffsPeriod(leagueName)) return 1;
-  if (await isCurrentSeason(leagueName)) return 3;
+  if (await seasonUtils.isPlayoffsPeriod(leagueName)) return 1;
+  if (await seasonUtils.isCurrentSeason(leagueName)) return 3;
   return 7;
 };
 
@@ -400,4 +400,10 @@ export const needRefresh = async (leagueName: string, games) => {
   );
 
   return diffDays >= daysToRefresh;
+};
+
+export const seasonUtils = {
+  isCurrentSeason,
+  isPlayoffsPeriod,
+  needRefresh,
 };

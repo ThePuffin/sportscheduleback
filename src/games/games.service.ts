@@ -34,9 +34,8 @@ import {
   doesDateRangeOverlapLeaguePeriod,
   getLeagueConfig,
   isInThePeriod,
-  isCurrentSeason,
-  isPlayoffsPeriod,
   needRefresh,
+  seasonUtils,
 } from '../utils/utils';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
@@ -215,7 +214,9 @@ export class GameService {
   }
 
   private isOlympicTeamId(teamSelectedId: string): boolean {
-    return /^OLYMPICS-(?:HOCKEY|BASKETBALL)-(?:MEN|WOMEN)-/i.test(teamSelectedId);
+    return /^OLYMPICS-(?:HOCKEY|BASKETBALL)-(?:MEN|WOMEN)-/i.test(
+      teamSelectedId,
+    );
   }
 
   async getTeamsLogo(teams: TeamType[]): Promise<{ [key: string]: string }> {
@@ -276,7 +277,9 @@ export class GameService {
    * `"MIL leads 3-0"` or `"MIL wins series 4-0"`). Returns `null` when the
    * label carries no score (e.g. `"Series over"`) or when it is not a string.
    */
-  private _parseSeriesScore(value?: string): { leader: number; trailer: number; total: number } | null {
+  private _parseSeriesScore(
+    value?: string,
+  ): { leader: number; trailer: number; total: number } | null {
     if (!value || typeof value !== 'string') return null;
     const match = value.match(/(\d+)\s*[-–]\s*(\d+)/);
     if (!match) return null;
@@ -389,7 +392,12 @@ export class GameService {
    * `${league}|${season}|${teamA}|${teamB}` with teamA < teamB.
    */
   private _seriesKey(game: any): string | null {
-    if (!game.league || !game.homeTeamId || !game.awayTeamId || game.homeTeamId === game.awayTeamId) {
+    if (
+      !game.league ||
+      !game.homeTeamId ||
+      !game.awayTeamId ||
+      game.homeTeamId === game.awayTeamId
+    ) {
       return null;
     }
     const season = (game.gameDate || '').slice(0, 4);
@@ -408,10 +416,16 @@ export class GameService {
     if (phase !== undefined && phase !== null && phase !== '') {
       return String(phase) === '3';
     }
-    const status = typeof game.seriesStatus === 'string' ? game.seriesStatus.trim() : '';
-    const summary = typeof game.seriesSummary === 'string' ? game.seriesSummary.trim() : '';
+    const status =
+      typeof game.seriesStatus === 'string' ? game.seriesStatus.trim() : '';
+    const summary =
+      typeof game.seriesSummary === 'string' ? game.seriesSummary.trim() : '';
     const hasLabel = status || summary;
-    return hasLabel && !this.nonSeriesLabelPattern.test(status) && !this.nonSeriesLabelPattern.test(summary);
+    return (
+      hasLabel &&
+      !this.nonSeriesLabelPattern.test(status) &&
+      !this.nonSeriesLabelPattern.test(summary)
+    );
   }
 
   /**
@@ -458,7 +472,10 @@ export class GameService {
    * stale `leads 3-0` propagated onto a later game never hides the final
    * `wins 4-0`. Returns `''` when no game carries a usable stored status.
    */
-  private _latestStoredSeriesStatus(seriesGames: any[], _currentGame?: any): string {
+  private _latestStoredSeriesStatus(
+    seriesGames: any[],
+    _currentGame?: any,
+  ): string {
     let latestLeads = '';
     const ordered = [...seriesGames].sort(
       (a, b) => this._gameSortTime(a) - this._gameSortTime(b),
@@ -487,12 +504,17 @@ export class GameService {
    *    or `''` when there aren't enough completed games.
    */
   private _computeSeriesStatus(seriesGames: any[], currentGame: any): string {
-    const latestStored = this._latestStoredSeriesStatus(seriesGames, currentGame);
+    const latestStored = this._latestStoredSeriesStatus(
+      seriesGames,
+      currentGame,
+    );
     if (latestStored) return latestStored;
     const team1Id = currentGame.homeTeamId;
     const team2Id = currentGame.awayTeamId;
-    const team1Name = currentGame.homeTeamShort || currentGame.homeTeam || team1Id;
-    const team2Name = currentGame.awayTeamShort || currentGame.awayTeam || team2Id;
+    const team1Name =
+      currentGame.homeTeamShort || currentGame.homeTeam || team1Id;
+    const team2Name =
+      currentGame.awayTeamShort || currentGame.awayTeam || team2Id;
 
     let team1Wins = 0;
     let team2Wins = 0;
@@ -523,7 +545,12 @@ export class GameService {
       }
       const homeScore = game.homeTeamScore;
       const awayScore = game.awayTeamScore;
-      if (homeScore === null || homeScore === undefined || awayScore === null || awayScore === undefined) {
+      if (
+        homeScore === null ||
+        homeScore === undefined ||
+        awayScore === null ||
+        awayScore === undefined
+      ) {
         continue;
       }
       // Scores may arrive as strings from some providers: "6" > "10" is
@@ -568,7 +595,8 @@ export class GameService {
 
     // Series decided: 4+ wins (best-of-7 or best-of-5), or 3 wins with all
     // 5 games completed (best-of-5 clincher).
-    const seriesDecided = leaderWins >= 4 || (leaderWins === 3 && completedGames >= 5);
+    const seriesDecided =
+      leaderWins >= 4 || (leaderWins === 3 && completedGames >= 5);
 
     if (seriesDecided) {
       return `${leaderName} wins series ${leaderWins}-${trailerWins}`;
@@ -592,7 +620,8 @@ export class GameService {
     this._computedSeriesStatusMap.clear();
 
     const needsCompute = games.filter((g) => {
-      const status = typeof g.seriesStatus === 'string' ? g.seriesStatus.trim() : '';
+      const status =
+        typeof g.seriesStatus === 'string' ? g.seriesStatus.trim() : '';
       // An invalid stored evolution ("8-0") is treated as missing so the
       // display self-heals via the latest game / computed count.
       if (status && this._isValidSeriesEvolution(status)) return false;
@@ -658,15 +687,9 @@ export class GameService {
     return {
       ...game,
       homeTeamRecord:
-        seriesDisplay ||
-        game.homeTeamRecord ||
-        homeTeam?.record ||
-        '',
+        seriesDisplay || game.homeTeamRecord || homeTeam?.record || '',
       awayTeamRecord:
-        seriesDisplay ||
-        game.awayTeamRecord ||
-        awayTeam?.record ||
-        '',
+        seriesDisplay || game.awayTeamRecord || awayTeam?.record || '',
       homeTeam: homeTeam?.label || game.homeTeam,
       homeTeamShort: homeTeam?.abbrev || game.homeTeamShort,
       homeTeamLogo:
@@ -825,8 +848,9 @@ export class GameService {
               this._isSeriesEvolution(storedSeriesStatus);
             // NOTE: a stored game-number label ("Game 2") is deliberately NOT
             // an evolution, so the PWHL non-empty rule below still updates it.
-            const incomingIsEvolution =
-              this._isSeriesEvolution(effectiveIncomingSeriesStatus);
+            const incomingIsEvolution = this._isSeriesEvolution(
+              effectiveIncomingSeriesStatus,
+            );
             if (
               !effectiveIncomingSeriesStatus ||
               (storedIsEvolution && !incomingIsEvolution)
@@ -845,7 +869,7 @@ export class GameService {
               incomingIsEvolution &&
               !this._mayReplaceSeriesStatus(
                 storedSeriesStatus,
-                effectiveIncomingSeriesStatus
+                effectiveIncomingSeriesStatus,
               )
             ) {
               delete gameDto.seriesStatus;
@@ -1071,8 +1095,8 @@ export class GameService {
     for (const league of Object.values(League)) {
       try {
         const inSeason =
-          (await isCurrentSeason(league, today)) ||
-          (await isPlayoffsPeriod(league, today));
+          (await seasonUtils.isCurrentSeason(league, today)) ||
+          (await seasonUtils.isPlayoffsPeriod(league, today));
         if (!inSeason) continue;
 
         leagues.push(league);
@@ -1570,7 +1594,10 @@ export class GameService {
 
     const isCurrent =
       !season ||
-      (await isCurrentSeason(normalizedLeague, new Date(`${season}-06-30`)));
+      (await seasonUtils.isCurrentSeason(
+        normalizedLeague,
+        new Date(`${season}-06-30`),
+      ));
 
     const obtainedGames = await this._fetchUniqueGames(
       normalizedLeague,
@@ -1725,7 +1752,9 @@ export class GameService {
    *
    * Series are picked at random so the same ones are not processed on every run.
    */
-  async refreshUndecidedPlayoffSeries(limit = 10): Promise<{ updated: number; series: string[] }> {
+  async refreshUndecidedPlayoffSeries(
+    limit = 10,
+  ): Promise<{ updated: number; series: string[] }> {
     const now = new Date();
 
     // Find playoff games with no declared winner in seriesStatus
@@ -1824,9 +1853,11 @@ export class GameService {
         const homeIsTeamA = g.homeTeamId === info.teamA;
         const homeWin = g.homeTeamScore > g.awayTeamScore;
         if (homeIsTeamA) {
-          if (homeWin) winsA++; else winsB++;
+          if (homeWin) winsA++;
+          else winsB++;
         } else {
-          if (homeWin) winsB++; else winsA++;
+          if (homeWin) winsB++;
+          else winsA++;
         }
       }
 
@@ -1906,18 +1937,15 @@ export class GameService {
 
     // Find active playoff games with TBD as home or away team
     const tbdGames = await this.gameModel
-      .find(
-        baseFilter,
-        {
-          uniqueId: 1,
-          league: 1,
-          homeTeamId: 1,
-          awayTeamId: 1,
-          homeTeamShort: 1,
-          awayTeamShort: 1,
-          _id: 1,
-        },
-      )
+      .find(baseFilter, {
+        uniqueId: 1,
+        league: 1,
+        homeTeamId: 1,
+        awayTeamId: 1,
+        homeTeamShort: 1,
+        awayTeamShort: 1,
+        _id: 1,
+      })
       .lean()
       .exec();
 
@@ -1947,9 +1975,9 @@ export class GameService {
           });
           updatedLeagues.push(l);
           console.info(
-            `[TBD] Re-fetched league ${l} to resolve ${tbdGames.filter(
-              (g) => g.league === l,
-            ).length} TBD playoff game(s).`,
+            `[TBD] Re-fetched league ${l} to resolve ${
+              tbdGames.filter((g) => g.league === l).length
+            } TBD playoff game(s).`,
           );
         } catch (err) {
           console.error(
@@ -2672,8 +2700,8 @@ export class GameService {
       let needRefresh = true;
       if (date) {
         needRefresh =
-          (await isCurrentSeason(league, date)) ||
-          (await isPlayoffsPeriod(league, date));
+          (await seasonUtils.isCurrentSeason(league, date)) ||
+          (await seasonUtils.isPlayoffsPeriod(league, date));
       }
       if (needRefresh) {
         await this.getLeagueGames({ league, forceUpdate, skipCascade: false });
@@ -2916,8 +2944,8 @@ export class GameService {
         // keep the data up to date all year round instead.
         const inSeason =
           games.length > 0 &&
-          ((await isCurrentSeason(league, new Date())) ||
-            (await isPlayoffsPeriod(league, new Date())));
+          ((await seasonUtils.isCurrentSeason(league, new Date())) ||
+            (await seasonUtils.isPlayoffsPeriod(league, new Date())));
         if (inSeason) {
           await this.getLeagueGames({
             league,
@@ -3195,7 +3223,12 @@ export class GameService {
       : [];
     const gamesByDay = {};
     const uniqueTeamSelectedIds = teamSelectedIds
-      ? this.expandOlympicTeamIds(teamSelectedIds.split(',').map((item) => item.trim()).filter(Boolean))
+      ? this.expandOlympicTeamIds(
+          teamSelectedIds
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean),
+        )
       : this.getTeams(undefined, games);
 
     // Index the fetched games in memory once: key = "YYYY-MM-DD|teamSelectedId".
@@ -3230,7 +3263,8 @@ export class GameService {
       const currentDate = readableDate(date);
       const gamesOfDay = [];
       uniqueTeamSelectedIds.forEach((teamSelectedId) => {
-        const gameOfDay = gamesByDateAndTeam.get(`${currentDate}|${teamSelectedId}`) || [];
+        const gameOfDay =
+          gamesByDateAndTeam.get(`${currentDate}|${teamSelectedId}`) || [];
         if (
           !gameOfDay.length &&
           !league &&
@@ -3491,7 +3525,8 @@ export class GameService {
       preseasonGamesByLeague[String(row._id)] = row.count;
     }
 
-    const preseasonDeleteResult = await this.gameModel.deleteMany(preseasonFilter);
+    const preseasonDeleteResult =
+      await this.gameModel.deleteMany(preseasonFilter);
 
     console.info(
       `Deleted ${preseasonDeleteResult.deletedCount} preseason games older than ${this.preseasonYearsToKeep} year(s).`,
@@ -3554,10 +3589,7 @@ export class GameService {
     this.teamService.clearActiveGameCountCache?.();
     console.info('End of removing duplicates and old games...');
 
-    const oldTotal = Object.values(oldGamesByLeague).reduce(
-      (a, b) => a + b,
-      0,
-    );
+    const oldTotal = Object.values(oldGamesByLeague).reduce((a, b) => a + b, 0);
     const preseasonTotal = Object.values(preseasonGamesByLeague).reduce(
       (a, b) => a + b,
       0,
@@ -3699,15 +3731,6 @@ export class GameService {
 
   get isScoreRecoveryRunning(): boolean {
     return this.isFetchingScores;
-  }
-
-  // --- Startup recovery timestamp helpers (delegated to RefreshTimestampService) ---
-  async getLastRecoveryTimestamp(): Promise<Date | null> {
-    return this.refreshTimestampService.getLastRecoveryTimestamp();
-  }
-
-  async addRecoveryTimestamp(): Promise<void> {
-    await this.refreshTimestampService.addRecoveryTimestamp();
   }
 
   async fetchGamesScores(): Promise<any[]> {
@@ -4335,9 +4358,7 @@ export class GameService {
         this._isSeriesEvolution(summaryTrimmed) &&
         this._isValidSeriesEvolution(summaryTrimmed)
       ) {
-        const currentScore = this._parseSeriesScore(
-          effectiveFreshSeriesStatus,
-        );
+        const currentScore = this._parseSeriesScore(effectiveFreshSeriesStatus);
         const summaryScore = this._parseSeriesScore(summaryTrimmed);
         if (
           !currentScore ||
@@ -4375,7 +4396,7 @@ export class GameService {
       } else if (
         this._mayReplaceSeriesStatus(
           storedSyncStatus,
-          effectiveFreshSeriesStatus
+          effectiveFreshSeriesStatus,
         )
       ) {
         game.seriesStatus = effectiveFreshSeriesStatus;
@@ -4395,25 +4416,27 @@ export class GameService {
       game.awayTeamId
     ) {
       try {
-        await this.gameModel.updateMany(
-          {
-            league: game.league,
-            _id: { $ne: game._id },
-            $or: [
-              {
-                homeTeamId: game.homeTeamId,
-                awayTeamId: game.awayTeamId,
-              },
-              {
-                homeTeamId: game.awayTeamId,
-                awayTeamId: game.homeTeamId,
-              },
-            ],
-            seriesSummary: { $exists: true, $nin: [null, ''] },
-            seriesStatus: { $ne: game.seriesStatus },
-          },
-          { $set: { seriesStatus: game.seriesStatus } },
-        ).exec();
+        await this.gameModel
+          .updateMany(
+            {
+              league: game.league,
+              _id: { $ne: game._id },
+              $or: [
+                {
+                  homeTeamId: game.homeTeamId,
+                  awayTeamId: game.awayTeamId,
+                },
+                {
+                  homeTeamId: game.awayTeamId,
+                  awayTeamId: game.homeTeamId,
+                },
+              ],
+              seriesSummary: { $exists: true, $nin: [null, ''] },
+              seriesStatus: { $ne: game.seriesStatus },
+            },
+            { $set: { seriesStatus: game.seriesStatus } },
+          )
+          .exec();
       } catch {
         // Propagation is best-effort: the primary game is already updated.
       }
@@ -4533,7 +4556,10 @@ export class GameService {
       }
       const setSeries: any = {};
       if (game.seriesSummary) setSeries.seriesSummary = game.seriesSummary;
-      if (game.seriesStatus && this._isValidSeriesEvolution(game.seriesStatus)) {
+      if (
+        game.seriesStatus &&
+        this._isValidSeriesEvolution(game.seriesStatus)
+      ) {
         setSeries.seriesStatus = game.seriesStatus;
       }
       const sameSeriesQuery: any = this.gameModel.find(seriesFilter, {
@@ -4551,7 +4577,9 @@ export class GameService {
           : sameSeriesLean;
       const forwardIds: string[] = [];
       const fallbackIds: string[] = [];
-      for (const target of (Array.isArray(sameSeriesGames) ? sameSeriesGames : []) as any[]) {
+      for (const target of (Array.isArray(sameSeriesGames)
+        ? sameSeriesGames
+        : []) as any[]) {
         if (!target?.uniqueId) continue;
         const storedTarget =
           typeof target.seriesStatus === 'string'
@@ -5815,7 +5843,7 @@ export class GameService {
         try {
           // check if the league
 
-          if (await isCurrentSeason(league)) {
+          if (await seasonUtils.isCurrentSeason(league)) {
             // fetch all the games for the next 7 days for the league
             const today = new Date();
             const sevenDaysLater = new Date();

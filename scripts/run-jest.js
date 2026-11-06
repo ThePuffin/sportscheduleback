@@ -121,10 +121,14 @@ if (typeof childEnv.PATH === 'string') {
     .join(path.delimiter);
 }
 
-const result = spawnSync(process.execPath, [jestBin, ...jestArgs], {
-  stdio: 'inherit',
-  env: childEnv,
-});
+const result = spawnSync(
+  process.execPath,
+  ['--experimental-vm-modules', jestBin, ...jestArgs],
+  {
+    stdio: 'inherit',
+    env: childEnv,
+  },
+);
 
 if (result.error) {
   console.error('Failed to launch Jest:', result.error.message);

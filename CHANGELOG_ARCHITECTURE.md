@@ -2,6 +2,73 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Updated: NestJS 12 and Render Node.js runtime
+
+The backend dependencies are being aligned on NestJS 12. Its schematics require
+Node.js 22.22.3 or Node.js 24.15.0+, so the Render backend runtime is pinned to
+Node.js 24.15.0 using `.node-version` and the `engines.node` range.
+
+- **`backend/.node-version`** — pins Render to Node.js 24.15.0.
+- **`backend/Dockerfile`** — uses the same pinned Node.js runtime.
+- **`backend/package.json`** — upgrades runtime, CLI, testing and compiler packages
+  to NestJS 12 / TypeScript 6 and restricts supported runtime versions to Node 24.
+- **`backend/tsconfig.build.json`** and error handling — explicitly configure the
+  TypeScript 6 source root and safely handle caught `unknown` values.
+- **`backend/package.json`** and the Jest launcher — explicitly load Node and
+  Jest types and run tests as ESM to load NestJS 12's native ESM packages.
+- **`backend/test/jest-setup.ts`** — restores the `jest` global expected by the
+  existing ESM test suites; matching backend documentation is added.
+- **Season helper usage and tests** — route calls through a shared mutable helper
+  object so native ESM tests can replace behavior without mutating module exports.
+- **`backend/README.md`** — documents the Render service-root requirement.
+
+## Fixed: Render deployment exceeded the 512 MB memory limit
+
+Render's logs showed `npm run build` succeeding but `npm run start` failing before
+opening a port. The start script previously invoked `nest start`, recompiling the
+TypeScript application at runtime with an uncapped heap. It now runs the compiled
+`dist/main.js` directly with a 370 MB heap cap. The build script has the same cap.
+The deployment also ran a full all-league recovery two minutes after startup; that
+job is removed, with regular schedule refreshes left to the existing one-league rotation.
+
+- **`backend/package.json`** — build uses the Nest CLI under a 370 MB heap; production
+  start runs compiled output under the same cap instead of compiling again.
+- **`backend/src/cronJob/cronJob.service.ts`** — removed the delayed full startup recovery.
+- **`backend/src/games/games.service.ts`** and
+  **`backend/src/games/refresh-timestamps.service.ts`** — removed helpers used only by
+  the deleted startup recovery; existing recovery timestamp records remain compatible.
+- **`backend/README.md`** and cron docs — describe the production start and incremental
+  schedule refresh behavior.
+
+## Fixed: Render startup ran out of memory during full schedule recovery
+
+Render's logs showed the build completing successfully, followed by an out-of-memory
+failure about two minutes after `npm run start`. This matched the delayed startup
+recovery that fetched every in-season league in one process. Startup now performs only
+the initial score fetch; schedule refreshes are handled by the existing one-league-at-a-time
+rotation cron.
+
+- **`backend/src/cronJob/cronJob.service.ts`** — removed the delayed full `getAllGames()`
+  startup recovery.
+- **`backend/src/games/games.service.ts`** and
+  **`backend/src/games/refresh-timestamps.service.ts`** — removed helpers used only by
+  the deleted startup recovery; existing recovery timestamp records remain compatible.
+- **`backend/src/cronJob/tests/cronJob.service.spec.ts`** — verifies startup does not launch
+  the full league refresh.
+
+## Added: daily refresh timestamp retention
+
+A daily cron at 03:00 UTC keeps the 40 newest `RefreshTimestamp` records across all leagues
+and refresh types, deleting only entries beyond that limit.
+
+- **`backend/src/games/refresh-timestamps.service.ts`** — added `pruneOldTimestamps()`,
+  which selects records after the latest 40 and deletes those IDs.
+- **`backend/src/cronJob/cronJob.service.ts`** — added the daily
+  `pruneRefreshTimestamps()` job with explicit success and error logging.
+- **`backend/src/cronJob/cronJob.module.ts`** — imports `RefreshTimestampModule` for the
+  cron service dependency.
+- **Tests and documentation** — cover the retention boundary and cron delegation.
+
 
 
 ## Changed: `refreshLeaguesOneByOne()` cron — every 3 minutes, suspended 4 AM–11 AM NY
