@@ -2501,7 +2501,13 @@ describe('GameService', () => {
 
       // Known games already in the DB (we must not overwrite them).
       mockGameModel.exec.mockResolvedValue([
-        { uniqueId: 'existing-1', homeTeamScore: 3, awayTeamScore: 1 },
+        {
+          uniqueId: 'existing-1',
+          homeTeamId: 'A',
+          awayTeamId: 'B',
+          homeTeamScore: 3,
+          awayTeamScore: 1,
+        },
         { uniqueId: 'existing-diff', homeTeamScore: 0, awayTeamScore: 0 },
       ]);
 
@@ -2539,6 +2545,10 @@ describe('GameService', () => {
           awayTeamId: 'B',
         },
       ]);
+      (service as any)._persistMissingHistoricalGameTeams = jest
+        .fn()
+        .mockResolvedValue(0);
+      (service as any)._backfillSeasonRecords = jest.fn().mockResolvedValue(0);
       (service as any)._deleteUnlinkedTeams = jest
         .fn()
         .mockResolvedValue(undefined);
@@ -2718,6 +2728,8 @@ describe('GameService', () => {
       mockGameModel.exec.mockResolvedValue([
         {
           uniqueId: 'existing-with-record',
+          homeTeamId: 'NHL-BOS',
+          awayTeamId: 'NHL-TOR',
           homeTeamScore: 3,
           awayTeamScore: 1,
           homeTeamRecord: '33-39-10',
@@ -3019,6 +3031,8 @@ describe('GameService', () => {
       mockGameModel.exec.mockResolvedValue([
         {
           uniqueId: 'existing-with-phase',
+          homeTeamId: 'NHL-BOS',
+          awayTeamId: 'NHL-TOR',
           homeTeamScore: 3,
           awayTeamScore: 1,
           homeTeamRecord: '33-39-10',
