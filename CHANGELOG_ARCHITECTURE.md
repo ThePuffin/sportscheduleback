@@ -2,13 +2,31 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: regular MLB refresh fetched records but no games
+
+The normal league refresh passed a `teamRecords` map to `_fetchUniqueGames()`
+to collect standings while importing games. The helper also used that map as
+the switch for its lightweight records-only path, so the refresh fetched team
+records, built no schedule, and reported zero games. Records-only mode is now an
+explicit argument used only by `refreshCurrentSeasonRecords()`; regular refreshes
+continue through the full schedule path while collecting records.
+
+- **`backend/src/games/games.service.ts`** — separate the records-only flag from
+  the optional map and preserve full schedule fetching in `getLeagueGames()`.
+- **`backend/src/games/tests/games.service.spec.ts`** — cover both call modes.
+- **`backend/docs/games/games.service.ts.md`** — clarify how callers select the
+  lightweight records-only path.
+
 ## Updated: NestJS 12 and Render Node.js runtime
 
 The backend dependencies are being aligned on NestJS 12. Its schematics require
 Node.js 22.22.3 or Node.js 24.15.0+, so the Render backend runtime is pinned to
-Node.js 24.15.0 using `.node-version` and the `engines.node` range.
+Node.js 24.15.0 using `.node-version` and the `engines.node` range. `.nvmrc`
+now pins local nvm users to the same runtime; Node.js 22.2.0 is too old for the
+Nest CLI's Angular schematics and can fail while loading `magic-string`.
 
 - **`backend/.node-version`** — pins Render to Node.js 24.15.0.
+- **`backend/.nvmrc`** — lets local nvm users select Node.js 24.15.0.
 - **`backend/Dockerfile`** — uses the same pinned Node.js runtime.
 - **`backend/package.json`** — upgrades runtime, CLI, testing and compiler packages
   to NestJS 12 / TypeScript 6 and restricts supported runtime versions to Node 24.
@@ -289,8 +307,8 @@ object, deduplicating the whole batch and running `applySeasonFinalRecords()` �
 all of it, keeping only the `teamRecords` side effect. On Render (460 MB heap) this exhausted
 the V8 old space and killed the process.
 
-`_fetchUniqueGames()` now has a **records-only branch** (`teamRecords` given) that never builds
-game payloads: per team it fetches the cumulative record **directly** via
+`_fetchUniqueGames()` now has an explicit **records-only flag** (fourth argument) that never
+builds game payloads: per team it fetches the cumulative record **directly** via
 `getTeamRecord(league, teamId)` (now **exported** from `espnAllData.ts`), formatted by the new
 `GameService._toRecordString()` helper into the stored `W-L[-T/-O]` string (`otLosses` for
 hockey, `ties` for soccer/NFL/college, plain `W-L` for NBA/baseball so a `0` is never appended),
@@ -300,8 +318,10 @@ never abort the loop, and each league ends with a per-league completion summary
 (`[Records] <LEAGUE>: N/M team record(s) fetched (X via detail, Y via schedule fallback, Z without record).`)
 so refresh observability stays equivalent to the full path (project rule).
 
-`getLeagueGames()` and the oldies dry-run (`teamRecords` omitted) still use the full schedule
-path, unchanged. The observability contract is preserved: `getLeagueGames()` keeps its
+`getLeagueGames()` and the oldies dry-run use the full schedule path, unchanged. A
+`teamRecords` map can be passed in either mode: in full-schedule mode it collects tallies from
+the schedule, while only the explicit flag selects records-only mode. The observability contract
+is preserved: `getLeagueGames()` keeps its
 per-team fetched-game count, per-league distinct-game summary and final saved/upserted count.
 
 - **`backend/src/utils/fetchData/espnAllData.ts`** — `getTeamRecord` is exported.
@@ -2243,14 +2263,12 @@ runs inside a 4 AM-11 AM New York window. So the record could stay stale for day
 - **`backend/src/games/games.service.ts`** — new `refreshCurrentSeasonRecords()`:
   - keeps only leagues where `isCurrentSeason()` **or** `isPlayoffsPeriod()` covers today,
     so off-season leagues are skipped before any third-party call (zero cost);
-  - fetches each kept league's schedule via `_fetchUniqueGames(league, undefined, teamRecords)`
-    and **discards the games** — only the harvested per-team tallies are used, so no `Game`
-    document is created, updated or deactivated;
+  - fetches each kept team's cumulative record through
+    `_fetchUniqueGames(league, undefined, teamRecords, true)` — no game schedule is built, so no
+    `Game` document is created, updated or deactivated;
   - writes them through `TeamService.updateRecords()` and returns `{ leagues, updatedTeams }`;
-  - the **PWHL is handled specially**: its HockeyTech schedule carries **no** per-game record, so
-    `_fetchUniqueGames()` forwards `teamRecords` to `HockeyData.getHockeySchedule()`, which fills
-    the map from the official standings (fallback: a local replay of the schedule). Without this
-    the map stayed empty for the PWHL and no `team.record` was ever written for it;
+  - the same records-only path is used for every league, including PWHL; it tries each team's
+    detail record and falls back to its schedule record when needed;
   - a league that throws is logged (`[Records] Could not refresh records for …`) and does not
     abort the remaining leagues.
 - **`backend/src/cronJob/cronJob.service.ts`** — two daily crons sharing

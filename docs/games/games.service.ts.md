@@ -427,13 +427,13 @@ frozen or initial `0-0-0` value.
 
 Refreshes `team.record` (`wins` / `losses` / `ties` / `otLosses`) for every league whose season — **regular season OR playoffs** — covers today, **without saving any fetched game** (its only game writes are the record propagation described above).
 
-To collect the tallies it calls `_fetchUniqueGames(league, undefined, teamRecords)` in **records-only mode**: instead of fetching (and discarding) every team's full schedule — which built every game object, deduplicated it and ran `applySeasonFinalRecords()` only to throw it all away, exhausting the 460 MB Render heap — the loop fetches each team's **cumulative record directly**:
+To collect the tallies it calls `_fetchUniqueGames(league, undefined, teamRecords, true)` in **records-only mode**: instead of fetching (and discarding) every team's full schedule — which built every game object, deduplicated it and ran `applySeasonFinalRecords()` only to throw it all away, exhausting the 460 MB Render heap — the loop fetches each team's **cumulative record directly**:
 
 1. `getTeamRecord(league, teamId)` (exported from `espnAllData.ts`) reads ESPN's team-detail endpoint, formatted by `_toRecordString()` into the stored `W-L[-T/-O]` string (`otLosses` for hockey, `ties` for soccer/NFL/college, plain `W-L` for NBA/baseball, so a `0` is never appended).
 2. When the detail carries no record (e.g. college hockey), it falls back to `getTeamRecordFromSchedule(league, teamId)`.
 3. Either failure is logged per team (`[Records] Could not fetch the team <detail|schedule> record for <LEAGUE> <team>:`) and never aborts the loop; a team without any tally is simply skipped.
 
-In this mode no team logo lookup, no game payload, no deduplication map and no `applySeasonFinalRecords()` pass ever run. `getLeagueGames()` and the oldies dry-run still use the full schedule path.
+In this mode no team logo lookup, no game payload, no deduplication map and no `applySeasonFinalRecords()` pass ever run. `getLeagueGames()` and the oldies dry-run still use the full schedule path, even when they pass a `teamRecords` map to collect tallies from the fetched schedules.
 
 Progress/completion visibility is preserved (project rule): each league ends with a per-league summary — `[Records] <LEAGUE>: N/M team record(s) fetched (X via team detail, Y via schedule fallback, Z without record).` — standing in for the per-team fetched-game count and distinct-game summary the full path logs.
 

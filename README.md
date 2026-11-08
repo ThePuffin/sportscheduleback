@@ -33,8 +33,20 @@ $ yarn install
 ```
 
 The backend targets Node.js 24.15.0. Render reads this version from
-`.node-version`; `package.json` also constrains the supported Node 24 range, and
-the Docker image uses the same pinned runtime.
+`.node-version`; `.nvmrc` lets local developers select the same version with
+nvm. `package.json` also constrains the supported Node 24 range, and the Docker
+image uses the same pinned runtime.
+
+With nvm installed, select the project runtime before installing dependencies or
+starting the backend:
+
+```bash
+nvm install
+nvm use
+node --version
+```
+
+The version command should print `v24.15.0`.
 
 ## Compile and run the project
 

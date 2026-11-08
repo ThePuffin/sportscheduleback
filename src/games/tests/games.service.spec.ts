@@ -1559,6 +1559,7 @@ describe('GameService', () => {
         League.NHL,
         undefined,
         expect.any(Map),
+        true,
       );
       expect(updateRecordsSpy).toHaveBeenCalledWith([
         { uniqueId: 'NHL-BOS', record: '20-15-5' },
@@ -3434,6 +3435,12 @@ describe('GameService', () => {
         skipCascade: true,
       });
 
+      expect((service as any)._fetchUniqueGames).toHaveBeenCalledWith(
+        League.NHL,
+        undefined,
+        expect.any(Map),
+        false,
+      );
       expect(mockGameModel.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ uniqueId: { $in: [futureGame.uniqueId] } }),
         { $set: { missingSince: expect.any(String) } },
