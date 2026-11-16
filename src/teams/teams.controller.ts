@@ -41,8 +41,9 @@ export class TeamsController {
   }
 
   @Get('/league/:league')
-  findByLeague(@Param('league') league: string) {
-    return this.TeamService.findByLeague(league);
+  async findByLeague(@Param('league') league: string): Promise<TeamType[]> {
+    const teams = await this.TeamService.findByLeague(league);
+    return dedupOlympicTeams(teams);
   }
 
   @Get(':uniqueId')

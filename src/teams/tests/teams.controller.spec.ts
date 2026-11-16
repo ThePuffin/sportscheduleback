@@ -115,6 +115,52 @@ describe('TeamsController', () => {
       expect(await controller.findByLeague(league)).toEqual([mockTeam]);
       expect(service.findByLeague).toHaveBeenCalledWith(league);
     });
+
+    it('deduplicates Olympic teams for OLYMPICS-MEN and unifies uniqueId', async () => {
+      const league = 'OLYMPICS-MEN';
+      const olympicHockey = {
+        uniqueId: 'OLYMPICS-HOCKEY-MEN-CAN',
+        label: 'Canada',
+        league: 'OLYMPICS-MEN',
+      } as TeamType;
+      const olympicBasketball = {
+        uniqueId: 'OLYMPICS-BASKETBALL-MEN-CAN',
+        label: 'Canada',
+        league: 'OLYMPICS-MEN',
+      } as TeamType;
+      (service.findByLeague as jest.Mock).mockResolvedValue([
+        olympicHockey,
+        olympicBasketball,
+      ]);
+
+      const result = await controller.findByLeague(league);
+      expect(result).toHaveLength(1);
+      expect(result[0].uniqueId).toBe('OLYMPICS-MEN-CAN');
+      expect(result[0].label).toBe('Canada');
+    });
+
+    it('deduplicates Olympic teams for OLYMPICS-WOMEN and unifies uniqueId', async () => {
+      const league = 'OLYMPICS-WOMEN';
+      const olympicHockey = {
+        uniqueId: 'OLYMPICS-HOCKEY-WOMEN-USA',
+        label: 'United States',
+        league: 'OLYMPICS-WOMEN',
+      } as TeamType;
+      const olympicBasketball = {
+        uniqueId: 'OLYMPICS-BASKETBALL-WOMEN-USA',
+        label: 'United States',
+        league: 'OLYMPICS-WOMEN',
+      } as TeamType;
+      (service.findByLeague as jest.Mock).mockResolvedValue([
+        olympicHockey,
+        olympicBasketball,
+      ]);
+
+      const result = await controller.findByLeague(league);
+      expect(result).toHaveLength(1);
+      expect(result[0].uniqueId).toBe('OLYMPICS-WOMEN-USA');
+      expect(result[0].label).toBe('United States');
+    });
   });
 
   describe('findOne', () => {

@@ -529,7 +529,26 @@ export class TeamService {
 
   async findOne(uniqueId: string) {
     const filter = { uniqueId: uniqueId };
-    const team = await this.teamModel.findOne(filter).lean().exec();
+    let team = await this.teamModel.findOne(filter).lean().exec();
+    if (!team) {
+      const match = String(uniqueId).match(/^OLYMPICS-(MEN|WOMEN)-(.+)$/);
+      if (match) {
+        team = await this.teamModel
+          .findOne({
+            uniqueId: {
+              $in: [
+                `OLYMPICS-HOCKEY-${match[1]}-${match[2]}`,
+                `OLYMPICS-BASKETBALL-${match[1]}-${match[2]}`,
+              ],
+            },
+          })
+          .lean()
+          .exec();
+        if (team) {
+          team = { ...team, uniqueId };
+        }
+      }
+    }
     return team ? this.addRecord(team) : null;
   }
 

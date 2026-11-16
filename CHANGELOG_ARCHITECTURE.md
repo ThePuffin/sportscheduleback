@@ -2,6 +2,15 @@
 
 > **📚 Per-file documentation:** For AI-readable documentation of backend modules, see the [docs](./docs/) directory. Each file has a matching Markdown explanation of its purpose, key features, responsibilities and data flow.
 
+## Fixed: Olympic country deduplication for GET /teams/league/:league
+
+The endpoint `GET /teams/league/:league` returned raw sport-specific entries for Olympic leagues (e.g. `OLYMPICS-HOCKEY-MEN-CAN` and `OLYMPICS-BASKETBALL-MEN-CAN`), causing countries with both hockey and basketball teams to be returned twice. The endpoint now applies `dedupOlympicTeams` (matching `GET /teams`), unifying country delegations into single `OLYMPICS-{GENDER}-{COUNTRY}` entries for both `OLYMPICS-MEN` and `OLYMPICS-WOMEN`. In addition, `TeamService.findOne` now resolves unified Olympic IDs to a representative team if queried directly.
+
+- **`backend/src/teams/teams.controller.ts`** — wrap `findByLeague` response with `dedupOlympicTeams`.
+- **`backend/src/teams/teams.service.ts`** — add unified Olympic ID resolution in `findOne`.
+- **`backend/src/teams/tests/teams.controller.spec.ts`** — test suite covering Olympic delegation deduplication for both men and women.
+- **`backend/docs/teams/teams.controller.ts.md`** — update endpoint documentation.
+
 ## Fixed: regular MLB refresh fetched records but no games
 
 The normal league refresh passed a `teamRecords` map to `_fetchUniqueGames()`

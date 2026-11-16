@@ -14,8 +14,8 @@ This controller exposes team-related API endpoints for the frontend and admin to
 
 - `GET /teams` — returns all teams. Optional `?minGames=<n>` keeps only the teams with **at least** `n` active games (past or upcoming), e.g. `?minGames=4` = "more than 3 games". Preseason games (`recordSeasonType: 1`) never count towards the threshold, and teams marked `isActive: false` (historical/retired franchises) are excluded while the parameter is set, so a retired team can never be picked. Omitted, `0`, negative or non-numeric returns the unfiltered catalog (the historical behavior, inactive teams included). **Olympic deduplication:** the HTTP response keeps one entry per Olympic country/gender (`OLYMPICS-{MEN|WOMEN}-{PAYS}`), so hockey + basketball entries of the same delegation collapse into a single selector entry. The representative ID is unified to `OLYMPICS-{GENDER}-{COUNTRY}` (e.g. `OLYMPICS-WOMEN-USA`, first-encountered team wins, no sport-specific tie-break). `TeamService.findAll()` is left un-deduplicated so `GameService` (per-sport enrichment, league discovery) keeps every Olympic team.
 - `GET /teams/leagues` — returns available leagues
-- `GET /teams/league/:league` — returns teams from one league
-- `GET /teams/:uniqueId` — returns a single team
+- `GET /teams/league/:league` — returns teams from one league, deduplicating Olympic delegations (`OLYMPICS-MEN`, `OLYMPICS-WOMEN`) to a single entry per country (`OLYMPICS-{GENDER}-{COUNTRY}`) just like `GET /teams`.
+- `GET /teams/:uniqueId` — returns a single team; resolves unified Olympic IDs (`OLYMPICS-{MEN|WOMEN}-{COUNTRY}`) to a representative sport entry when queried directly.
 - `POST /teams/refresh` — refreshes team data for one or all leagues
 - `PATCH /teams/:uniqueId` — updates a team
 - `DELETE /teams/all` — deletes all teams
